@@ -92,6 +92,52 @@
     metronome: "jubeat.metronome",
   };
 
+  // —— 数据布局 ——
+  // 静态站点和开发服务器（player/server.py）用同一套路径，所以前端不需要区分模式。
+  //   data/library.json                     曲库索引
+  //   data/markers.json                     marker 清单
+  //   data/charts/<曲目>/<难度>.json         谱面
+  //   media/audio/<曲目>.ogg                音源
+  //   media/cover/<曲目>.<ext>              封面原图
+  //   media/thumb/<曲目>.jpg                列表缩略图
+  //   markers/<sheet>                       marker 素材
+  const PATHS = {
+    library: "data/library.json",
+    markers: "data/markers.json",
+    markersBase: "markers/",
+    charts: "data/charts/",
+    audio: "media/audio/",
+    cover: "media/cover/",
+    thumb: "media/thumb/",
+  };
+
+  /** 逐段 encodeURIComponent：曲名里可能有空格、#、?、日文等 */
+  function encPath(path) {
+    return String(path).split("/").map(encodeURIComponent).join("/");
+  }
+
+  /** 曲目 id（.mcz 相对路径）→ 站点内的资源前缀 */
+  function stemOf(id) {
+    return String(id || "").replace(/\.mcz$/i, "");
+  }
+
+  function chartPath(song, chart) {
+    return `${PATHS.charts}${encPath(stemOf(song.id))}/${encodeURIComponent(chart.code)}.json`;
+  }
+
+  function audioUrl(song) {
+    return `${PATHS.audio}${encPath(stemOf(song.id))}.ogg`;
+  }
+
+  function coverUrl(song) {
+    const ext = (String(song.cover || "").match(/\.[a-z0-9]+$/i) || [".png"])[0];
+    return `${PATHS.cover}${encPath(stemOf(song.id))}${ext}`;
+  }
+
+  function thumbUrl(song) {
+    return `${PATHS.thumb}${encPath(stemOf(song.id))}.jpg`;
+  }
+
   // marker 的基准帧率以服务端 manifest.json 的 fps 字段为准；这张表只是兜底，
   // 用于服务端进程还没重启（manifest 缓存是旧的）时也能按正确速度播放。
   const FPS_FALLBACK = {
@@ -332,7 +378,7 @@
   let canvasH = 0;
 
   function markerUrl(rel) {
-    return "/markers/" + String(rel || "").replace(/^\.?\//, "");
+    return PATHS.markersBase + encPath(String(rel || "").replace(/^\.?\//, ""));
   }
 
   function sheetImage(rel) {
@@ -364,7 +410,7 @@
 
   async function loadMarkers() {
     try {
-      const res = await fetch("/api/markers");
+      const res = await fetch(PATHS.markers);
       const data = await res.json();
       markerCfg.fps = Number(data.fps) || 30;
       markerCfg.entries = data.markers || [];
@@ -662,18 +708,18 @@
   }
 
   // —— library ——
-  async function loadLibrary() {
-    const q = els.search.value.trim();
-    const ver = els.versionFilter.value;
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (ver) params.set("version", ver);
+  /**
+   * 曲库索引只拉一次（gzip 后约 100 KB），搜索/筛选在本地做：
+   * 静态站点和开发服务器行为一致，也省掉了每次输入都发请求。
+   */
+  async function loadLibrary(force = false) {
     els.listCount.textContent = "加载中…";
     try {
-      const res = await fetch(`/api/library?${params}`);
-      if (!res.ok) throw new Error(await res.text());
+      const res = await fetch(PATHS.library + (force ? "?reindex=1" : ""),
+                              force ? { cache: "reload" } : undefined);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const data = await res.json();
-      state.songs = data.songs;
+      state.songs = data.songs || [];
       if (!els.versionFilter.dataset.ready) {
         for (const v of data.versions || []) {
           const opt = document.createElement("option");
@@ -683,12 +729,25 @@
         }
         els.versionFilter.dataset.ready = "1";
       }
-      els.listCount.textContent = `${data.filtered} / ${data.total} 首`;
       renderList();
     } catch (err) {
       els.listCount.textContent = "加载失败";
-      toast(`曲库加载失败：${err.message}`, true);
+      toast(`曲库加载失败：${err.message}（先跑一次构建脚本生成 data/？）`, true);
     }
+  }
+
+  /** 按搜索框 + 机台版本筛选（纯前端，不请求服务器） */
+  function visibleSongs() {
+    const q = els.search.value.trim().toLowerCase();
+    const ver = els.versionFilter.value;
+    return state.songs.filter((s) => {
+      if (ver && s.version !== ver) return false;
+      if (!q) return true;
+      return s.title.toLowerCase().includes(q)
+        || (s.artist || "").toLowerCase().includes(q)
+        || s.filename.toLowerCase().includes(q)
+        || s.version.toLowerCase().includes(q);
+    });
   }
 
   // 列表里上千首曲子，封面按需加载：进入可视范围附近才真的去请求
@@ -712,26 +771,29 @@
   function renderList() {
     const ul = els.songList;
     ul.innerHTML = "";
-    if (!state.songs.length) {
+    const songs = visibleSongs();
+    els.listCount.textContent = `${songs.length} / ${state.songs.length} 首`;
+    if (!songs.length) {
       const li = document.createElement("li");
       li.className = "empty-list";
-      li.textContent = "没有匹配的曲目。换个关键词，或重建索引。";
+      li.textContent = state.songs.length
+        ? "没有匹配的曲目，换个关键词试试。"
+        : "曲库里没有曲目：把 .mcz 放进 music/ 后重新构建。";
       ul.appendChild(li);
       return;
     }
     const frag = document.createDocumentFragment();
-    for (const s of state.songs) {
+    for (const s of songs) {
       const li = document.createElement("li");
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "song-item" + (state.song && state.song.id === s.id ? " active" : "");
-      const coverSrc = s.cover
-        ? `/api/cover?id=${encodeURIComponent(s.id)}&member=${encodeURIComponent(s.cover)}`
-        : "";
+      const coverSrc = s.cover ? coverUrl(s) : "";
+      const thumbSrc = s.cover ? thumbUrl(s) : "";
       btn.innerHTML =
         `<span class="cv${coverSrc ? "" : " ph"}">` +
         (coverSrc
-          ? `<img data-src="${coverSrc}" alt="" loading="lazy" decoding="async" />`
+          ? `<img data-src="${thumbSrc}" data-full="${coverSrc}" alt="" loading="lazy" decoding="async" />`
           : "") +
         `</span>` +
         `<span class="tx"><span class="st"></span>` +
@@ -740,6 +802,12 @@
       const img = btn.querySelector(".cv img");
       if (img) {
         img.addEventListener("error", () => {
+          // 缩略图失败（例如没生成）就退回原图，再失败才用占位符
+          if (img.dataset.full && !img.dataset.triedFull) {
+            img.dataset.triedFull = "1";
+            img.src = img.dataset.full;
+            return;
+          }
           img.remove();
           btn.querySelector(".cv").classList.add("ph");
         });
@@ -768,7 +836,7 @@
     // cover
     els.cover.classList.remove("on");
     if (song.cover) {
-      els.cover.src = `/api/cover?id=${encodeURIComponent(song.id)}&member=${encodeURIComponent(song.cover)}`;
+      els.cover.src = coverUrl(song);
       els.cover.onload = () => els.cover.classList.add("on");
       els.cover.onerror = () => els.cover.classList.remove("on");
     }
@@ -799,11 +867,10 @@
     try {
       let payload = state.chartCache.get(key);
       if (!payload) {
-        const res = await fetch(
-          `/api/chart?id=${encodeURIComponent(state.song.id)}&file=${encodeURIComponent(file)}`
-        );
-        if (!res.ok) throw new Error(await res.text());
-        payload = await res.json();
+        const chart = state.song.charts.find((c) => c.file === file) || { code: "EXT" };
+        const res = await fetch(chartPath(state.song, chart));
+        if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
+        payload = { chart: await res.json(), chartMeta: chart };
         state.chartCache.set(key, payload);
       }
       const chart = payload.chart;
@@ -827,10 +894,10 @@
       }
 
       // audio
-      const audioUrl = `/api/audio?id=${encodeURIComponent(state.song.id)}`;
-      if (els.audio.dataset.src !== audioUrl) {
-        els.audio.src = audioUrl;
-        els.audio.dataset.src = audioUrl;
+      const src = audioUrl(state.song);
+      if (els.audio.dataset.src !== src) {
+        els.audio.src = src;
+        els.audio.dataset.src = src;
         els.audio.currentTime = 0;
         await new Promise((resolve, reject) => {
           const onOk = () => {
@@ -1185,16 +1252,16 @@
     let searchTimer = 0;
     els.search.addEventListener("input", () => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(loadLibrary, 180);
+      searchTimer = setTimeout(renderList, 120); // 本地筛选，不用打服务器
     });
-    els.versionFilter.addEventListener("change", loadLibrary);
+    els.versionFilter.addEventListener("change", renderList);
     els.reindex.addEventListener("click", async () => {
       els.reindex.disabled = true;
-      els.listCount.textContent = "重建中…";
+      els.listCount.textContent = "重新读取…";
       try {
-        await fetch("/api/reindex");
-        await loadLibrary();
-        toast("索引已重建");
+        // 静态站点：重新拉一次 data/library.json；开发服务器：带 ?reindex=1 会重建索引
+        await loadLibrary(true);
+        toast("曲库已重新读取");
       } catch (e) {
         toast(String(e), true);
       } finally {

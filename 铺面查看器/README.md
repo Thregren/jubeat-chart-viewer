@@ -1,88 +1,49 @@
-# jubeat 铺面确认
+# 开发服务器（可选）
 
-本地铺面（chart）确认播放器：浏览 `Jubeat2Malody-GUI-mcz-releases` 下的 `.mcz`，在 4×4 面板上同步亮键回放。
+平常用**静态站点**就够了：仓库根目录 `python3 tools/build_site.py` 展开曲库，
+`python3 tools/serve.py site` 预览，部署时交给 nginx（见 [../deploy/README.md](../deploy/README.md)）。
+
+这个目录里是一台**可选的**开发服务器：直接从 `music/*.mcz` 按需解包，改谱面/换曲库不用重新构建，
+适合本机调试。它和静态站点**共用同一套 URL 布局和同一份前端**，行为一致。
 
 ## 启动
 
 ```bash
-./start.sh
-# 或
-python3 player/server.py
+./start.sh                 # 等价于 python3 player/server.py
+# 浏览器打开 http://127.0.0.1:8765/
 ```
 
-浏览器打开：http://127.0.0.1:8765/
+常用环境变量：
 
-## 功能
-
-- 曲库搜索 / 按机台版本筛选（共 1300+ 首），列表左侧带封面缩略图（滚动到可见处才加载）
-- 难度切换：BSC / BAS / ADV / EXT
-- 4×4 面板：单点闪光；长按分段显示（见下）
-- **按键 marker 逐帧动画**（见下）：接近动画 → 判定帧正好落在 note 时间上 → 判定特效
-- 节拍灯 / 节拍器：用来核对 marker 有没有踩在拍子上
-- 播放控制：播放/暂停、进度拖拽、0.5×–2.0× 变速、循环
-- 视听偏移（ms）、BPM / NOTE / HOLD 统计
-- 封面与 `bgm.ogg` 从 `.mcz` 内流式读取（支持 Range seek）
-- URL 直达：`?song=<曲库相对路径>&chart=<.mc 文件名>&t=<秒>&paused=1`
-
-## marker 动画是怎么对齐的
-
-每张 marker sheet（5 列，帧序行优先）里有一帧是「判定完成帧」，记作 **anchor**
-（TOUCH 完全显形的那一帧）。播放时：
-
-```
-lead = (anchor + 1) / fps            # 接近动画时长
-帧序 k = floor((t_chart − (t_note − lead)) × fps)   # 夹在 [0, anchor]
-```
-
-于是 **anchor 帧正好在 `t_note`（note 时间 = 拍点）这一瞬间显示**，之后继续播
-剩下的帧（或单独的判定特效）。
-
-- `PERFECT 帧`：每个 marker 的 anchor，默认由 sheet 的亮度曲线自动检测
-  （上升段第一个达到峰值 92% 的帧），可以手动改，改动按 marker 记在 localStorage。
-- `marker 速度`：整体播放速度倍率（相当于下落式音游的 HS）。
-- `判定特效`：可另选一张 sheet 在命中瞬间叠加播放。
-- 每个 marker 可以有自己的基准帧率（manifest 里的 `fps`）：例如 Flower Slow 是 46 帧的
-  「展开速度 50%」素材，按 60fps 播才和常规 marker 等速。
-- 默认 anchor 存在 `marker/jubeat_marker_frames/manifest.json`，
-  运行时接口是 `/api/markers`，素材通过 `/markers/...` 提供。
-
-切歌 / 切难度时会先停止播放并把进度归零，再加载新谱面（不会沿用上一首的进度）。
-
-## hold 的三段表现
-
-1. **到位**：接近动画照常播，anchor（PERFECT 帧）落在首拍上。
-2. **按住**：marker 动画停住（冻结帧压到 15% 透明度当底纹），改为该格上从 12 点顺时针
-   逐渐填满的扇形 + 居中倒计时（剩余秒数，≥10s 显示整数，否则一位小数）。
-   跨格 hold 的头、尾两格都会显示这条扇形。
-3. **末拍**：扇形清空、格子闪一下，然后继续播 marker 剩下的帧（若该 marker 有独立的
-   判定特效 sheet，则播它）。
-
-快捷键：`M` 切换 marker，`,` / `.` 微调 PERFECT 帧 ±1。
-
-## 快捷键
-
-| 按键 | 作用 |
-|------|------|
-| Space | 播放 / 暂停 |
-| R | 重播 |
-| ← / → | 快退 / 快进 5s |
-| 1–4 | 切换难度 |
-| M | 切换 marker |
-| , / . | PERFECT 帧 −1 / +1 |
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `JUBEAT_PORT` | `8765` | 监听端口 |
+| `JUBEAT_HOST` | `127.0.0.1` | 想直接对外（不推荐）才改 `0.0.0.0` |
+| `JUBEAT_LIBRARY` | `<repo>/music` | 曲库目录 |
+| `JUBEAT_MARKERS` | `<repo>/marker/jubeat_marker_frames` | marker 素材目录 |
+| `JUBEAT_CACHE` | `<repo>/cache` | 解包缓存（可随时删） |
+| `JUBEAT_X_ACCEL` | 空 | 设成 `/_audio/` 且 nginx 配好 alias 后，音频交给 nginx 发（省 Python 线程） |
+| `JUBEAT_THUMB_SIZE` | `96` | 列表缩略图边长 |
 
 ## 目录
 
 ```
 player/
-  server.py          # 本地 HTTP + 曲库索引
-  static/            # 前端
-start.sh             # 启动脚本
+  server.py     HTTP 路由（keep-alive / gzip / ETag / Range / X-Accel-Redirect）
+  library.py    曲库索引：并行扫描 .mcz、缓存到 cache/library_index.json
+  media.py      zip 成员读取、磁盘缓存（原子写 + 单飞锁）、Range 响应
+  thumbs.py     封面缩略图：Pillow → macOS sips → 直接用原图
+  markers.py    marker 清单（manifest + 目录 fallback，按 mtime 失效）
+  config.py     路径与环境变量
+  static/       前端（原生 JS + Canvas，无构建步骤）
 ```
 
-谱面源：仓库根目录下的 `music/`（Malody `.mc` + `bgm.ogg` + 封面，即 `.mcz`）。
-曲库路径会自动探测，优先级：环境变量 `JUBEAT_LIBRARY` → `铺面查看器/music/` → 仓库根目录 `music/` →
-旧目录名 `Jubeat2Malody-GUI-mcz-releases/` → `~/XiaomiMiMoProjects/jubeat铺面播放/` 等常见位置；
-marker 目录可用 `JUBEAT_MARKERS` 覆盖。
-改完路径直接重启即可（索引按曲库绝对路径缓存，换位置会自动重建）。
+## 说明
 
-项目总览、marker/hold 的实现说明见仓库根目录的 [README.md](../README.md)。
+- 首次启动会扫一遍曲库建索引（1419 首约 0.5 秒，热缓存），结果缓存在 `cache/library_index.json`；
+  加了新曲后在界面点「重建索引」（前端会请求 `data/library.json?reindex=1`）即可。
+- 解包出来的音频/封面/缩略图都放在 `cache/`，删掉不影响数据，下次访问会重新生成。
+- 缩略图后端优先级：装了 Pillow 用 Pillow（Linux 上 `pip install pillow`），macOS 上自动用系统 `sips`，
+  都没有就直接回原始封面（功能不受影响，只是流量大一点）。
+
+项目总览、marker/hold 的实现原理见仓库根目录的 [README.md](../README.md)。

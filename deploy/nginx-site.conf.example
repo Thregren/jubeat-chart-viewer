@@ -1,0 +1,75 @@
+# jubeat 铺面查看器 —— 纯静态站点 nginx 配置（宝塔面板可直接粘进站点配置文件）
+#
+# 站点根目录 = 构建产物 site/（默认 <仓库>/site）
+# 运行时不需要 Python / PHP / Node，nginx 直接发文件。
+
+server {
+    listen 80;
+    # 宝塔面板里勾选 HTTPS 后会自动补 listen 443 ssl + 证书，这里只写 80 也可以
+    server_name jubeat.example.com;
+
+    root /www/wwwroot/jubeat/site;
+    index index.html;
+
+    # 大文件/音频的传输依赖 sendfile（宝塔默认已开）
+    sendfile on;
+    tcp_nopush on;
+    keepalive_timeout 65;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1k;
+    gzip_types application/json application/javascript text/css text/plain image/svg+xml;
+
+    # —— 曲库索引：一次拉全量（gzip 后约 93 KB），每次校验 ——
+    location = /data/library.json {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
+    # —— 谱面 JSON：不会变，缓存一天（gzip 后 ~15 KB/张）——
+    location /data/ {
+        add_header Cache-Control "public, max-age=86400" always;
+        try_files $uri =404;
+    }
+
+    # —— 音源：nginx 自动处理 Range/断点续传 ——
+    location /media/audio/ {
+        add_header Cache-Control "public, max-age=604800" always;
+        try_files $uri =404;
+    }
+
+    # —— 封面与缩略图 ——
+    location ~ ^/media/(cover|thumb)/ {
+        add_header Cache-Control "public, max-age=604800" always;
+        try_files $uri =404;
+    }
+
+    # —— marker 素材：换素材时改文件名或等一天 ——
+    location /markers/ {
+        add_header Cache-Control "public, max-age=86400" always;
+        try_files $uri =404;
+    }
+
+    # —— 前端：改了要立刻生效 ——
+    location /static/ {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # —— 建议：别公开分享（曲目/封面版权属于 KONAMI），加一层保护 ——
+    # 方式 1：Basic Auth（宝塔面板可一键生成）
+    # auth_basic "jubeat";
+    # auth_basic_user_file /www/server/panel/vhost/nginx/.htpasswd-jubeat;
+    # 方式 2：只放行自己的 IP
+    # allow 203.0.113.10;
+    # deny all;
+
+    access_log /www/wwwlogs/jubeat.log;
+    error_log  /www/wwwlogs/jubeat.error.log;
+}

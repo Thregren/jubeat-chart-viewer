@@ -6,6 +6,12 @@ Jubeat2Malody-GUI-mcz-releases/
 铺面查看器/player/.library_index.json
 .library_index.json
 
+# 运行时缓存（解包音频 / 封面 / 缩略图 / 索引）
+cache/
+
+# 构建出来的静态站点（上传到服务器用，不入库）
+site/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -79,8 +79,10 @@ player/
 start.sh             # 启动脚本
 ```
 
-谱面源：项目根目录下的 `Jubeat2Malody-GUI-mcz-releases/`（Malody `.mc` + `bgm.ogg` + 封面），
-即 `铺面查看/Jubeat2Malody-GUI-mcz-releases/`。
-曲库路径会自动探测，优先级：环境变量 `JUBEAT_LIBRARY` → `铺面查看器/` → 项目根目录 →
-`~/XiaomiMiMoProjects/jubeat铺面播放/` 等常见位置；marker 目录可用 `JUBEAT_MARKERS` 覆盖。
+谱面源：仓库根目录下的 `music/`（Malody `.mc` + `bgm.ogg` + 封面，即 `.mcz`）。
+曲库路径会自动探测，优先级：环境变量 `JUBEAT_LIBRARY` → `铺面查看器/music/` → 仓库根目录 `music/` →
+旧目录名 `Jubeat2Malody-GUI-mcz-releases/` → `~/XiaomiMiMoProjects/jubeat铺面播放/` 等常见位置；
+marker 目录可用 `JUBEAT_MARKERS` 覆盖。
 改完路径直接重启即可（索引按曲库绝对路径缓存，换位置会自动重建）。
+
+项目总览、marker/hold 的实现说明见仓库根目录的 [README.md](../README.md)。

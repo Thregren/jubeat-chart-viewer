@@ -1,0 +1,16 @@
+{
+ "id": "07_flower_slow",
+ "name": "Flower Slow (1/2 speed)",
+ "note": "Flower 展开速度 50% 的慢速版，帧数是常规的两倍",
+ "source": "http://yuisin.com/jubeat/analyser/material/marker_slow.png",
+ "frame_size": [
+  100,
+  100
+ ],
+ "frames": 46,
+ "sheet_grid": [
+  5,
+  10
+ ],
+ "preview_fps": 30
+}

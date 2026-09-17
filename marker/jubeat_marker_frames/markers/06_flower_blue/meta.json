@@ -1,0 +1,16 @@
+{
+ "id": "06_flower_blue",
+ "name": "Flower Blue",
+ "note": "官方 Flower 的蓝色改色版",
+ "source": "http://yuisin.com/jubeat/analyser/material/marker1_flw.png",
+ "frame_size": [
+  100,
+  100
+ ],
+ "frames": 22,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

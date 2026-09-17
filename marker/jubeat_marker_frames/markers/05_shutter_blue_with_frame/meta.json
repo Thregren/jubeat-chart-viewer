@@ -1,0 +1,16 @@
+{
+ "id": "05_shutter_blue_with_frame",
+ "name": "Shutter Blue + frame",
+ "note": "Shutter 蓝色加边框版",
+ "source": "http://yuisin.com/img/marker3_sht.bmp",
+ "frame_size": [
+  100,
+  100
+ ],
+ "frames": 25,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

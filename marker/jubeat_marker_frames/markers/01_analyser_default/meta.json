@@ -1,0 +1,55 @@
+{
+ "id": "01_analyser_default",
+ "name": "jubeat analyser default (cyber type)",
+ "note": "jubeat analyser 自带默认 marker（Cyber 系），含 16 帧接近动画 + 9 帧各判定动画",
+ "source": "https://github.com/Stepland/jujube/tree/master/assets/markers/tap/jubeat%20analyser",
+ "frame_size": [
+  150,
+  150
+ ],
+ "preview_fps": 30,
+ "animations": {
+  "approach": {
+   "frames": 16,
+   "sprite_sheet": "approach_sheet.png",
+   "columns": 4,
+   "rows": 4,
+   "cell": 150
+  },
+  "perfect": {
+   "frames": 9,
+   "sprite_sheet": "perfect_sheet.png",
+   "columns": 5,
+   "rows": 2,
+   "cell": 150
+  },
+  "great": {
+   "frames": 9,
+   "sprite_sheet": "great_sheet.png",
+   "columns": 5,
+   "rows": 2,
+   "cell": 150
+  },
+  "good": {
+   "frames": 9,
+   "sprite_sheet": "good_sheet.png",
+   "columns": 5,
+   "rows": 2,
+   "cell": 150
+  },
+  "poor": {
+   "frames": 9,
+   "sprite_sheet": "poor_sheet.png",
+   "columns": 5,
+   "rows": 2,
+   "cell": 150
+  },
+  "miss": {
+   "frames": 9,
+   "sprite_sheet": "miss_sheet.png",
+   "columns": 3,
+   "rows": 3,
+   "cell": 150
+  }
+ }
+}

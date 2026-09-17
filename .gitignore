@@ -1,0 +1,18 @@
+# 曲库（本地资源，不入库）
+music/
+Jubeat2Malody-GUI-mcz-releases/
+
+# 曲库索引缓存
+铺面查看器/player/.library_index.json
+.library_index.json
+
+# Python
+__pycache__/
+*.py[cod]
+
+# 构建产物
+dist/
+
+# macOS
+.DS_Store
+._*

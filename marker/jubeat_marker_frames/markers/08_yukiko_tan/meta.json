@@ -1,0 +1,16 @@
+{
+ "id": "08_yukiko_tan",
+ "name": "Yukiko-tan",
+ "note": "jubeat plus 追加 marker（ゆきこたん）",
+ "source": "http://yuisin.com/jubeat/analyser/material/marker_yukiko.png",
+ "frame_size": [
+  100,
+  100
+ ],
+ "frames": 25,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

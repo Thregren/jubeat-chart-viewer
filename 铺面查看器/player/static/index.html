@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>jubeat 铺面确认</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <header class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <div class="brand-text">
+          <h1>铺面确认</h1>
+          <p>jubeat chart check</p>
+        </div>
+      </header>
+
+      <div class="search-block">
+        <input id="search" type="search" placeholder="搜索曲名 / 机台 / 作曲…" autocomplete="off" />
+        <select id="versionFilter" aria-label="机台版本">
+          <option value="">全部版本</option>
+        </select>
+      </div>
+
+      <div class="list-meta">
+        <span id="listCount">加载中…</span>
+        <button id="reindex" class="ghost-btn" type="button">重建索引</button>
+      </div>
+
+      <ul id="songList" class="song-list" aria-label="曲目列表"></ul>
+    </aside>
+
+    <main class="stage">
+      <section class="now-playing" id="nowPlaying">
+        <div class="cover-wrap">
+          <img id="cover" alt="" />
+          <div class="cover-fallback" id="coverFallback">JUBEAT</div>
+        </div>
+        <div class="np-info">
+          <div class="np-kicker" id="npVersion">选择一首曲目</div>
+          <h2 id="npTitle">未加载铺面</h2>
+          <div class="np-artist" id="npArtist">—</div>
+          <div class="diff-row" id="diffRow" role="tablist" aria-label="难度"></div>
+          <div class="stat-row" id="statRow">
+            <div class="stat"><label>BPM</label><value id="statBpm">—</value></div>
+            <div class="stat"><label>NOTE</label><value id="statNotes">—</value></div>
+            <div class="stat"><label>HOLD</label><value id="statHolds">—</value></div>
+            <div class="stat"><label>TIME</label><value id="statTime">—</value></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-stage">
+        <div class="panel-bezel">
+          <div class="panel-inner" id="panel" aria-label="jubeat 4x4 面板">
+            <!-- 16 pads injected -->
+          </div>
+          <canvas id="markerCanvas" class="marker-canvas" aria-hidden="true"></canvas>
+          <div class="panel-glow" id="panelGlow" aria-hidden="true"></div>
+        </div>
+        <div class="panel-caption">
+          <span id="captionLeft">HIT WINDOW · visual confirm</span>
+          <span class="beat-dots" id="beatDots" title="每拍点亮一格">
+            <i></i><i></i><i></i><i></i>
+          </span>
+          <span id="captionRight">4 × 4</span>
+        </div>
+      </section>
+
+      <section class="transport">
+        <div class="marker-bar">
+          <label class="ctl ctl-wide">marker
+            <select id="markerSelect" aria-label="按键 marker 动画">
+              <option value="">无（仅面板灯）</option>
+            </select>
+          </label>
+          <label class="ctl">PERFECT 帧
+            <input id="anchorInput" type="number" min="0" step="1" value="0" title="这一帧会正好落在 note 时间上" />
+          </label>
+          <label class="ctl">marker 速度
+            <select id="markerSpeed" aria-label="marker 播放速度">
+              <option value="0.6">0.6×</option>
+              <option value="0.8">0.8×</option>
+              <option value="1" selected>1.0×</option>
+              <option value="1.25">1.25×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2.0×</option>
+            </select>
+          </label>
+          <label class="ctl">判定特效
+            <select id="effectSelect" aria-label="命中特效">
+              <option value="">无</option>
+            </select>
+          </label>
+          <label class="ctl checkbox"><input id="beatPulse" type="checkbox" checked /> 节拍灯</label>
+          <label class="ctl checkbox"><input id="metronome" type="checkbox" /> 节拍器</label>
+          <div class="anchor-wrap">
+            <span class="anchor-label" id="anchorLabel">帧</span>
+            <div class="anchor-strip" id="anchorStrip" role="listbox" aria-label="选择 PERFECT 帧"></div>
+          </div>
+        </div>
+        <div class="transport-top">
+          <button id="btnRestart" class="icon-btn" title="重播 (R)" type="button">↺</button>
+          <button id="btnPlay" class="play-btn" title="播放/暂停 (Space)" type="button">
+            <span id="playIcon">▶</span>
+          </button>
+          <button id="btnStop" class="icon-btn" title="停止" type="button">■</button>
+          <div class="time-block">
+            <span id="timeNow">0:00.00</span>
+            <span class="time-sep">/</span>
+            <span id="timeTotal">0:00.00</span>
+          </div>
+          <div class="spacer"></div>
+          <label class="ctl">速度
+            <select id="rate">
+              <option value="0.5">0.5×</option>
+              <option value="0.75">0.75×</option>
+              <option value="1" selected>1.0×</option>
+              <option value="1.25">1.25×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2.0×</option>
+            </select>
+          </label>
+          <label class="ctl">偏移
+            <input id="offset" type="number" value="0" step="5" min="-500" max="500" />
+            <span class="unit">ms</span>
+          </label>
+          <label class="ctl checkbox">
+            <input id="autoLoop" type="checkbox" />
+            循环
+          </label>
+        </div>
+        <div class="seek-row">
+          <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="进度" />
+        </div>
+        <div class="hint-row">
+          <span>Space 播放/暂停 · R 重播 · ←/→ 快退快进 · 1–4 切难度 · 点击面板可试听 pad 音效</span>
+          <span id="syncBadge">sync —</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <audio id="audio" preload="auto"></audio>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+ "id": "03_shutter_blue",
+ "name": "Shutter Blue",
+ "note": "Shutter 蓝色改色版，用于单押/同时押区分",
+ "source": "http://yuisin.com/jubeat/analyser/material/marker1_sht.png",
+ "frame_size": [
+  100,
+  100
+ ],
+ "frames": 22,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

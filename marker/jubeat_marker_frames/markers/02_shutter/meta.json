@@ -1,0 +1,16 @@
+{
+ "id": "02_shutter",
+ "name": "Shutter",
+ "note": "官方 Shutter 的逐帧素材（yuisin 配布），每帧 100x100",
+ "source": "http://yuisin.com/img/marker0_sht.bmp",
+ "frame_size": [
+  100,
+  100
+ ],
+ "frames": 22,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

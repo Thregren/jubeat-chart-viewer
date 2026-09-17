@@ -1,0 +1,16 @@
+{
+ "id": "01_effect_shutter_perfect",
+ "name": "Shutter PERFECT effect",
+ "note": "Shutter 的 PERFECT 判定爆花，10 帧",
+ "source": "http://yuisin.com/img/effect4_sht_pf.bmp",
+ "frame_size": [
+  160,
+  160
+ ],
+ "frames": 10,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

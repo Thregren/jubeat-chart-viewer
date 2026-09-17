@@ -1,0 +1,93 @@
+[
+ {
+  "id": "01_analyser_default",
+  "name": "jubeat analyser default (cyber type)",
+  "frames": 61,
+  "note": "jubeat analyser 自带默认 marker（Cyber 系），含 16 帧接近动画 + 9 帧各判定动画",
+  "source": "https://github.com/Stepland/jujube/tree/master/assets/markers/tap/jubeat%20analyser"
+ },
+ {
+  "id": "02_shutter",
+  "name": "Shutter",
+  "frames": 22,
+  "note": "官方 Shutter 的逐帧素材（yuisin 配布），每帧 100x100",
+  "source": "http://yuisin.com/img/marker0_sht.bmp"
+ },
+ {
+  "id": "03_shutter_blue",
+  "name": "Shutter Blue",
+  "frames": 22,
+  "note": "Shutter 蓝色改色版，用于单押/同时押区分",
+  "source": "http://yuisin.com/jubeat/analyser/material/marker1_sht.png"
+ },
+ {
+  "id": "04_shutter_with_frame",
+  "name": "Shutter + frame",
+  "frames": 25,
+  "note": "Shutter 加边框版",
+  "source": "http://yuisin.com/img/marker2_sht.bmp"
+ },
+ {
+  "id": "05_shutter_blue_with_frame",
+  "name": "Shutter Blue + frame",
+  "frames": 25,
+  "note": "Shutter 蓝色加边框版",
+  "source": "http://yuisin.com/img/marker3_sht.bmp"
+ },
+ {
+  "id": "06_flower_blue",
+  "name": "Flower Blue",
+  "frames": 22,
+  "note": "官方 Flower 的蓝色改色版",
+  "source": "http://yuisin.com/jubeat/analyser/material/marker1_flw.png"
+ },
+ {
+  "id": "07_flower_slow",
+  "name": "Flower Slow (1/2 speed)",
+  "frames": 46,
+  "note": "Flower 展开速度 50% 的慢速版，帧数是常规的两倍",
+  "source": "http://yuisin.com/jubeat/analyser/material/marker_slow.png"
+ },
+ {
+  "id": "08_yukiko_tan",
+  "name": "Yukiko-tan",
+  "frames": 25,
+  "note": "jubeat plus 追加 marker（ゆきこたん）",
+  "source": "http://yuisin.com/jubeat/analyser/material/marker_yukiko.png"
+ },
+ {
+  "id": "09_copious_replica",
+  "name": "copious (replica)",
+  "frames": 20,
+  "note": "yuisin 自作的 copious 风格 marker",
+  "source": "http://yuisin.com/jubeat/analyser/material/marker_copious.png"
+ },
+ {
+  "id": "10_clan",
+  "name": "clan",
+  "frames": 23,
+  "note": "按官方 clan 默认 marker 复刻（800x800 sheet，160px/帧）",
+  "source": "https://mobiuslau.github.io/jubeat/analyser/markers/"
+ },
+ {
+  "id": "11_saucer",
+  "name": "saucer",
+  "frames": 24,
+  "note": "按官方 saucer 默认 marker 复刻（800x800 sheet，160px/帧）",
+  "source": "https://mobiuslau.github.io/jubeat/analyser/markers/"
+ },
+ {
+  "id": "12_kalesy",
+  "name": "kalesy",
+  "frames": 23,
+  "note": "kalesy 自制 marker",
+  "source": "https://mobiuslau.github.io/jubeat/analyser/markers/"
+ },
+ {
+  "id": "01_effect_shutter_perfect",
+  "name": "Shutter PERFECT effect",
+  "frames": 10,
+  "note": "Shutter 的 PERFECT 判定爆花，10 帧",
+  "source": "http://yuisin.com/img/effect4_sht_pf.bmp"
+ }
+]

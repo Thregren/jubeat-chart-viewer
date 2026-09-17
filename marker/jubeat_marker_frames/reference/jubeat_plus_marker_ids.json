@@ -1,0 +1,207 @@
+{
+ "source": "https://github.com/UrsulaProject/JubeatPlus-Arcade/blob/master/MarkerList.plist",
+ "what": "jubeat plus / jukebeat（iOS 手机版）app 包内的官方 marker 资源命名。marker 本体资源前缀 mk####，选择画面 banner 为 tm####_banner。",
+ "count": 40,
+ "markers": [
+  {
+   "marker_id": "mk0001",
+   "banner": "tm0001_banner",
+   "default_version": "1.0.0"
+  },
+  {
+   "marker_id": "mk0002",
+   "banner": "tm0002_banner",
+   "default_version": "1.0.0"
+  },
+  {
+   "marker_id": "mk0003",
+   "banner": "tm0003_banner",
+   "default_version": "1.0.0"
+  },
+  {
+   "marker_id": "mk0004",
+   "banner": "tm0004_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0005",
+   "banner": "tm0005_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0006",
+   "banner": "tm0006_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0007",
+   "banner": "tm0007_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0008",
+   "banner": "tm0008_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0009",
+   "banner": "tm0009_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0010",
+   "banner": "tm0010_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0011",
+   "banner": "tm0011_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0012",
+   "banner": "tm0012_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0013",
+   "banner": "tm0013_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0014",
+   "banner": "tm0014_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0015",
+   "banner": "tm0015_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0016",
+   "banner": "tm0016_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0017",
+   "banner": "tm0017_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0018",
+   "banner": "tm0018_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0019",
+   "banner": "tm0019_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0020",
+   "banner": "tm0020_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0021",
+   "banner": "tm0021_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0022",
+   "banner": "tm0022_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0023",
+   "banner": "tm0023_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0024",
+   "banner": "tm0024_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0025",
+   "banner": "tm0025_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0026",
+   "banner": "tm0026_banner",
+   "default_version": "1.0.0"
+  },
+  {
+   "marker_id": "mk0027",
+   "banner": "tm0027_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0028",
+   "banner": "tm0028_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0029",
+   "banner": "tm0029_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0030",
+   "banner": "tm0030_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0031",
+   "banner": "tm0031_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0032",
+   "banner": "tm0032_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0033",
+   "banner": "tm0033_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0034",
+   "banner": "tm0034_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0035",
+   "banner": "tm0035_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk1001",
+   "banner": "tm1001_banner",
+   "default_version": "0.0.0"
+  },
+  {
+   "marker_id": "mk0039",
+   "banner": "tm0039_banner",
+   "default_version": "1.0.0"
+  },
+  {
+   "marker_id": "mk0038",
+   "banner": "tm0038_banner",
+   "default_version": "1.0.0"
+  },
+  {
+   "marker_id": "mk0037",
+   "banner": "tm0037_banner",
+   "default_version": "1.0.0"
+  },
+  {
+   "marker_id": "mk0036",
+   "banner": "tm0036_banner",
+   "default_version": "1.0.0"
+  }
+ ]
+}

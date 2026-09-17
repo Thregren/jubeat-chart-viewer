@@ -1,0 +1,16 @@
+{
+ "id": "12_kalesy",
+ "name": "kalesy",
+ "note": "kalesy 自制 marker",
+ "source": "https://mobiuslau.github.io/jubeat/analyser/markers/",
+ "frame_size": [
+  160,
+  160
+ ],
+ "frames": 23,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

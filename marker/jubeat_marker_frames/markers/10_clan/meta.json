@@ -1,0 +1,16 @@
+{
+ "id": "10_clan",
+ "name": "clan",
+ "note": "按官方 clan 默认 marker 复刻（800x800 sheet，160px/帧）",
+ "source": "https://mobiuslau.github.io/jubeat/analyser/markers/",
+ "frame_size": [
+  160,
+  160
+ ],
+ "frames": 23,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

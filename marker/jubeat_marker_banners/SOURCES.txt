@@ -1,0 +1,55 @@
+jubeat official marker thumbnails (marker selection screen banners)
+Artwork (c) KONAMI Digital Entertainment. Personal reference use only.
+Mirrored from RemyWiki mirror of the in-game marker list; see jubeat@Wiki / BEMANIWiki for the Japanese official names.
+
+01_jubeat_Cyber.png  <=  https://remywiki.com/images/7/7b/Cyber_marker_banner.png
+02_jubeat_Flower.png  <=  https://remywiki.com/images/e/e9/Flower_marker_banner.png
+03_jubeat_Afro.png  <=  https://remywiki.com/images/d/d1/Afro_marker_banner.png
+04_jubeat_Shutter.png  <=  https://remywiki.com/images/3/37/Shutter_marker_banner.png
+05_jubeat_Blue_Ring.png  <=  https://remywiki.com/images/4/4d/Blue_ring_marker_banner.png
+06_jubeat_Fireworks.png  <=  https://remywiki.com/images/4/4b/Fireworks_marker_banner.png
+07_jubeat_Target.png  <=  https://remywiki.com/images/5/5b/Target_marker_banner.png
+08_jubeat_Egg.png  <=  https://remywiki.com/images/5/55/Egg_marker_banner.png
+09_jubeat_Gauge.png  <=  https://remywiki.com/images/b/b2/Gauge_marker_banner.png
+10_jubeat_Ice.png  <=  https://remywiki.com/images/8/87/Ice_marker_banner.png
+11_jubeat_Volcano.png  <=  https://remywiki.com/images/0/06/Volcano_marker_banner.png
+12_jubeat_Digital_Block.png  <=  https://remywiki.com/images/7/77/Digital_block_marker_banner.png
+13_jubeat_Sand_Art.png  <=  https://remywiki.com/images/4/41/Sand_art_marker_banner.png
+14_jubeat_Soap_Ball.png  <=  https://remywiki.com/images/5/5f/Soap_ball_marker_banner.png
+15_jubeat_Okojo.png  <=  https://remywiki.com/images/e/ec/Okojo_marker_banner.png
+16_jubeat_Mirror_Ball.png  <=  https://remywiki.com/images/d/d5/Mirror_ball_marker_banner.png
+17_jubeat_ripples_ripples.png  <=  https://remywiki.com/images/5/55/Ripples_marker_banner.png
+18_jubeat_ripples_Torus.png  <=  https://remywiki.com/images/4/4d/Torus_marker_banner.png
+19_jubeat_ripples_Blur.png  <=  https://remywiki.com/images/0/0a/Bowler_marker_banner.png
+20_jubeat_ripples_Touch.png  <=  https://remywiki.com/images/d/dc/Touch_marker_banner.png
+21_jubeat_ripples_Banana.png  <=  https://remywiki.com/images/3/37/Banana_marker_banner.png
+22_jubeat_ripples_Fusuma.png  <=  https://remywiki.com/images/5/54/Fusuma_marker_banner.png
+23_jubeat_ripples_Picture.png  <=  https://remywiki.com/images/a/a0/Picture_marker_banner.png
+24_jubeat_ripples_Yubiko.png  <=  https://remywiki.com/images/6/65/Yubiko_marker_banner.png
+25_jubeat_ripples_Stealth.png  <=  https://remywiki.com/images/4/49/Stealth_marker_banner_%28ripples%29.png
+26_jubeat_knit_knit.png  <=  https://remywiki.com/images/5/57/Knit_marker_banner.png
+27_jubeat_knit_Concierge.png  <=  https://remywiki.com/images/e/e4/Concierge_marker_banner.png
+28_jubeat_knit_jubeat-kun.png  <=  https://remywiki.com/images/6/67/Jubeat-kun_marker_banner.png
+29_jubeat_knit_Color_Composition.png  <=  https://remywiki.com/images/c/c4/Color_composition_marker_banner.png
+30_jubeat_knit_Stopwatch.png  <=  https://remywiki.com/images/a/a5/Stopwatch_marker_banner.png
+31_jubeat_knit_Nengoro_Neko.png  <=  https://remywiki.com/images/5/56/Nengoro_neko_marker_banner.png
+32_jubeat_copious_copious.png  <=  https://remywiki.com/images/1/11/Copious_marker_banner.png
+33_jubeat_copious_Circus.png  <=  https://remywiki.com/images/2/2d/Circus_marker_banner.png
+34_jubeat_copious_Kobi_Fukurou.png  <=  https://remywiki.com/images/5/51/Kobi_fukurou_marker_banner.png
+35_jubeat_copious_Natural_Block.png  <=  https://remywiki.com/images/6/60/Natural_block_marker_banner.png
+36_jubeat_saucer_saucer.png  <=  https://remywiki.com/images/5/5a/Saucer_marker_banner.png
+37_jubeat_saucer_SHOT-CYO-U_S-C-U.png  <=  https://remywiki.com/images/b/b8/SHOT-CYO-U_marker_banner.png
+38_jubeat_saucer_QMA_CPU_Sharon.png  <=  https://remywiki.com/images/6/65/QMA_CPU_Sharon_marker_banner.png
+39_jubeat_prop_prop.png  <=  https://remywiki.com/images/8/8a/Prop_marker_banner.png
+40_jubeat_Qubell_Qubell.png  <=  https://remywiki.com/images/4/45/Qubell_marker_banner.png
+41_jubeat_Qubell_Himouto_Umaru-chan.png  <=  https://remywiki.com/images/e/e2/Himouto%21_Umaru-chan_marker_banner.png
+42_jubeat_Qubell_NEW_GAME.png  <=  https://remywiki.com/images/f/f8/NEW_GAME%21_marker_banner.png
+44_jubeat_Qubell_Ochazuke.png  <=  https://remywiki.com/images/6/6a/Ochazuke_marker_banner_%28AC%29.png
+45_jubeat_clan_clan.png  <=  https://remywiki.com/images/2/2d/Clan_marker_banner.png
+46_jubeat_festo_festo.png  <=  https://remywiki.com/images/4/42/Festo_marker_banner.png
+47_jubeat_festo_HinaBitter.png  <=  https://remywiki.com/images/0/0b/Hinabitter_marker_banner.png
+48_jubeat_ave_Avenue.png  <=  https://remywiki.com/images/6/68/Avenue_marker_banner.png
+49_jubeat_plus_Yukiko-tan.png  <=  https://remywiki.com/images/0/0f/Yukiko-tan_marker_banner.png
+50_jubeat_plus_Otoca_d_or.png  <=  https://remywiki.com/images/c/ca/Otoca_d%27or_marker_banner.png
+51_jubeat_plus_Ochazuke.png  <=  https://remywiki.com/images/4/44/Ochazuke_marker_banner.png
+52_jubeat_2021_Square.png  <=  https://remywiki.com/images/2/20/Square_marker_banner.png

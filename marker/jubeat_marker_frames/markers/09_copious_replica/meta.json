@@ -1,0 +1,16 @@
+{
+ "id": "09_copious_replica",
+ "name": "copious (replica)",
+ "note": "yuisin 自作的 copious 风格 marker",
+ "source": "http://yuisin.com/jubeat/analyser/material/marker_copious.png",
+ "frame_size": [
+  100,
+  100
+ ],
+ "frames": 20,
+ "sheet_grid": [
+  5,
+  5
+ ],
+ "preview_fps": 30
+}

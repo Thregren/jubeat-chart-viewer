@@ -1,0 +1,53 @@
+﻿#,first_version,name_en,name_jp,type,speed,note,banner_source
+1,jubeat,Cyber,サイバー,Cyber,"normal, constant.",,https://remywiki.com/images/7/7b/Cyber_marker_banner.png
+2,jubeat,Flower,フラワー,Cyber,"quite fast, constant.",,https://remywiki.com/images/e/e9/Flower_marker_banner.png
+3,jubeat,Afro,アフロ,Left right,"quite slow, decreasing (for ""TOUCH"" only; the speed of the lights are constant).",,https://remywiki.com/images/d/d1/Afro_marker_banner.png
+4,jubeat,Shutter,シャッター,Shutter,normal,,https://remywiki.com/images/3/37/Shutter_marker_banner.png
+5,jubeat,Blue Ring,ブルーリング,Ring,normal,,https://remywiki.com/images/4/4d/Blue_ring_marker_banner.png
+6,jubeat,Fireworks,花火,Instant,Very slow (slowest marker in the game),,https://remywiki.com/images/4/4b/Fireworks_marker_banner.png
+7,jubeat,Target,ターゲット,Left/Right,Normal,,https://remywiki.com/images/5/5b/Target_marker_banner.png
+8,jubeat,Egg,たまご,Cyber,Normal,,https://remywiki.com/images/5/55/Egg_marker_banner.png
+9,jubeat,Gauge,ゲージ,Gauge,a little slow,,https://remywiki.com/images/b/b2/Gauge_marker_banner.png
+10,jubeat,Ice,アイス,Shutter,a little fast,,https://remywiki.com/images/8/87/Ice_marker_banner.png
+11,jubeat,Volcano,火山,Gauge,a little slow,,https://remywiki.com/images/0/06/Volcano_marker_banner.png
+12,jubeat,Digital Block,デジタルブロック,Gauge,normal,,https://remywiki.com/images/7/77/Digital_block_marker_banner.png
+13,jubeat,Sand Art,サンドアート,Shutter,Normal,,https://remywiki.com/images/4/41/Sand_art_marker_banner.png
+14,jubeat,Soap Ball,シャボン玉,Left right,normal,,https://remywiki.com/images/5/5f/Soap_ball_marker_banner.png
+15,jubeat,Okojo,オコジョ,Gauge,Normal,,https://remywiki.com/images/e/ec/Okojo_marker_banner.png
+16,jubeat,Mirror Ball,ミラーボール,Cyber,"very, very fast.",,https://remywiki.com/images/d/d5/Mirror_ball_marker_banner.png
+17,jubeat ripples,ripples,,Ripples,a little slow,,https://remywiki.com/images/5/55/Ripples_marker_banner.png
+18,jubeat ripples,Torus,,Cyber,a little fast,,https://remywiki.com/images/4/4d/Torus_marker_banner.png
+19,jubeat ripples,Blur,,Instant,Normal,,https://remywiki.com/images/0/0a/Bowler_marker_banner.png
+20,jubeat ripples,Touch,,Cyber,fast,,https://remywiki.com/images/d/dc/Touch_marker_banner.png
+21,jubeat ripples,Banana,,Gauge,a little bit fast,,https://remywiki.com/images/3/37/Banana_marker_banner.png
+22,jubeat ripples,Fusuma,,Ripples,a little slow,,https://remywiki.com/images/5/54/Fusuma_marker_banner.png
+23,jubeat ripples,Picture,,Left right,fast,,https://remywiki.com/images/a/a0/Picture_marker_banner.png
+24,jubeat ripples,Yubiko,,Yubiko,Normal,,https://remywiki.com/images/6/65/Yubiko_marker_banner.png
+25,jubeat ripples,Stealth,,,,,https://remywiki.com/images/4/49/Stealth_marker_banner_%28ripples%29.png
+26,jubeat knit,knit,,Gauge,a little slow,,https://remywiki.com/images/5/57/Knit_marker_banner.png
+27,jubeat knit,Concierge,,Cyber,Somewhat slow,,https://remywiki.com/images/e/e4/Concierge_marker_banner.png
+28,jubeat knit,jubeat-kun,,Gauge,Somewhat fast,,https://remywiki.com/images/6/67/Jubeat-kun_marker_banner.png
+29,jubeat knit,Color Composition,,Left/Right,Somewhat fast,,https://remywiki.com/images/c/c4/Color_composition_marker_banner.png
+30,jubeat knit,Stopwatch,,Ring,Normal,,https://remywiki.com/images/a/a5/Stopwatch_marker_banner.png
+31,jubeat knit,Nengoro Neko,,Cyber,somewhat slow,,https://remywiki.com/images/5/56/Nengoro_neko_marker_banner.png
+32,jubeat copious,copious,,Shutter,Normal,,https://remywiki.com/images/1/11/Copious_marker_banner.png
+33,jubeat copious,Circus,,Yubiko,Somewhat slow,,https://remywiki.com/images/2/2d/Circus_marker_banner.png
+34,jubeat copious,Kobi Fukurou,,Cyber,Normal,,https://remywiki.com/images/5/51/Kobi_fukurou_marker_banner.png
+35,jubeat copious,Natural Block,,Gauge,slow,,https://remywiki.com/images/6/60/Natural_block_marker_banner.png
+36,jubeat saucer,saucer,,Ripples,normal,,https://remywiki.com/images/5/5a/Saucer_marker_banner.png
+37,jubeat saucer,SHOT-CYO-U (S-C-U),,Yubiko/Ring,Normal,,https://remywiki.com/images/b/b8/SHOT-CYO-U_marker_banner.png
+38,jubeat saucer,QMA/CPU Sharon,,Ripples,Somewhat slow,,https://remywiki.com/images/6/65/QMA_CPU_Sharon_marker_banner.png
+39,jubeat prop,prop,,Instant/Cyber,normal,,https://remywiki.com/images/8/8a/Prop_marker_banner.png
+40,jubeat Qubell,Qubell,,Shutter,Normal,,https://remywiki.com/images/4/45/Qubell_marker_banner.png
+41,jubeat Qubell,Himouto! Umaru-chan,,Gauge,Normal,"removed June 24th, 2019",https://remywiki.com/images/e/e2/Himouto%21_Umaru-chan_marker_banner.png
+42,jubeat Qubell,NEW GAME!,,Cyber,Normal,"removed July 27th, 2020",https://remywiki.com/images/f/f8/NEW_GAME%21_marker_banner.png
+43,jubeat Qubell,AC Version Disney TsumTsum,,,Timing: Judgment animations: Early/Late: Good: Great: Perfect: Background with complementary color:,,
+44,jubeat Qubell,Ochazuke,,,Timing: Judgment animations: Early/Late: Good: Great: Perfect: Background with complementary color:,,https://remywiki.com/images/6/6a/Ochazuke_marker_banner_%28AC%29.png
+45,jubeat clan,clan,,Shutter,Normal,,https://remywiki.com/images/2/2d/Clan_marker_banner.png
+46,jubeat festo,festo,フェスト,Shutter,Normal,,https://remywiki.com/images/4/42/Festo_marker_banner.png
+47,jubeat festo,HinaBitter♪,,Gauge,Normal,,https://remywiki.com/images/0/0b/Hinabitter_marker_banner.png
+48,jubeat ave.,Avenue,,Direction:,Timing: Judgment animations: Early/Late: Good: Great: Perfect: Background with complementary color:,,https://remywiki.com/images/6/68/Avenue_marker_banner.png
+49,jubeat plus,Yukiko-tan,,,Timing: Judgment animations: Early/Late: Good: Great: Perfect: Background with complementary color:,,https://remywiki.com/images/0/0f/Yukiko-tan_marker_banner.png
+50,jubeat plus,Otoca d'or,,,Timing: Judgment animations: Early/Late: Good: Great: Perfect: Background with complementary color:,,https://remywiki.com/images/c/ca/Otoca_d%27or_marker_banner.png
+51,jubeat plus,Ochazuke,,,,,https://remywiki.com/images/4/44/Ochazuke_marker_banner.png
+52,jubeat (2021),Square,,Shutter,Normal,,https://remywiki.com/images/2/20/Square_marker_banner.png

@@ -24,6 +24,9 @@ STATIC_DIR = PLAYER_DIR / "static"
 LIBRARY_NAME = "music"
 LEGACY_LIBRARY_NAMES = ("Jubeat2Malody-GUI-mcz-releases",)
 MARKERS_NAME = "jubeat_marker_frames"
+# 可选音效素材目录（clap/nyan/don/ka 等 .ogg/.mp3/.wav/.m4a），不入库；没有就用合成音
+SE_NAME = "se"
+SE_DIR = REPO / SE_NAME
 
 HOST = os.environ.get("JUBEAT_HOST", "127.0.0.1").strip() or "127.0.0.1"
 try:

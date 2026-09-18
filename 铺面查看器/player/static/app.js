@@ -461,102 +461,48 @@
     return Math.max(0, gain * vol);
   }
 
-  function noiseBuffer(ctx, seconds = 0.3) {
-    const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    return buf;
+  // 合成音本体在 static/sfx.js（独立模块，方便单独测试）
+  const SFX = window.JubeatSfx || {};
+
+  // —— 可选：真实音效素材 ——
+  // 往仓库根目录的 se/ 里放 clap / nyan / don / ka（ogg|mp3|wav|m4a），构建时会复制到
+  // site/media/se/，前端优先播放真素材，找不到才回落到上面的合成音。se/ 不入库。
+  const SE_EXT = ["ogg", "mp3", "wav", "m4a"];
+  const seCache = new Map();          // name -> AudioBuffer | null | "loading"
+
+  function seProbe(name) {
+    if (seCache.has(name)) return seCache.get(name);
+    if (!audioCtx) return undefined;
+    seCache.set(name, "loading");
+    (async () => {
+      for (const ext of SE_EXT) {
+        try {
+          const res = await fetch(`media/se/${name}.${ext}`, { cache: "force-cache" });
+          if (!res.ok) continue;
+          seCache.set(name, await audioCtx.decodeAudioData(await res.arrayBuffer()));
+          return;
+        } catch (_) {
+          /* 换下一个后缀 */
+        }
+      }
+      seCache.set(name, null);      // 没有素材 → 用合成音
+    })();
+    return undefined;
   }
 
-  /** 啪：白噪声 + 带通，三连击的拍手感 */
-  function soundClap(ctx, t, gain) {
-    const src = ctx.createBufferSource();
-    src.buffer = noiseBuffer(ctx);
-    const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 1500;
-    bp.Q.value = 1.1;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    for (const [dt, amp] of [[0, 1], [0.012, 0.7], [0.024, 0.5]]) {
-      g.gain.setValueAtTime(gain * amp, t + dt);
-      g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.06);
+  function playSe(name, t, gain) {
+    const buf = seCache.get(name);
+    if (buf && buf !== "loading") {
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const g = audioCtx.createGain();
+      g.gain.value = Math.min(1.2, Math.max(0.05, gain * 2.2));
+      src.connect(g).connect(audioCtx.destination);
+      src.start(t);
+      return true;
     }
-    src.connect(bp).connect(g).connect(ctx.destination);
-    src.start(t);
-    src.stop(t + 0.18);
-  }
-
-  /** 猫娘 nyan：两段音高包络 + 低通，做一个「喵—」的滑音 */
-  function soundNyan(ctx, t, gain) {
-    const o1 = ctx.createOscillator();
-    const o2 = ctx.createOscillator();
-    o1.type = "sawtooth";
-    o2.type = "square";
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.setValueAtTime(2600, t);
-    lp.frequency.exponentialRampToValueAtTime(900, t + 0.22);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(gain, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
-    // 喵：低 → 高 → 略降
-    for (const o of [o1, o2]) {
-      const f = o === o1 ? 1 : 2.02;
-      o.frequency.setValueAtTime(520 * f, t);
-      o.frequency.exponentialRampToValueAtTime(1040 * f, t + 0.09);
-      o.frequency.exponentialRampToValueAtTime(760 * f, t + 0.24);
-    }
-    o2.detune.value = 12;
-    o1.connect(lp);
-    o2.connect(lp);
-    lp.connect(g).connect(ctx.destination);
-    o1.start(t);
-    o2.start(t);
-    o1.stop(t + 0.28);
-    o2.stop(t + 0.28);
-  }
-
-  /** 太鼓：正拍「咚」= 低频鼓皮 + 一点噪声；反拍「咔」= 短促高频边击 */
-  function soundTaiko(ctx, t, gain, accent) {
-    if (accent) {
-      const o = ctx.createOscillator();
-      o.type = "sine";
-      o.frequency.setValueAtTime(190, t);
-      o.frequency.exponentialRampToValueAtTime(70, t + 0.16);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(gain * 1.15, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-      o.connect(g).connect(ctx.destination);
-      o.start(t);
-      o.stop(t + 0.24);
-      const n = ctx.createBufferSource();
-      n.buffer = noiseBuffer(ctx, 0.08);
-      const nf = ctx.createBiquadFilter();
-      nf.type = "lowpass";
-      nf.frequency.value = 700;
-      const ng = ctx.createGain();
-      ng.gain.setValueAtTime(gain * 0.5, t);
-      ng.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-      n.connect(nf).connect(ng).connect(ctx.destination);
-      n.start(t);
-      n.stop(t + 0.12);
-    } else {
-      const n = ctx.createBufferSource();
-      n.buffer = noiseBuffer(ctx, 0.05);
-      const hp = ctx.createBiquadFilter();
-      hp.type = "bandpass";
-      hp.frequency.value = 3200;
-      hp.Q.value = 0.9;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(gain * 0.9, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-      n.connect(hp).connect(g).connect(ctx.destination);
-      n.start(t);
-      n.stop(t + 0.08);
-    }
+    seProbe(name);                   // 首拍先预热，下一拍就能用真素材
+    return false;
   }
 
   /** 节拍音入口：accent = 小节第一拍 */
@@ -569,9 +515,15 @@
       const gain = metroGain(accent ? 0.5 : 0.34);
       if (gain <= 0) return;
       if (kind === "click") blip(accent ? 1320 : 880, gain, "square");
-      else if (kind === "clap") soundClap(audioCtx, t, gain);
-      else if (kind === "nyan") soundNyan(audioCtx, t, gain);
-      else if (kind === "taiko") soundTaiko(audioCtx, t, gain, accent);
+      else if (kind === "clap") {
+        if (!playSe("clap", t, gain) && SFX.soundClap) SFX.soundClap(audioCtx, t, gain);
+      } else if (kind === "nyan") {
+        if (!playSe("nyan", t, gain) && SFX.soundNyan) SFX.soundNyan(audioCtx, t, gain);
+      } else if (kind === "taiko") {
+        if (!playSe(accent ? "don" : "ka", t, gain) && SFX.soundTaiko) {
+          SFX.soundTaiko(audioCtx, t, gain, accent);
+        }
+      }
     } catch (_) {
       /* ignore */
     }
@@ -1789,6 +1741,16 @@
       els.anchorInput.addEventListener("change", () => setAnchor(Number(els.anchorInput.value) || 0));
       els.metroSound.addEventListener("change", () => {
         store(STORAGE.metroSound, els.metroSound.value);
+        // 选了拍手/猫娘/太鼓就把对应的真素材预热一下（没有素材就静默回落合成音）
+        try {
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          const v = els.metroSound.value;
+          if (v === "clap") seProbe("clap");
+          else if (v === "nyan") seProbe("nyan");
+          else if (v === "taiko") { seProbe("don"); seProbe("ka"); }
+        } catch (_) {
+          /* ignore */
+        }
         if (els.metroSound.value) playMetro(true); // 试听
       });
       els.metroVolume.addEventListener("input", () => {
@@ -2026,6 +1988,12 @@
       layoutCanvas,
       drawMarkers,
       loadLibrary,
+      // 音效调试 / 自测用：可以用 OfflineAudioContext 直接渲染这几个合成音
+      sfx: SFX,
+      // 每个音效当前用的是真素材还是合成音（sample / synth / loading）
+      seState: () =>
+        Object.fromEntries([...seCache.entries()].map(
+          ([k, v]) => [k, v === "loading" ? "loading" : v ? "sample" : "synth"])),
     };
     const url = urlState();
     if (url.song) {

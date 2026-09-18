@@ -132,6 +132,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._media_file("cover", path[len("/media/cover/"):])
         if path.startswith("/media/thumb/"):
             return self._media_file("thumb", path[len("/media/thumb/"):])
+        if path.startswith("/media/se/"):
+            return self._se_file(path[len("/media/se/"):])
 
         if path == "/api/health":  # 运维用，静态站点没有这个（nginx 里可以直接排除）
             return self._api_health()
@@ -186,6 +188,17 @@ class Handler(BaseHTTPRequestHandler):
         if not song:
             raise FileNotFoundError(stem)
         return self._serve_media(kind, song)
+
+    def _se_file(self, rel: str) -> None:
+        """media/se/<名字>.<ext>：可选的打点音素材，直接从仓库根目录 se/ 读（不入库）。"""
+        name = media.unquote_path(rel)
+        if not name or "/" in name or name.startswith("."):
+            raise FileNotFoundError(name)
+        path = (config.SE_DIR / name).resolve()
+        if config.SE_DIR.resolve() not in path.parents or not path.is_file():
+            raise FileNotFoundError(name)
+        ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        return media.stream_file(self, path, ctype, {"Cache-Control": "public, max-age=86400"})
 
     def _serve_media(self, kind: str, song: dict) -> None:
         zip_path = LIB.mcz_path(song["id"])

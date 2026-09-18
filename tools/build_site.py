@@ -91,11 +91,12 @@ class Stats:
         self.bytes += n
 
 
-def expected_paths(songs: list[dict], marker_files: list[str]) -> set[str]:
+def expected_paths(songs: list[dict], marker_files: list[str], se_files: list[str]) -> set[str]:
     """这次构建应该存在的所有文件（相对 out 的 posix 路径）。"""
-    want = {"index.html", "static/app.js", "static/style.css",
+    want = {"index.html", "static/app.js", "static/sfx.js", "static/style.css",
             "data/library.json", "data/markers.json"}
     want |= {"markers/" + rel for rel in marker_files}
+    want |= {"media/se/" + name for name in se_files}
     for s in songs:
         stem = stem_of(s["id"])
         if s.get("audio"):
@@ -217,6 +218,32 @@ def build_markers(out: Path, force: bool, stats: Stats) -> list[str]:
     return copied
 
 
+def build_se(out: Path, force: bool, stats: Stats) -> list[str]:
+    """复制可选的打点音素材 se/（clap/nyan/don/ka 等），没有就跳过。
+
+    这些素材（比如从游戏 / 声库截的音效）有版权，不入库，只在本机构建时打包进去；
+    前端 media/se/ 找不到文件就回落到 WebAudio 合成音。
+    """
+    src_dir = config.SE_DIR
+    if not src_dir.is_dir():
+        return []
+    copied: list[str] = []
+    for path in sorted(src_dir.iterdir()):
+        if not path.is_file() or path.name.startswith("."):
+            continue
+        if path.suffix.lower() not in (".ogg", ".oga", ".mp3", ".wav", ".m4a", ".flac"):
+            continue
+        dest = out / "media" / "se" / path.name
+        if copy_fresh(path, dest, force):
+            stats.added(dest.stat().st_size)
+        else:
+            stats.skipped += 1
+        copied.append(path.name)
+    if copied:
+        print(f"  打点音素材 {len(copied)} 个：{'、'.join(copied)}")
+    return copied
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="把曲库展开成纯静态站点")
     ap.add_argument("--out", default=str(REPO / "site"), help="输出目录（默认 ./site）")
@@ -246,7 +273,7 @@ def main() -> int:
     # 1) 前端文件
     stats = Stats()
     static_dir = PLAYER_DIR / "static"
-    for name in ("index.html", "style.css", "app.js"):
+    for name in ("index.html", "style.css", "app.js", "sfx.js"):
         src = static_dir / name
         if not src.is_file():
             continue
@@ -289,8 +316,11 @@ def main() -> int:
     # 4) marker 素材
     marker_files = build_markers(out, args.force, stats)
 
+    # 5) 可选打点音素材
+    se_files = build_se(out, args.force, stats)
+
     if args.prune:
-        removed = prune(out, expected_paths(songs, marker_files))
+        removed = prune(out, expected_paths(songs, marker_files, se_files))
         if removed:
             print(f"  清理旧文件 {removed} 个")
 

@@ -22,6 +22,7 @@
 - [时间轴：起点、偏移、收尾](#时间轴起点偏移收尾)
 - [物量条与拖动跳转](#物量条与拖动跳转)
 - [性能与体积](#性能与体积)
+- [打点音素材（可选）](#打点音素材可选)
 - [下载、安装、部署](#下载安装部署)
 - [自测](#自测)
 - [已知限制](#已知限制)
@@ -130,9 +131,10 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 │   ├── thumbs.py              封面缩略图（Pillow，缺失时退化）
 │   ├── markers.py             marker 清单
 │   ├── config.py              路径与环境变量
-│   └── static/                前端（index.html / app.js / style.css）
+│   └── static/                前端（index.html / app.js / sfx.js / style.css）
 ├── marker/jubeat_marker_frames/  marker 素材 + manifest.json + 拆帧工具
 ├── music/                     曲库（.gitignore）
+├── se/                        可选打点音素材（.gitignore，只留说明）
 ├── cache/                     开发模式的运行时缓存（.gitignore）
 ├── site/                      静态产物（.gitignore）
 ├── dist-php/                  PHP 整包产物（.gitignore）
@@ -148,7 +150,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 | 状态与工具 | `state`（notes / padRects / combo / duration）、`beatToFloat`、`buildTimeMap`（拍号 → 秒，支持变速） |
 | `parseNotes` | 谱面 JSON → note 列表：算每条 note 的秒数、hold 区间、`maxSec`、顺序编号 `seq` |
 | 面板 | 16 个 pad 的 DOM；命中 / arm / hold 三种状态；hold 的扇形填充 + 倒计时 |
-| 打点音 | WebAudio 实时合成的四种音色（点击 / 拍手 / nyan / 太鼓），按 note 的精确时间触发 |
+| 打点音 | WebAudio 合成的四种音色（点击 / 拍手 / 喵 / 太鼓咚·咔），按 note 的精确时间触发；往 `se/` 里放同名音频就用真素材（见下） |
 | marker 动画 | 从 sprite sheet 取帧画到 canvas；PERFECT 帧对齐拍点；hold 到 PERFECT 即止 |
 | 物量条 | 每 2 秒一根柱子的 note 密度图，**本身就是进度条**（按住拖动跳转） |
 | 曲库 | 拉一次 `library.json`，搜索 / 版本筛选 / 8 种排序全在本地做 |
@@ -218,6 +220,23 @@ tap 命中后仍然会播 marker 的收尾帧 / 判定特效。
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
 | 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
 | 首屏 | 只拉 `index.html` + 前端 + 索引（约 200 KB）和当前可见行的缩略图 |
+
+## 打点音素材（可选）
+
+打点音默认是 WebAudio 实时合成的（`static/sfx.js`，不依赖任何音频素材）。想要真实音效，
+把文件丢进仓库根目录的 `se/`，构建时会复制到 `site/media/se/`，播放器优先用它们：
+
+| 文件名 | 用途 |
+|---|---|
+| `clap.ogg` | 拍手 |
+| `nyan.ogg` | 猫娘 nyan（比如 Miku 的「喵」） |
+| `don.ogg` | 太鼓「咚」（小节重音拍） |
+| `ka.ogg` | 太鼓「咔」（其他拍） |
+
+- 支持 `.ogg / .oga / .mp3 / .wav / .m4a / .flac`，同名的优先 ogg；**没放的单独回落到合成音**（只放 `don`/`ka` 也行）
+- 放好之后跑一次 `python3 tools/build_site.py --out site --prune`（桌面版 / PHP 整包要重新打一次包）
+- `se/` 被 `.gitignore` 排除，只留一份说明文件 —— 从游戏里截的音效、声库素材都有版权，
+  不适合放进公开仓库，放本地自己用没问题
 
 ## 下载、安装、部署
 

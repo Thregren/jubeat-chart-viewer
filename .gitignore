@@ -2,6 +2,10 @@
 music/
 Jubeat2Malody-GUI-mcz-releases/
 
+# 可选打点音素材（自己放 clap/nyan/don/ka 等音效，多为有版权的素材，不入库）
+se/*
+!se/README.txt
+
 # 曲库索引缓存
 铺面查看器/player/.library_index.json
 .library_index.json

@@ -21,7 +21,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PHP_FILES = ["index.php", ".htaccess", "nginx-php.conf.example", "README.txt"]
+PHP_FILES = ["index.php", ".htaccess", "nginx-php.conf.example", "start.sh", "README.txt"]
 
 
 def human(n: float) -> str:
@@ -56,6 +56,8 @@ def stage(site: Path, pkg: Path) -> tuple[int, int]:
         if not src.exists():
             sys.exit(f"缺少 deploy/php/{name}")
         shutil.copy2(src, pkg / name)
+        if name.endswith(".sh"):
+            os.chmod(pkg / name, 0o755)      # 解压出来就能直接 ./start.sh
     return files, links
 
 

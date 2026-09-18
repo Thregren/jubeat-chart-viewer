@@ -56,12 +56,13 @@
     </aside>
 
     <main class="stage">
-      <!-- 手机上曲库是抽屉，默认收起；必须留一个「在抽屉外面」的按钮才能打开它 -->
-      <div class="mobile-bar">
-        <button id="btnSidebarOpen" class="icon-btn" type="button"
-                title="打开曲库" aria-label="打开曲库">☰</button>
+      <!-- 手机上曲库是抽屉，默认收起；这里整条都是按钮：面积大、右半边还能避开
+           内置浏览器自己放在左上角的 ✕ / 返回 按钮 -->
+      <button id="btnSidebarOpen" class="mobile-bar" type="button" aria-label="打开曲库">
+        <span class="mobile-bar-icon" aria-hidden="true">☰</span>
         <span class="mobile-bar-title">铺面确认</span>
-      </div>
+        <span class="mobile-bar-hint">曲库 ▸</span>
+      </button>
       <section class="now-playing" id="nowPlaying">
         <div class="cover-wrap">
           <img id="cover" alt="" />

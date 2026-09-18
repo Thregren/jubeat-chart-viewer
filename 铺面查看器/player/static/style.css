@@ -957,7 +957,7 @@ input[type="range"] {
   backdrop-filter: blur(2px);
 }
 
-/* 手机上用来打开曲库的按钮：桌面端不显示（桌面端曲库常驻在左边） */
+/* 手机上用来打开曲库的整条按钮：桌面端不显示（桌面端曲库常驻在左边） */
 .mobile-bar { display: none; }
 
 /* —— 移动端：曲库变抽屉，面板占满，控件加大 —— */
@@ -967,13 +967,30 @@ input[type="range"] {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 14px 0;
+    width: 100%;
+    margin: 0;
+    padding: 8px 14px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--cabinet);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
   }
+  .mobile-bar:active { background: var(--cabinet-2); }
+  .mobile-bar-icon { font-size: 18px; line-height: 1; color: var(--ink); }
   .mobile-bar-title {
     font-size: 12px;
     letter-spacing: 0.1em;
     color: var(--muted);
     text-transform: uppercase;
+  }
+  .mobile-bar-hint {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--amber);
   }
   .stage { grid-template-rows: auto auto minmax(0, 1fr) auto; }
 

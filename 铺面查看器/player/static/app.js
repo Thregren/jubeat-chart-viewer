@@ -2171,7 +2171,17 @@
     document.body.appendChild(scrim);
     els.btnSidebar.addEventListener("click", () =>
       setSidebarOpen(els.sidebar.classList.contains("hidden")));
-    els.btnSidebarOpen.addEventListener("click", () => setSidebarOpen(true));
+    // 手机上触摸后浏览器还会补一次 click，用时间去重；pointerup 兜底那些
+    // 不派发 click 的内置浏览器（例如某些 App 的 webview）
+    let lastSidebarOpen = 0;
+    const openSidebar = () => {
+      const now = performance.now();
+      if (now - lastSidebarOpen < 400) return;
+      lastSidebarOpen = now;
+      setSidebarOpen(true);
+    };
+    els.btnSidebarOpen.addEventListener("click", openSidebar);
+    els.btnSidebarOpen.addEventListener("pointerup", openSidebar);
 
     // —— 物量条：按住拖动 = 拖进度 ——
     // 拖动期间只做「预览」：更新画面和时间显示，但**不动 <audio>**。

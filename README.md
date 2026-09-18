@@ -261,9 +261,9 @@ Release 里放的是**不带曲库**的包（每个约 100 MB；GitHub 单个附
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.3.0-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.3.0-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.3.0-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.4.1-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.4.1-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.4.1-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的 `site/`（会被记住）。
 macOS 上没做签名，第一次要右键「打开」，或者 `xattr -dr com.apple.quarantine jubeatViewer.app`。

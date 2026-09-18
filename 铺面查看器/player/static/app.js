@@ -436,17 +436,17 @@
   }
 
   let audioCtx = null;
-  function blip(freq = 880, gain = 0.08, type = "triangle") {
+  function blip(freq = 880, gain = 0.08, type = "triangle", when = null, dest = null) {
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const t = audioCtx.currentTime;
+      const t = when != null ? when : audioCtx.currentTime;
       const o = audioCtx.createOscillator();
       const g = audioCtx.createGain();
       o.type = type;
       o.frequency.value = freq;
       g.gain.setValueAtTime(gain, t);
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-      o.connect(g).connect(audioCtx.destination);
+      o.connect(g).connect(dest || audioCtx.destination);
       o.start(t);
       o.stop(t + 0.09);
     } catch (_) {
@@ -490,14 +490,14 @@
     return undefined;
   }
 
-  function playSe(name, t, gain) {
+  function playSe(name, t, gain, dest = null) {
     const buf = seCache.get(name);
     if (buf && buf !== "loading") {
       const src = audioCtx.createBufferSource();
       src.buffer = buf;
       const g = audioCtx.createGain();
       g.gain.value = Math.min(1.2, Math.max(0.05, gain * 2.2));
-      src.connect(g).connect(audioCtx.destination);
+      src.connect(g).connect(dest || audioCtx.destination);
       src.start(t);
       return true;
     }
@@ -505,23 +505,28 @@
     return false;
   }
 
-  /** 节拍音入口：accent = 小节第一拍 */
-  function playMetro(accent) {
+  /**
+   * 节拍音入口：accent = 小节第一拍。
+   * when = 精确的响铃时刻（WebAudio 时间轴），排程器会提前排好；
+   * dest = 输出总线（跳转时整条总线会被掐掉，用来丢弃已排程但还没响的音）。
+   */
+  function playMetro(accent, when = null, dest = null) {
     const kind = els.metroSound.value;
     if (!kind) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const t = audioCtx.currentTime + 0.005;
-      const gain = metroGain(accent ? 0.5 : 0.34);
+      const t = when != null ? when : audioCtx.currentTime + 0.005;
+      const gain = metroGain(accent ? 0.55 : 0.38);
       if (gain <= 0) return;
-      if (kind === "click") blip(accent ? 1320 : 880, gain, "square");
+      const out = dest || audioCtx.destination;
+      if (kind === "click") blip(accent ? 1320 : 880, gain, "square", t, out);
       else if (kind === "clap") {
-        if (!playSe("clap", t, gain) && SFX.soundClap) SFX.soundClap(audioCtx, t, gain);
+        if (!playSe("clap", t, gain, out) && SFX.soundClap) SFX.soundClap(audioCtx, t, gain, out);
       } else if (kind === "nyan") {
-        if (!playSe("nyan", t, gain) && SFX.soundNyan) SFX.soundNyan(audioCtx, t, gain);
+        if (!playSe("nyan", t, gain, out) && SFX.soundNyan) SFX.soundNyan(audioCtx, t, gain, out);
       } else if (kind === "taiko") {
-        if (!playSe(accent ? "don" : "ka", t, gain) && SFX.soundTaiko) {
-          SFX.soundTaiko(audioCtx, t, gain, accent);
+        if (!playSe(accent ? "don" : "ka", t, gain, out) && SFX.soundTaiko) {
+          SFX.soundTaiko(audioCtx, t, gain, accent, out);
         }
       }
     } catch (_) {
@@ -530,7 +535,7 @@
   }
 
   /** 打点音：每个 note 命中时响（和 marker 到位时间完全一致），hold 的头拍也要响 */
-  function playHitSound(note, chartT) {
+  function playHitSound(note, when = null, dest = null) {
     const kind = els.metroSound.value;
     if (!kind) return;
     // 用当前谱面时间对应的拍位决定重音（小节第一拍 -> 咚）
@@ -540,8 +545,58 @@
       const beat = parsed.secToBeat(note.t);
       accent = Math.abs(beat - Math.round(beat)) < 1e-6 && Math.round(beat) % 4 === 0;
     }
-    void chartT;
-    playMetro(accent);
+    playMetro(accent, when, dest);
+  }
+
+  // —— 打点音排程器 ——
+  // 以前打点音是在渲染循环里、等 note 的谱面时间到了才响，掉一帧就晚一帧（还会攒一堆一起响）。
+  // 现在改成提前 120ms 用 WebAudio 的时间轴排好，响铃时刻和渲染帧率无关。
+  const sfxSched = { idx: 0, timer: 0, bus: null, horizon: 0.12 };
+
+  function sfxBus() {
+    if (!audioCtx) return null;
+    if (!sfxSched.bus) {
+      sfxSched.bus = audioCtx.createGain();
+      sfxSched.bus.gain.value = 1;
+      sfxSched.bus.connect(audioCtx.destination);
+    }
+    return sfxSched.bus;
+  }
+
+  /** 跳转 / 暂停 / 变速 / 换谱：清掉已排程的音，并把指针挪到当前时间 */
+  function sfxReset() {
+    if (sfxSched.bus) {
+      try {
+        sfxSched.bus.disconnect();
+      } catch (_) {
+        /* ignore */
+      }
+      sfxSched.bus = null;
+    }
+    const now = currentMediaTime();
+    let lo = 0;
+    let hi = state.notes.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (state.notes[mid].t < now - 1e-4) lo = mid + 1;
+      else hi = mid;
+    }
+    sfxSched.idx = lo;
+  }
+
+  function sfxTick() {
+    if (!state.playing || !state.notes.length || !els.metroSound.value) return;
+    if (metroGain(1) <= 0) return;
+    const bus = sfxBus();
+    if (!bus || !audioCtx) return;
+    const now = currentMediaTime();
+    const rate = Number(els.rate.value) || 1;
+    const horizon = now + sfxSched.horizon;
+    while (sfxSched.idx < state.notes.length && state.notes[sfxSched.idx].t <= horizon) {
+      const note = state.notes[sfxSched.idx++];
+      if (note.t < now - 0.04) continue;                 // 已经过去的就别补了
+      playHitSound(note, audioCtx.currentTime + (note.t - now) / rate, bus);
+    }
   }
 
   // ================= marker 动画 =================
@@ -1528,11 +1583,27 @@
   }
 
   // —— transport ——
+  // audio 元素的 currentTime 大约每 30~40ms 才更新一次，直接拿来驱动渲染会一顿一顿的
+  // （marker 会整块往前跳）。这里在两次采样之间用 performance.now() 外推，采样一到就拉回真实值。
+  const audioClock = { base: 0, at: 0 };
+
+  function audioNow() {
+    const raw = els.audio.currentTime || 0;
+    if (raw !== audioClock.base) {
+      audioClock.base = raw;
+      audioClock.at = performance.now();
+    }
+    if (!state.playing || els.audio.paused) return raw;
+    const rate = Number(els.rate.value) || 1;
+    const dt = Math.min(0.25, Math.max(0, (performance.now() - audioClock.at) / 1000));
+    return audioClock.base + dt * rate;
+  }
+
   function currentMediaTime() {
     // chart time = audio time + user offset − 谱面自身起点偏移
     // （user offset 为正 = 视觉整体推迟，用来做视听校准）
     const off = (Number(els.offset.value) || 0) / 1000;
-    return (els.audio.currentTime || 0) + off - (state.baseOffset || 0);
+    return audioNow() + off - (state.baseOffset || 0);
   }
 
   function seekTo(sec) {
@@ -1543,6 +1614,9 @@
       const audioT = s + (state.baseOffset || 0) - off;
       els.audio.currentTime = Number.isFinite(dur) ? Math.max(0, Math.min(audioT, dur)) : audioT;
     }
+    audioClock.base = els.audio.currentTime || 0;
+    audioClock.at = performance.now();
+    sfxReset();
     rebuildVisualState(currentMediaTime());
     els.timeNow.textContent = fmtTime(s);
   }
@@ -1558,6 +1632,7 @@
       state.playing = true;
       els.playIcon.textContent = "❚❚";
       els.btnPlay.setAttribute("aria-label", "暂停");
+      sfxReset();
     } catch (err) {
       toast(`无法播放：${err.message}`, true);
     }
@@ -1568,6 +1643,7 @@
     state.playing = false;
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
+    sfxReset();
   }
 
   function togglePlay() {
@@ -1616,7 +1692,7 @@
         n.flashEnd = n.t + FLASH;
         state.hitUntil[n.index] = Math.max(state.hitUntil[n.index] || -1, n.flashEnd);
         bumpCombo();
-        playHitSound(n, chartT);
+        // 打点音交给 sfxTick 提前排程（不再跟着渲染帧走）
         pulseGlow();
       } else {
         // enter hold immediately (flash start on both ends lightly)
@@ -1627,7 +1703,7 @@
         state.hitUntil[n.index] = n.t + FLASH;
         if (n.endIndex != null) state.hitUntil[n.endIndex] = n.t + FLASH;
         bumpCombo();
-        playHitSound(n, chartT);   // hold 的头拍同样要有打点音
+        // hold 的头拍同样要有打点音，同样交给排程器
         pulseGlow();
       }
     }
@@ -1638,8 +1714,9 @@
     const mediaT = currentMediaTime();
     state.lastFrameT = now;
 
-    const audioT = els.audio.currentTime || 0;
-    els.timeNow.textContent = fmtTime(audioT);
+    // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳
+    els.timeNow.textContent = fmtTime(mediaT + (state.baseOffset || 0)
+      - (Number(els.offset.value) || 0) / 1000);
 
     if (state.notes.length) {
       advanceNotes(mediaT);
@@ -1757,7 +1834,7 @@
         if (els.metroSound.value) playMetro(true); // 试听
       });
       els.metroVolume.addEventListener("input", () => {
-        els.metroVolumeLabel.textContent = els.metroVolume.value;
+        els.metroVolumeLabel.textContent = els.metroVolume.value + "%";
         store(STORAGE.metroVolume, els.metroVolume.value);
       });
       els.metroVolume.addEventListener("change", () => store(STORAGE.metroVolume, els.metroVolume.value));
@@ -1794,7 +1871,7 @@
       if (saved.metroSound != null) els.metroSound.value = saved.metroSound;
       if (saved.metroVolume != null) {
         els.metroVolume.value = saved.metroVolume;
-        els.metroVolumeLabel.textContent = saved.metroVolume;
+        els.metroVolumeLabel.textContent = saved.metroVolume + "%";
       }
       if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
       if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
@@ -1891,6 +1968,7 @@
 
     els.rate.addEventListener("change", () => {
       els.audio.playbackRate = Number(els.rate.value) || 1;
+      sfxReset();                       // 变速后重排，别用旧速度算出来的时刻
     });
 
     els.audio.addEventListener("ended", () => {
@@ -1977,6 +2055,7 @@
     loadLibrary();
     loadMarkers();
     state.raf = requestAnimationFrame(updateFrame);
+    setInterval(sfxTick, 25);        // 打点音排程：和渲染帧率解耦
     window.__player = {
       state,
       markerCfg,

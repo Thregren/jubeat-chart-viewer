@@ -22,7 +22,8 @@
    * 拍手：四连击噪声（「啪啦」感）+ 高频脆响 + 拖尾 + 一点低频厚度。
    * 只有一次短带通噪声的话，笔记本喇叭上几乎听不见。
    */
-  function soundClap(ctx, t, gain) {
+  function soundClap(ctx, t, gain, dest) {
+    const out = dest || ctx.destination;
     const src = ctx.createBufferSource();
     src.buffer = noiseBuffer(ctx, 0.35);
     const bp = ctx.createBiquadFilter();
@@ -40,7 +41,7 @@
     }
     g.gain.setValueAtTime(gain * 0.55, t + 0.05);              // 拖尾
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
-    src.connect(bp).connect(hp).connect(g).connect(ctx.destination);
+    src.connect(bp).connect(hp).connect(g).connect(out);
     src.start(t);
     src.stop(t + 0.3);
 
@@ -51,7 +52,7 @@
     const og = ctx.createGain();
     og.gain.setValueAtTime(gain * 0.4, t);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    o.connect(og).connect(ctx.destination);
+    o.connect(og).connect(out);
     o.start(t);
     o.stop(t + 0.12);
   }
@@ -60,7 +61,8 @@
    * 猫娘 nyan：锯齿 + 方波做声源，两个共振峰（元音）+ 音高滑音 + 颤音，做出「喵—」。
    * 想要真人声（比如 Miku 的 nyan）就往仓库根目录 se/ 里放 nyan.ogg。
    */
-  function soundNyan(ctx, t, gain) {
+  function soundNyan(ctx, t, gain, dest) {
+    const out = dest || ctx.destination;
     const o1 = ctx.createOscillator();
     const o2 = ctx.createOscillator();
     o1.type = "sawtooth";
@@ -115,8 +117,8 @@
     sum.connect(f2);
     f1.connect(g);
     f2.connect(g);
-    g.connect(ctx.destination);
-    n.connect(nf).connect(ng).connect(ctx.destination);
+    g.connect(out);
+    n.connect(nf).connect(ng).connect(out);
     for (const node of [o1, o2, lfo]) {
       node.start(t);
       node.stop(t + 0.32);
@@ -126,7 +128,8 @@
   }
 
   /** 太鼓「咚」：鼓皮下滑音 + 二次谐波（小喇叭也听得到）+ 击打瞬间的「啪」 */
-  function soundDon(ctx, t, gain) {
+  function soundDon(ctx, t, gain, dest) {
+    const out = dest || ctx.destination;
     const o1 = ctx.createOscillator();
     const o2 = ctx.createOscillator();
     o1.type = "sine";
@@ -141,8 +144,8 @@
     g1.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
     g2.gain.setValueAtTime(gain * 0.55, t);
     g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
-    o1.connect(g1).connect(ctx.destination);
-    o2.connect(g2).connect(ctx.destination);
+    o1.connect(g1).connect(out);
+    o2.connect(g2).connect(out);
     o1.start(t);
     o1.stop(t + 0.36);
     o2.start(t);
@@ -157,13 +160,14 @@
     const ng = ctx.createGain();
     ng.gain.setValueAtTime(gain * 1.2, t);
     ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
-    n.connect(nf).connect(ng).connect(ctx.destination);
+    n.connect(nf).connect(ng).connect(out);
     n.start(t);
     n.stop(t + 0.08);
   }
 
   /** 太鼓「咔」：木边的高频边击 + 一个短实音 */
-  function soundKa(ctx, t, gain) {
+  function soundKa(ctx, t, gain, dest) {
+    const out = dest || ctx.destination;
     const n = ctx.createBufferSource();
     n.buffer = noiseBuffer(ctx, 0.1);
     const bp = ctx.createBiquadFilter();
@@ -176,7 +180,7 @@
     const g = ctx.createGain();
     g.gain.setValueAtTime(gain * 1.6, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-    n.connect(bp).connect(hp).connect(g).connect(ctx.destination);
+    n.connect(bp).connect(hp).connect(g).connect(out);
     n.start(t);
     n.stop(t + 0.14);
 
@@ -187,15 +191,15 @@
     const og = ctx.createGain();
     og.gain.setValueAtTime(gain * 0.7, t);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
-    o.connect(og).connect(ctx.destination);
+    o.connect(og).connect(out);
     o.start(t);
     o.stop(t + 0.08);
   }
 
   /** 太鼓总入口：accent = 正拍「咚」，其余「咔」 */
-  function soundTaiko(ctx, t, gain, accent) {
-    if (accent) soundDon(ctx, t, gain);
-    else soundKa(ctx, t, gain);
+  function soundTaiko(ctx, t, gain, accent, dest) {
+    if (accent) soundDon(ctx, t, gain, dest);
+    else soundKa(ctx, t, gain, dest);
   }
 
   window.JubeatSfx = { noiseBuffer, soundClap, soundNyan, soundDon, soundKa, soundTaiko };

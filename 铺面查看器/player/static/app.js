@@ -1586,6 +1586,73 @@
   // —— transport ——
   // 注：曾经试过把 <audio> 接进 WebAudio（想让音乐和打点音共用一条输出、共用一个时钟），
   // 但页面不可见时 WebAudio 不渲染 —— 接管之后一转后台就没声音了，所以放弃，音乐仍然直出。
+  //
+  // 后来实测确认：打开这条路的收益是「打点音和音乐不会再因为两条输出路径的延迟不同而错开」
+  // （seek 之后尤其明显）。所以重新加回来，但给了逃生开关 ?nomix=1 和后台恢复逻辑。
+  let mediaSource = null;      // <audio> 的 WebAudio 入口：接上之后音频只从这里出声
+  let mediaAnalyser = null;
+  let mixReady = false;
+  let mixChecked = false;
+  const MIX_OFF = new URLSearchParams(location.search).get("nomix") === "1";
+
+  /** 把 <audio> 接进 WebAudio（必须在用户手势里调用，否则 AudioContext 起不来） */
+  async function ensureAudioGraph() {
+    if (MIX_OFF) return false;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state !== "running") await audioCtx.resume();
+      if (audioCtx.state !== "running") return false;   // 起不来就别接管，免得没声音
+      if (!mediaSource) {
+        mediaSource = audioCtx.createMediaElementSource(els.audio);
+        mediaAnalyser = audioCtx.createAnalyser();
+        mediaAnalyser.fftSize = 512;
+        mediaSource.connect(mediaAnalyser);
+        mediaAnalyser.connect(audioCtx.destination);
+        mixReady = true;
+        setTimeout(audioSelfTest, 1000);
+      }
+      return mixReady;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** 接管之后确认真的出声了；没信号就提示一次（免得用户以为曲子坏了） */
+  function audioSelfTest() {
+    if (mixChecked || !mediaAnalyser) return;
+    const buf = new Uint8Array(mediaAnalyser.fftSize);
+    let peak = 0;
+    let tries = 0;
+    const tick = () => {
+      mediaAnalyser.getByteTimeDomainData(buf);
+      for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+      tries += 1;
+      if (peak > 1 || tries >= 12) {          // 采样 3 秒（含安静前奏）再下结论
+        mixChecked = true;
+        if (peak <= 1 && state.playing && !els.audio.paused) {
+          console.warn("[audio] WebAudio 接管后没检测到信号");
+          toast("音频好像没出来：刷新一次，或在网址后加 ?nomix=1", true);
+        }
+        return;
+      }
+      setTimeout(tick, 250);
+    };
+    tick();
+  }
+
+  /** WebAudio 的输出延迟（音乐和打点音共用同一条输出，这个值两边都一样） */
+  function outputLatency() {
+    if (!mixReady || !audioCtx) return 0;
+    const l = Number(audioCtx.outputLatency);
+    return Number.isFinite(l) && l > 0 ? Math.min(0.2, l) : 0;
+  }
+
+  /** 页面切回前台时，如果 AudioContext 被系统挂起了就恢复（否则会没声音） */
+  function keepAudioAlive() {
+    if (!mixReady || !audioCtx) return;
+    if (state.playing && audioCtx.state !== "running") audioCtx.resume().catch(() => {});
+  }
+
   // audio 元素的 currentTime 大约每 30~40ms 才更新一次，直接拿来驱动渲染会一顿一顿的
   // （marker 会整块往前跳）。这里在两次采样之间用 performance.now() 外推，采样一到就拉回真实值。
   //
@@ -1621,6 +1688,16 @@
     return audioNow() + off - (state.baseOffset || 0);
   }
 
+  /**
+   * 画面 / 判定用的时间：再往前扣掉一个输出延迟。
+   * 音乐送进 WebAudio 之后，你听到的那一刻比「图里渲染的时刻」晚 outputLatency，
+   * 所以画面要提前这么多，marker 才和耳朵里的声音对上。
+   * 打点音不受影响 —— 它和音乐在同一条输出里，本来就是按音乐位置排的。
+   */
+  function renderMediaTime() {
+    return currentMediaTime() - outputLatency();
+  }
+
   /** 不做任何外推的原始谱面时间：排打点音用它，宁可差半帧也不要提前响 */
   function rawMediaTime() {
     const off = (Number(els.offset.value) || 0) / 1000;
@@ -1639,7 +1716,7 @@
     audioClock.at = performance.now();
     audioClock.fresh = 0;          // 跳转后先老老实实用原始值，等音频真的推进了再外推
     sfxReset();
-    rebuildVisualState(currentMediaTime());
+    rebuildVisualState(renderMediaTime());
     els.timeNow.textContent = fmtTime(s);
   }
 
@@ -1649,6 +1726,7 @@
       return;
     }
     try {
+      await ensureAudioGraph();      // 音乐也接进 WebAudio：和打点音同一条输出、同一个延迟
       els.audio.playbackRate = Number(els.rate.value) || 1;
       await els.audio.play();
       state.playing = true;
@@ -1708,13 +1786,13 @@
   function settleAfterSeek() {
     const el = els.audio;
     if (!el.seeking) {
-      rebuildVisualState(currentMediaTime());
+      rebuildVisualState(renderMediaTime());
       sfxReset();
       return;
     }
     const fire = () => {
       el.removeEventListener("seeked", fire);
-      rebuildVisualState(currentMediaTime());
+      rebuildVisualState(renderMediaTime());
       sfxReset();
     };
     el.addEventListener("seeked", fire, { once: true });
@@ -1778,7 +1856,7 @@
 
   function updateFrame(now) {
     state.raf = requestAnimationFrame(updateFrame);
-    const mediaT = currentMediaTime();
+    const mediaT = renderMediaTime();   // 画面比音频位置提前一个输出延迟，和耳朵对齐
     state.lastFrameT = now;
 
     // ?debug=1：把时间轴的关键值写进 DOM，方便从外部核对（排查对拍问题用）
@@ -1790,10 +1868,19 @@
         document.body.appendChild(dbgEl);
       }
       const raw = els.audio.currentTime || 0;
+      let mixDbg = "";
+      if (mixReady && mediaAnalyser) {
+        const mb = new Uint8Array(mediaAnalyser.fftSize);
+        mediaAnalyser.getByteTimeDomainData(mb);
+        let p = 0;
+        for (const v of mb) p = Math.max(p, Math.abs(v - 128));
+        mixDbg = ` mixPeak=${p} ctx=${audioCtx ? audioCtx.state : "-"}`;
+      }
       dbgEl.textContent = `chart=${mediaT.toFixed(3)} audio=${raw.toFixed(3)}`
         + ` base=${(state.baseOffset || 0).toFixed(3)} off=${Number(els.offset.value) || 0}`
         + ` dur=${(state.duration || 0).toFixed(2)} scrub=${state.scrubbing ? state.scrubSec.toFixed(2) : "-"}`
-        + ` ${els.audio.paused ? "paused" : "playing"} rs=${els.audio.readyState}`;
+        + ` ${els.audio.paused ? "paused" : "playing"} rs=${els.audio.readyState}`
+        + ` mix=${mixReady ? 1 : 0}${mixDbg}`;
     }
 
     // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳
@@ -2062,6 +2149,10 @@
       els.audio.playbackRate = Number(els.rate.value) || 1;
       sfxReset();                       // 变速后重排，别用旧速度算出来的时刻
     });
+
+    // 切回前台 / 重新可见时，确保音频图还在跑（隐藏页面里 WebAudio 可能被挂起）
+    document.addEventListener("visibilitychange", keepAudioAlive);
+    window.addEventListener("focus", keepAudioAlive);
 
     els.audio.addEventListener("ended", () => {
       if (els.autoLoop.checked && state.song) {

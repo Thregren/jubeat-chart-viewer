@@ -68,7 +68,10 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 | `0/bgm.ogg` | 音源（ogg / mp3 / wav 都认） |
 | `0/jkt*.png` | 封面（可选） |
 
-`Jubeat2Malody-GUI` 转出来的目录直接丢进 `music/` 即可。
+**曲库来源**：本项目用的 `music/` 取自
+[Swan416ya/Jubeat2Malody-GUI](https://github.com/Swan416ya/Jubeat2Malody-GUI/tree/mcz-releases)
+（`mcz-releases` 分支）打包好的 `.mcz`，按其机台版本目录原样放进 `music/` 即可；
+自己用 Jubeat2Malody-GUI 转出来的目录也一样能丢进来。
 
 ## 架构二：运行期
 
@@ -278,6 +281,8 @@ python3 tools/php_smoke_test.py        # PHP 入口，21 项（各种 Range、41
 ## 版权
 
 - 代码：个人项目，未附 License，仅供学习参考
+- **曲库来源**：[Swan416ya/Jubeat2Malody-GUI](https://github.com/Swan416ya/Jubeat2Malody-GUI/tree/mcz-releases)
+  整理并打包的 jubeat `.mcz`（Malody 谱面格式）；本项目只做浏览与回放，曲库本身不入库
 - **曲目、封面、jubeat 的名称与 marker 图案版权归 KONAMI Digital Entertainment 及各原作者**。
   `marker/` 里的素材来自社区公开配布（yuisin、Amy、jujube 项目等），仅供个人核对谱面 / 制作谱面视频使用，
   请勿商用或再分发；`music/` 与构建产物（`site/`、`dist-php/`、`electron/dist/`）都不入库，

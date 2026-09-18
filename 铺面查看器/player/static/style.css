@@ -1008,22 +1008,35 @@ input[type="range"] {
   }
 
   .now-playing {
-    grid-template-columns: 78px minmax(0, 1fr);
+    /* 手机上这块要矮：封面缩小、行距压紧、统计压成一行 */
+    grid-template-columns: 56px minmax(0, 1fr);
     grid-template-rows: auto auto;
-    gap: 10px 12px;
-    padding: 10px 14px 8px;
+    gap: 5px 10px;
+    padding: 8px 12px 6px;
+    align-items: center;
   }
   .cover-wrap {
-    width: 78px;
-    height: 78px;
+    width: 56px;
+    height: 56px;
     grid-row: span 2;
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   }
-  .np-main h2 { font-size: 17px; }
-  .np-main { gap: 4px; }
-  .np-kicker { font-size: 9px; }
+  .np-main { gap: 1px; }
+  .np-main h2 { font-size: 16px; }
+  .np-kicker { font-size: 9px; letter-spacing: 0.1em; }
+  .np-artist { font-size: 11px; margin-bottom: 0; }
+  .diff-row { gap: 6px; margin-bottom: 0; }
+  .diff-btn { padding: 3px 10px; font-size: 11px; }
   .np-side { grid-column: 2; }
-  .np-side .stat-row { gap: 8px 12px; }
-  .stat value { font-size: 14px; }
+  /* 四个统计压成一行，别占两行 */
+  .np-side .stat-row {
+    grid-template-columns: repeat(4, auto);
+    justify-content: start;
+    gap: 0 14px;
+  }
+  .stat label { font-size: 9px; letter-spacing: 0.08em; }
+  .stat value { font-size: 14px; line-height: 1.15; }
 
   .panel-stage { padding: 2px 12px 4px; }
 
@@ -1065,10 +1078,23 @@ input[type="range"] {
 
 /* —— 超窄屏：再压一档 —— */
 @media (max-width: 560px) {
-  .now-playing { grid-template-columns: 64px minmax(0, 1fr); }
-  .cover-wrap { width: 64px; height: 64px; }
+  .panel-bezel { padding: 10px; border-radius: 16px; }   /* 小屏再省一圈，把高度留给面板 */
+  .now-playing { grid-template-columns: 52px minmax(0, 1fr); }
+  .cover-wrap { width: 52px; height: 52px; }
   .np-main h2 { font-size: 15px; }
   .panel-inner { width: min(96vw, 380px); }
   .anchor-wrap { flex-basis: 100%; }
   #densityCanvas { height: 84px; }
+}
+
+/* —— 特别矮的屏（老机型、或浏览器工具栏吃掉很多高度）：再压一档，保证面板不被裁 —— */
+@media (max-height: 620px) {
+  .mobile-bar { padding: 4px 12px 0; }
+  .mobile-bar .icon-btn { height: 34px; min-width: 34px; }
+  .np-kicker { display: none; }        /* 版本那行省掉 */
+  .np-artist { display: none; }        /* 作曲那行省掉 */
+  .diff-btn { padding: 2px 9px; font-size: 10px; }
+  .transport { padding: 6px 10px 8px; }
+  .density-wrap, #densityCanvas { height: 64px; }
+  .panel-caption { font-size: 10px; }
 }

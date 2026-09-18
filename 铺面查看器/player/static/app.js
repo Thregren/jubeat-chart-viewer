@@ -793,15 +793,20 @@
   function fitPanel() {
     const stage = els.panel.closest(".panel-stage");
     if (!stage) return;
-    const availW = Math.max(200, stage.clientWidth - 28);
-    let size;
-    if (isNarrow()) {
-      // 手机上选项是浮层，面板按视口高度给一个稳定的大小
-      size = Math.min(availW, window.innerHeight * 0.56, 430);
-    } else {
-      const availH = Math.max(200, stage.clientHeight - 26);
-      size = Math.min(availH, availW, 460);
-    }
+    // 面板是正方形，所以宽度和高度都得当约束：取 min(可用宽, 可用高) 才不会被上下裁掉。
+    // 可用高要把「边框那一圈 padding + 底下那行说明文字 + 本区块自己的 padding」都扣掉。
+    const style = getComputedStyle(stage);
+    const padV = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const padH = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    const caption = stage.querySelector(".panel-caption");
+    const capH = caption ? caption.getBoundingClientRect().height : 0;
+    const bezel = els.panel.parentElement;
+    const bezelPad = bezel
+      ? Math.max(0, bezel.getBoundingClientRect().height - els.panel.getBoundingClientRect().height)
+      : 0;
+    const availW = Math.max(120, stage.clientWidth - padH);
+    const availH = Math.max(120, stage.clientHeight - padV - capH - bezelPad - 2);
+    const size = Math.min(availW, availH, isNarrow() ? 430 : 460);
     els.panel.style.width = size + "px";
   }
 
@@ -2319,6 +2324,12 @@
 
     window.addEventListener("resize", layoutCanvas);
     window.addEventListener("resize", layoutDensity);
+    // 窗口跨过 900px 断点时重新决定曲库的去留：宽屏常驻、窄屏收成抽屉。
+    // 不然从窄屏拉宽后曲库还是 hidden，而这时 ☰ 又已经不显示了 → 打不开列表。
+    const narrowMq = window.matchMedia("(max-width: 900px)");
+    const onBreakpoint = () => setSidebarOpen(!narrowMq.matches);
+    if (narrowMq.addEventListener) narrowMq.addEventListener("change", onBreakpoint);
+    else if (narrowMq.addListener) narrowMq.addListener(onBreakpoint);
     if (window.ResizeObserver && els.panel) {
       const ro = new ResizeObserver(() => layoutCanvas());
       ro.observe(els.panel);

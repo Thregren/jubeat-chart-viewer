@@ -573,7 +573,7 @@
       }
       sfxSched.bus = null;
     }
-    const now = currentMediaTime();
+    const now = rawMediaTime();          // 用原始时间定位，跳转后不会把中间的音丢掉
     let lo = 0;
     let hi = state.notes.length;
     while (lo < hi) {
@@ -589,7 +589,7 @@
     if (metroGain(1) <= 0) return;
     const bus = sfxBus();
     if (!bus || !audioCtx) return;
-    const now = currentMediaTime();
+    const now = rawMediaTime();          // 排程用原始时间：外推值只会让音提前响
     const rate = Number(els.rate.value) || 1;
     const horizon = now + sfxSched.horizon;
     while (sfxSched.idx < state.notes.length && state.notes[sfxSched.idx].t <= horizon) {
@@ -1585,17 +1585,27 @@
   // —— transport ——
   // audio 元素的 currentTime 大约每 30~40ms 才更新一次，直接拿来驱动渲染会一顿一顿的
   // （marker 会整块往前跳）。这里在两次采样之间用 performance.now() 外推，采样一到就拉回真实值。
-  const audioClock = { base: 0, at: 0 };
+  //
+  // 但外推必须非常克制：拖动进度条 / 重新缓冲 / 卡顿时音频是不动的，这时候还继续外推，
+  // 画面和打点音就会一路跑到音乐前面（拖得越频繁越明显）。所以：
+  //   - 只有在「正在播放 + 没有 seek + 缓冲够 + 刚才还在推进」时才外推
+  //   - 最多补 55ms（约一个采样间隔），再多就是猜了，不如用原始值
+  const CLOCK_MAX_EXTRAP = 0.055;
+  const audioClock = { base: 0, at: 0, fresh: 0 };
 
   function audioNow() {
     const raw = els.audio.currentTime || 0;
+    const now = performance.now();
     if (raw !== audioClock.base) {
       audioClock.base = raw;
-      audioClock.at = performance.now();
+      audioClock.at = now;
+      audioClock.fresh = now;
     }
-    if (!state.playing || els.audio.paused) return raw;
+    if (!state.playing || els.audio.paused || els.audio.seeking) return raw;
+    if (els.audio.readyState < 3) return raw;            // 还没缓冲够，别猜
+    if (now - audioClock.fresh > 150) return raw;        // 150ms 没动过 = 卡住了
     const rate = Number(els.rate.value) || 1;
-    const dt = Math.min(0.25, Math.max(0, (performance.now() - audioClock.at) / 1000));
+    const dt = Math.min(CLOCK_MAX_EXTRAP, Math.max(0, (now - audioClock.at) / 1000));
     return audioClock.base + dt * rate;
   }
 
@@ -1604,6 +1614,12 @@
     // （user offset 为正 = 视觉整体推迟，用来做视听校准）
     const off = (Number(els.offset.value) || 0) / 1000;
     return audioNow() + off - (state.baseOffset || 0);
+  }
+
+  /** 不做任何外推的原始谱面时间：排打点音用它，宁可差半帧也不要提前响 */
+  function rawMediaTime() {
+    const off = (Number(els.offset.value) || 0) / 1000;
+    return (els.audio.currentTime || 0) + off - (state.baseOffset || 0);
   }
 
   function seekTo(sec) {
@@ -1616,6 +1632,7 @@
     }
     audioClock.base = els.audio.currentTime || 0;
     audioClock.at = performance.now();
+    audioClock.fresh = 0;          // 跳转后先老老实实用原始值，等音频真的推进了再外推
     sfxReset();
     rebuildVisualState(currentMediaTime());
     els.timeNow.textContent = fmtTime(s);

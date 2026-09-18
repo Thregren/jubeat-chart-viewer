@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, shell, session } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { serve } = require("./site-server");
@@ -150,6 +150,14 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 这个应用不需要任何系统权限（麦克风 / 摄像头 / 屏幕录制 / 定位…），一律拒绝，
+  // 免得 macOS 弹出「录屏权限」之类的授权框。
+  try {
+    session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+    session.defaultSession.setPermissionCheckHandler(() => false);
+  } catch (err) {
+    console.error("permission handler 设置失败", err);
+  }
   buildMenu();
   createWindow();
   app.on("activate", () => {

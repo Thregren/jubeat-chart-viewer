@@ -338,27 +338,6 @@ button:focus-visible,
   min-width: 0;
 }
 
-.combo-box {
-  display: flex;
-  gap: 22px;
-  align-items: baseline;
-  font-family: var(--mono);
-}
-
-.combo-box label {
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.12em;
-  margin-right: 6px;
-}
-
-.combo-box value {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.combo-box.hot value { color: var(--amber); text-shadow: 0 0 12px rgba(255,176,32,.5); }
 
 /* 难度配色 */
 .lv-bsc { --lv-color: var(--bsc); }
@@ -670,31 +649,6 @@ button:focus-visible,
   box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.5), 0 0 10px rgba(255, 176, 32, 0.35);
 }
 
-/* —— 节拍灯 —— */
-.beat-dots {
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-}
-
-.beat-dots i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--pad-idle);
-  border: 1px solid var(--pad-edge);
-  transition: background 0.06s linear, box-shadow 0.06s linear;
-}
-
-.beat-dots i.on {
-  background: var(--amber);
-  box-shadow: 0 0 8px rgba(255, 176, 32, 0.7);
-}
-
-.beat-dots i.on.accent {
-  background: var(--flash);
-  box-shadow: 0 0 10px rgba(242, 247, 255, 0.75);
-}
 
 .pad {
   position: relative;

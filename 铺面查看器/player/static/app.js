@@ -30,16 +30,11 @@
     anchorStrip: $("#anchorStrip"),
     markerSpeed: $("#markerSpeed"),
     effectSelect: $("#effectSelect"),
-    beatPulse: $("#beatPulse"),
     metroSound: $("#metroSound"),
     metroVolume: $("#metroVolume"),
     metroVolumeLabel: $("#metroVolumeLabel"),
     showCombo: $("#showCombo"),
     showNumbers: $("#showNumbers"),
-    comboBox: $("#comboBox"),
-    comboNow: $("#comboNow"),
-    comboMax: $("#comboMax"),
-    beatDots: $("#beatDots"),
     sortSelect: $("#sortSelect"),
     holdFilter: $("#holdFilter"),
     transport: $("#transport"),
@@ -108,7 +103,6 @@
     effect: "jubeat.effect",
     speed: "jubeat.markerSpeed",
     anchor: (id) => `jubeat.anchor.${id}`,
-    beatPulse: "jubeat.beatPulse",
     metroSound: "jubeat.metroSound",
     metroVolume: "jubeat.metroVolume",
     showCombo: "jubeat.showCombo",
@@ -354,16 +348,22 @@
     }
     notes.sort((a, b) => a.t - b.t);
 
-    // marker 顺序数字：同一秒内按出现先后编号（1,2,3…）
+    // marker 顺序数字：同一秒内按出现先后编号；同一时刻一起出现的（和弦）共用同一个数字
     let bucket = -1;
     let seq = 0;
+    let lastT = null;
     for (const n of notes) {
       const b = Math.floor(n.t);
       if (b !== bucket) {
         bucket = b;
         seq = 0;
+        lastT = null;
       }
-      n.seq = ++seq;
+      if (lastT === null || n.t - lastT > 1e-4) {
+        seq++;
+        lastT = n.t;
+      }
+      n.seq = seq;
     }
 
     const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
@@ -418,13 +418,6 @@
       btn.innerHTML =
         `<span class="idx">${i}</span>` +
         `<span class="hold-fx" aria-hidden="true"><span class="hold-pie"></span><span class="hold-count"></span></span>`;
-      btn.addEventListener("click", () => {
-        btn.classList.remove("click");
-        void btn.offsetWidth;
-        btn.classList.add("click");
-        // tiny blip via WebAudio
-        blip();
-      });
       frag.appendChild(btn);
       state.padEls.push(btn);
     }
@@ -571,6 +564,21 @@
     } catch (_) {
       /* ignore */
     }
+  }
+
+  /** 打点音：每个 note 命中时响（和 marker 到位时间完全一致），hold 的头拍也要响 */
+  function playHitSound(note, chartT) {
+    const kind = els.metroSound.value;
+    if (!kind) return;
+    // 用当前谱面时间对应的拍位决定重音（小节第一拍 -> 咚）
+    let accent = false;
+    const parsed = state._parsed;
+    if (parsed && parsed.secToBeat) {
+      const beat = parsed.secToBeat(note.t);
+      accent = Math.abs(beat - Math.round(beat)) < 1e-6 && Math.round(beat) % 4 === 0;
+    }
+    void chartT;
+    playMetro(accent);
   }
 
   // ================= marker 动画 =================
@@ -823,7 +831,7 @@
   /** marker 顺序数字（同一秒内的第几个 note），画在 pad 中央 */
   function drawOrderNumber(note, rect) {
     if (!rect || !els.showNumbers || !els.showNumbers.checked) return;
-    const size = Math.max(14, Math.min(38, rect.w * 0.42));
+    const size = Math.max(16, rect.w * 0.58);   // 参考视频里数字几乎占满格子
     ctx.save();
     ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
     ctx.textAlign = "center";
@@ -841,11 +849,9 @@
   function drawMarkers(chartT) {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
+    drawComboOverlay();     // 连击在最底层：marker 会压住它（和游戏一致）
     const entry = markerCfg.entry;
-    if (!entry || !state.notes.length) {
-      drawComboOverlay();
-      return;
-    }
+    if (!entry || !state.notes.length) return;
 
     // 每个 marker 可以有自己的基准帧率（比如 flower slow 是 2 倍帧数的慢速素材，
     // 要按 60fps 播才能和常规 marker 的时间轴一致）
@@ -871,11 +877,10 @@
       // 每段 = 一个 pad 上的一次 marker 播放：
       //   t        到位时间（anchor 帧落在这一刻）
       //   holdEnd  若是 hold 头拍，则 [t, holdEnd) 期间冻结在 anchor 帧
-      const segments = [{ pad: n.index, t: n.t, holdEnd: n.kind === "hold" ? n.endT : null }];
-      if (n.kind === "hold" && n.endIndex != null && n.endIndex !== n.index) {
-        // 尾拍所在格：marker 在 hold 结束时到位，到位之后同样不播收尾动画
-        segments.push({ pad: n.endIndex, t: n.endT, holdEnd: n.endT });
-      }
+      // hold 只在头拍那格播 marker：到 PERFECT 为止，之后交给倒计时（尾拍格不再有 marker）
+      const segments = [
+        { pad: n.index, t: n.t, holdEnd: n.kind === "hold" ? n.endT : null },
+      ];
 
       for (const seg of segments) {
         const rel = chartT - seg.t;
@@ -891,15 +896,9 @@
           frame = Math.min(anchor, k);
           spec = entry;
           image = sheet;
-        } else if (seg.holdEnd != null && chartT < seg.holdEnd) {
-          // 2) hold 期间：动画停在判定帧（半透明，让下面的扇形填充看得见），
-          //    末拍之后不再播 marker 收尾动画，倒计时结束就完事
-          frame = anchor;
-          spec = entry;
-          image = sheet;
-          alpha = 0.15;
         } else if (seg.holdEnd != null) {
-          continue;   // hold 尾拍后没有 marker 动画
+          // 2) hold：marker 到 PERFECT 就结束，后面全是倒计时，没有任何 marker 动画
+          continue;
         } else {
           // 3) 收尾：tap 是命中之后，hold 是末拍之后，继续播剩余帧
           const after = rel;
@@ -923,6 +922,8 @@
         if (count >= 6) continue;
         counts.set(seg.pad, count + 1);
         drawSheetFrame(image, spec, frame, state.padRects[seg.pad], alpha);
+        // 顺序数字跟着 marker 一起出现、一起消失（和参考视频一致）
+        drawOrderNumber(n, state.padRects[seg.pad]);
       }
 
       // 额外的判定特效（可选）：在头拍命中后叠加
@@ -935,52 +936,21 @@
       }
     }
 
-    drawOrderNumbers(chartT, lead, holdBack);
-    drawComboOverlay();
-  }
-
-  /** 顺序数字单独画一遍：比 marker 本身多停留一会儿，看得清 */
-  const NUMBER_LINGER = 0.55;   // tap：命中后再显示这么久
-  const HOLD_NUMBER_LINGER = 0.35;
-
-  function drawOrderNumbers(chartT, lead, holdBack) {
-    if (!els.showNumbers || !els.showNumbers.checked) return;
-    const drawn = new Map();
-    for (const n of notesInWindow(chartT - lead - holdBack, chartT + HOLD_NUMBER_LINGER)) {
-      const startAt = n.t - lead;
-      const endAt = n.kind === "hold" && n.endT != null
-        ? n.endT + HOLD_NUMBER_LINGER
-        : n.t + NUMBER_LINGER;
-      if (chartT < startAt || chartT > endAt) continue;
-      const pads = [n.index];
-      if (n.kind === "hold" && n.endIndex != null && n.endIndex !== n.index) pads.push(n.endIndex);
-      for (const pad of pads) {
-        const k = drawn.get(pad) || 0;
-        if (k >= 2) continue;      // 同一格最多叠两个数字
-        drawn.set(pad, k + 1);
-        drawOrderNumber(n, state.padRects[pad]);
-      }
-    }
   }
 
   /** 总连击：半透明大字，压在面板正中（对应「总连击」开关） */
   function drawComboOverlay() {
     if (!els.showCombo || !els.showCombo.checked) return;
     if (!state.combo) return;
-    const size = Math.min(canvasW, canvasH) * 0.36;
+    const size = Math.min(canvasW, canvasH) * 0.46;   // 只在布局变化时才会变
     if (size < 20) return;
     ctx.save();
-    ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
+    ctx.font = `700 ${size}px Menlo, "SF Mono", monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.globalAlpha = 0.42;
-    ctx.fillStyle = "#e8edf6";
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.lineWidth = Math.max(2, size * 0.035);
-    const x = canvasW / 2;
-    const y = canvasH / 2;
-    ctx.strokeText(String(state.combo), x, y);
-    ctx.fillText(String(state.combo), x, y);
+    ctx.globalAlpha = 0.38;
+    ctx.fillStyle = "#dbe3ef";
+    ctx.fillText(String(state.combo), canvasW / 2, canvasH / 2);
     ctx.restore();
   }
 
@@ -1099,16 +1069,8 @@
   }
 
   function updateComboDisplay() {
-    if (!els.comboBox) return;
-    const on = els.showCombo.checked;
-    if (els.comboBox.hidden === on) els.comboBox.hidden = !on;
-    if (!on) return;
-    if (state.comboShown !== state.combo) {
-      state.comboShown = state.combo;
-      els.comboNow.textContent = String(state.combo);
-      els.comboMax.textContent = String(state.maxCombo);
-      els.comboBox.classList.toggle("hot", state.combo >= 50);
-    }
+    // 连击只画在面板上（半透明大字），这里只记录状态变化
+    if (state.comboShown !== state.combo) state.comboShown = state.combo;
   }
 
   function resetCombo() {
@@ -1159,17 +1121,7 @@
     if (!parsed || !parsed.secToBeat) return;
     const beat = parsed.secToBeat(chartT);
     const idx = Math.floor(beat + 1e-6);
-    const dots = els.beatDots ? els.beatDots.children : [];
-    if (idx !== state.beatIndex) {
-      state.beatIndex = idx;
-      const inBar = ((idx % 4) + 4) % 4;
-      for (let i = 0; i < dots.length; i++) dots[i].classList.toggle("on", i === inBar);
-      if (dots[inBar]) dots[inBar].classList.toggle("accent", inBar === 0);
-      if (state.playing && chartT >= 0) playMetro(inBar === 0);
-    }
-    if (!els.beatPulse.checked) {
-      for (const d of dots) d.classList.remove("on", "accent");
-    }
+    if (idx !== state.beatIndex) state.beatIndex = idx;   // 只在需要时记账
   }
 
   // —— library ——
@@ -1426,9 +1378,12 @@
         });
       }
 
-      state.duration = els.audio.duration || parsed.maxSec + 1;
-      // Prefer chart end if longer (tail silence)
-      state.duration = Math.max(state.duration, parsed.maxSec + 0.5);
+      // 曲尾常有一段既没有 note、也没有声音的空白：按最后一个 note 截掉
+      const CHART_TAIL = 1.2;
+      const audioDur = Number.isFinite(els.audio.duration) ? els.audio.duration : null;
+      let dur = (parsed.maxSec || 0) + CHART_TAIL;
+      if (audioDur) dur = Math.min(dur, audioDur);
+      state.duration = Math.max(dur, 1);
 
       els.statBpm.textContent = parsed.multiBpm
         ? `${parsed.baseBpm}~`
@@ -1507,7 +1462,11 @@
   /** Rebuild note/pad visual state for a given chart time (seconds). */
   function rebuildVisualState(chartT) {
     clearPads();
+    // 连击数必须跟着谱面位置走：拖动进度条（尤其往回拖）之后，
+    // 总连击 = 到该时刻为止已经过的 note 数，而不是继续累加旧值。
+    let passed = 0;
     for (const n of state.notes) {
+      if (n.t <= chartT) passed++;
       if (n.kind === "hold" && n.endT != null) {
         if (chartT >= n.t && chartT < n.endT) {
           n.state = "holding";
@@ -1531,6 +1490,9 @@
         }
       }
     }
+    state.combo = passed;
+    state.maxCombo = passed;
+    state.comboShown = -1;
   }
 
   // —— transport ——
@@ -1622,6 +1584,7 @@
         n.flashEnd = n.t + FLASH;
         state.hitUntil[n.index] = Math.max(state.hitUntil[n.index] || -1, n.flashEnd);
         bumpCombo();
+        playHitSound(n, chartT);
         pulseGlow();
       } else {
         // enter hold immediately (flash start on both ends lightly)
@@ -1632,6 +1595,7 @@
         state.hitUntil[n.index] = n.t + FLASH;
         if (n.endIndex != null) state.hitUntil[n.endIndex] = n.t + FLASH;
         bumpCombo();
+        playHitSound(n, chartT);   // hold 的头拍同样要有打点音
         pulseGlow();
       }
     }
@@ -1708,12 +1672,14 @@
     updateComboDisplay();
     if (!state.scrubbing) drawDensity(mediaT);
 
-    if (state.playing && els.audio.ended) {
+    // 截掉尾部空白之后，音频不会自然 ended，所以在这里按谱面长度收尾
+    if (state.playing && (els.audio.ended || mediaT >= (state.duration || 0))) {
       if (els.autoLoop.checked && state.song) {
         seekTo(0);
         play();
       } else {
         pause();
+        seekTo(state.duration || 0);
       }
     }
   }
@@ -1744,10 +1710,6 @@
         store(STORAGE.speed, markerCfg.speed);
       });
       els.anchorInput.addEventListener("change", () => setAnchor(Number(els.anchorInput.value) || 0));
-      els.beatPulse.addEventListener("change", () => {
-        store(STORAGE.beatPulse, els.beatPulse.checked ? "1" : "0");
-        state.beatIndex = -1;
-      });
       els.metroSound.addEventListener("change", () => {
         store(STORAGE.metroSound, els.metroSound.value);
         if (els.metroSound.value) playMetro(true); // 试听
@@ -1768,7 +1730,6 @@
 
       // 恢复上次的设置
       const saved = {
-        beatPulse: store(STORAGE.beatPulse),
         metroSound: store(STORAGE.metroSound),
         metroVolume: store(STORAGE.metroVolume),
         showCombo: store(STORAGE.showCombo),
@@ -1777,7 +1738,6 @@
         sort: store(STORAGE.sort),
         holdFilter: store(STORAGE.holdFilter),
       };
-      if (saved.beatPulse != null) els.beatPulse.checked = saved.beatPulse === "1";
       if (saved.metroSound != null) els.metroSound.value = saved.metroSound;
       if (saved.metroVolume != null) {
         els.metroVolume.value = saved.metroVolume;

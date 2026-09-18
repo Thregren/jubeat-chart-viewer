@@ -74,10 +74,6 @@
             <div class="stat"><label>HOLD</label><value id="statHolds">—</value></div>
             <div class="stat"><label>TIME</label><value id="statTime">—</value></div>
           </div>
-          <div class="combo-box" id="comboBox" hidden>
-            <div class="combo-now"><label>COMBO</label><value id="comboNow">0</value></div>
-            <div class="combo-max"><label>MAX</label><value id="comboMax">0</value></div>
-          </div>
         </div>
       </section>
 
@@ -91,9 +87,6 @@
         </div>
         <div class="panel-caption">
           <span id="captionLeft">HIT WINDOW · visual confirm</span>
-          <span class="beat-dots" id="beatDots" title="每拍点亮一格">
-            <i></i><i></i><i></i><i></i>
-          </span>
           <span id="captionRight">4 × 4</span>
         </div>
       </section>
@@ -163,8 +156,7 @@
           <div class="opt-row">
             <label class="ctl checkbox"><input id="showCombo" type="checkbox" /> 总连击</label>
             <label class="ctl checkbox"><input id="showNumbers" type="checkbox" /> marker 顺序数字</label>
-            <label class="ctl checkbox"><input id="beatPulse" type="checkbox" checked /> 节拍灯</label>
-            <label class="ctl">节拍音
+            <label class="ctl">打点音
               <select id="metroSound" aria-label="节拍音">
                 <option value="">关</option>
                 <option value="click">点击</option>

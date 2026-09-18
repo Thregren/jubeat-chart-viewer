@@ -35,6 +35,7 @@
     metroVolumeLabel: $("#metroVolumeLabel"),
     showCombo: $("#showCombo"),
     showNumbers: $("#showNumbers"),
+    showChordGlow: $("#showChordGlow"),
     sortSelect: $("#sortSelect"),
     holdFilter: $("#holdFilter"),
     transport: $("#transport"),
@@ -107,6 +108,7 @@
     metroVolume: "jubeat.metroVolume",
     showCombo: "jubeat.showCombo",
     showNumbers: "jubeat.showNumbers",
+    showChordGlow: "jubeat.showChordGlow",
     collapsed: "jubeat.collapsed",
     sort: "jubeat.sort",
     holdFilter: "jubeat.holdFilter",
@@ -842,7 +844,8 @@
     const x = rect.x + rect.w / 2;
     const y = rect.y + rect.h / 2;
     const text = String(note.seq || 0);
-    const chord = (note.groupSize || 1) > 1;     // 同一批（一起按）的 marker 数字
+    // 同一批（一起按）的 marker 数字：可以整体关掉（同押光晕开关）
+    const chord = (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
     ctx.save();
     ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
     ctx.textAlign = "center";
@@ -1762,6 +1765,9 @@
       els.showNumbers.addEventListener("change", () => {
         store(STORAGE.showNumbers, els.showNumbers.checked ? "1" : "0");
       });
+      els.showChordGlow.addEventListener("change", () => {
+        store(STORAGE.showChordGlow, els.showChordGlow.checked ? "1" : "0");
+      });
 
       // 恢复上次的设置
       const saved = {
@@ -1769,6 +1775,7 @@
         metroVolume: store(STORAGE.metroVolume),
         showCombo: store(STORAGE.showCombo),
         showNumbers: store(STORAGE.showNumbers),
+        showChordGlow: store(STORAGE.showChordGlow),
         collapsed: store(STORAGE.collapsed),
         sort: store(STORAGE.sort),
         holdFilter: store(STORAGE.holdFilter),
@@ -1780,6 +1787,7 @@
       }
       if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
       if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
+      if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       if (saved.sort) els.sortSelect.value = saved.sort;
       if (saved.holdFilter != null) els.holdFilter.value = saved.holdFilter;
       // 窄屏默认收起选项，给面板留空间

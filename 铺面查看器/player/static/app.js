@@ -111,6 +111,7 @@
     showNumbers: "jubeat.showNumbers",
     showChordGlow: "jubeat.showChordGlow",
     chordGlowColor: "jubeat.chordGlowColor",
+    settingsVersion: "jubeat.settingsVersion",
     collapsed: "jubeat.collapsed",
     sort: "jubeat.sort",
     holdFilter: "jubeat.holdFilter",
@@ -2142,8 +2143,15 @@
         els.metroVolume.value = saved.metroVolume;
         els.metroVolumeLabel.textContent = saved.metroVolume + "%";
       }
-      if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
-      if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
+      // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
+      // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
+      const savedSettingsVersion = store(STORAGE.settingsVersion);
+      const useNewDefaults = savedSettingsVersion !== "2";
+      store(STORAGE.settingsVersion, "2");
+      if (!useNewDefaults) {
+        if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
+        if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
+      }
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       if (saved.chordGlowColor) els.chordGlowColor.value = saved.chordGlowColor;
       if (saved.sort) els.sortSelect.value = saved.sort;

@@ -46,6 +46,9 @@ button, input, select {
   display: grid;
   grid-template-columns: minmax(260px, 320px) 1fr;
   height: 100vh;
+  /* iOS Safari：100vh 是「工具栏收起后」的高度，比看得见的区域高，
+     于是整页能上下滑动、顶部的曲库栏会被顶出屏幕。dvh 才是当前可视高度。 */
+  height: 100dvh;
   min-height: 0;
 }
 
@@ -969,7 +972,8 @@ input[type="range"] {
     gap: 10px;
     width: 100%;
     margin: 0;
-    padding: 8px 14px;
+    /* 顶部要避开刘海/状态栏（viewport-fit=cover 时页面会伸到状态栏下面） */
+    padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
     border: 0;
     border-bottom: 1px solid var(--line);
     background: var(--cabinet);
@@ -998,11 +1002,12 @@ input[type="range"] {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
     height: 100vh;
+    height: 100dvh;      /* iOS：按当前可视高度，工具栏弹出/收起都不会把页面顶出屏幕 */
     min-height: 0;
     overflow: hidden;
     overflow: clip;      /* 禁止一切滚动（含 scrollIntoView 带动的），避免整页被顶掉 */
   }
-  body { overflow: hidden; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 
   .sidebar {
     position: fixed;
@@ -1057,7 +1062,8 @@ input[type="range"] {
 
   .panel-stage { padding: 2px 12px 4px; }
 
-  .transport { padding: 8px 12px 10px; }
+  /* iPhone 底部有 home indicator：把播放控制往上抬一点，别被盖住 */
+  .transport { padding: 8px 12px max(10px, env(safe-area-inset-bottom)); }
   .transport { overflow: visible; }   /* 浮层要能伸到控件上方，别被 overflow 裁掉 */
   .transport-top { gap: 8px; }
   .icon-btn, .play-btn { height: 44px; min-width: 44px; }
@@ -1106,12 +1112,12 @@ input[type="range"] {
 
 /* —— 特别矮的屏（老机型、或浏览器工具栏吃掉很多高度）：再压一档，保证面板不被裁 —— */
 @media (max-height: 620px) {
-  .mobile-bar { padding: 4px 12px 0; }
+  .mobile-bar { padding: calc(4px + env(safe-area-inset-top)) 12px 4px; }
   .mobile-bar .icon-btn { height: 34px; min-width: 34px; }
   .np-kicker { display: none; }        /* 版本那行省掉 */
   .np-artist { display: none; }        /* 作曲那行省掉 */
   .diff-btn { padding: 2px 9px; font-size: 10px; }
-  .transport { padding: 6px 10px 8px; }
+  .transport { padding: 6px 10px max(8px, env(safe-area-inset-bottom)); }
   .density-wrap, #densityCanvas { height: 64px; }
   .panel-caption { font-size: 10px; }
 }

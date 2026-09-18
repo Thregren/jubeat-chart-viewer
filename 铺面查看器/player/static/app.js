@@ -41,6 +41,7 @@
     comboMax: $("#comboMax"),
     beatDots: $("#beatDots"),
     sortSelect: $("#sortSelect"),
+    holdFilter: $("#holdFilter"),
     transport: $("#transport"),
     btnCollapse: $("#btnCollapse"),
     optionsPanel: $("#optionsPanel"),
@@ -114,6 +115,7 @@
     showNumbers: "jubeat.showNumbers",
     collapsed: "jubeat.collapsed",
     sort: "jubeat.sort",
+    holdFilter: "jubeat.holdFilter",
   };
 
   // 按稼働日开始日的版本顺序（jubeat 2008-07 → 音乐魔方 2025-12）
@@ -840,7 +842,10 @@
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
     const entry = markerCfg.entry;
-    if (!entry || !state.notes.length) return;
+    if (!entry || !state.notes.length) {
+      drawComboOverlay();
+      return;
+    }
 
     // 每个 marker 可以有自己的基准帧率（比如 flower slow 是 2 倍帧数的慢速素材，
     // 要按 60fps 播才能和常规 marker 的时间轴一致）
@@ -868,8 +873,8 @@
       //   holdEnd  若是 hold 头拍，则 [t, holdEnd) 期间冻结在 anchor 帧
       const segments = [{ pad: n.index, t: n.t, holdEnd: n.kind === "hold" ? n.endT : null }];
       if (n.kind === "hold" && n.endIndex != null && n.endIndex !== n.index) {
-        // 尾拍所在格：marker 在 hold 结束时到位
-        segments.push({ pad: n.endIndex, t: n.endT, holdEnd: null });
+        // 尾拍所在格：marker 在 hold 结束时到位，到位之后同样不播收尾动画
+        segments.push({ pad: n.endIndex, t: n.endT, holdEnd: n.endT });
       }
 
       for (const seg of segments) {
@@ -878,7 +883,6 @@
         let spec = null;
         let image = null;
         let alpha = 1;
-        let showNumber = false;
 
         if (rel < 0) {
           // 1) 接近动画：anchor 帧落在 rel == 0
@@ -887,7 +891,6 @@
           frame = Math.min(anchor, k);
           spec = entry;
           image = sheet;
-          showNumber = true;
         } else if (seg.holdEnd != null && chartT < seg.holdEnd) {
           // 2) hold 期间：动画停在判定帧（半透明，让下面的扇形填充看得见），
           //    末拍之后不再播 marker 收尾动画，倒计时结束就完事
@@ -895,7 +898,6 @@
           spec = entry;
           image = sheet;
           alpha = 0.15;
-          showNumber = true;
         } else if (seg.holdEnd != null) {
           continue;   // hold 尾拍后没有 marker 动画
         } else {
@@ -921,7 +923,6 @@
         if (count >= 6) continue;
         counts.set(seg.pad, count + 1);
         drawSheetFrame(image, spec, frame, state.padRects[seg.pad], alpha);
-        if (showNumber) drawOrderNumber(n, state.padRects[seg.pad]);
       }
 
       // 额外的判定特效（可选）：在头拍命中后叠加
@@ -933,6 +934,54 @@
         }
       }
     }
+
+    drawOrderNumbers(chartT, lead, holdBack);
+    drawComboOverlay();
+  }
+
+  /** 顺序数字单独画一遍：比 marker 本身多停留一会儿，看得清 */
+  const NUMBER_LINGER = 0.55;   // tap：命中后再显示这么久
+  const HOLD_NUMBER_LINGER = 0.35;
+
+  function drawOrderNumbers(chartT, lead, holdBack) {
+    if (!els.showNumbers || !els.showNumbers.checked) return;
+    const drawn = new Map();
+    for (const n of notesInWindow(chartT - lead - holdBack, chartT + HOLD_NUMBER_LINGER)) {
+      const startAt = n.t - lead;
+      const endAt = n.kind === "hold" && n.endT != null
+        ? n.endT + HOLD_NUMBER_LINGER
+        : n.t + NUMBER_LINGER;
+      if (chartT < startAt || chartT > endAt) continue;
+      const pads = [n.index];
+      if (n.kind === "hold" && n.endIndex != null && n.endIndex !== n.index) pads.push(n.endIndex);
+      for (const pad of pads) {
+        const k = drawn.get(pad) || 0;
+        if (k >= 2) continue;      // 同一格最多叠两个数字
+        drawn.set(pad, k + 1);
+        drawOrderNumber(n, state.padRects[pad]);
+      }
+    }
+  }
+
+  /** 总连击：半透明大字，压在面板正中（对应「总连击」开关） */
+  function drawComboOverlay() {
+    if (!els.showCombo || !els.showCombo.checked) return;
+    if (!state.combo) return;
+    const size = Math.min(canvasW, canvasH) * 0.36;
+    if (size < 20) return;
+    ctx.save();
+    ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.globalAlpha = 0.42;
+    ctx.fillStyle = "#e8edf6";
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.lineWidth = Math.max(2, size * 0.035);
+    const x = canvasW / 2;
+    const y = canvasH / 2;
+    ctx.strokeText(String(state.combo), x, y);
+    ctx.fillText(String(state.combo), x, y);
+    ctx.restore();
   }
 
   // —— 节拍：用于核对「marker 是否踩在拍上」 ——
@@ -1154,11 +1203,19 @@
   }
 
   /** 按搜索框 + 机台版本筛选（纯前端，不请求服务器） */
+  /** 是否有长押：索引里每个难度都记了 holds 数（曲名带 [2] 的通常就是长押版） */
+  function hasHold(song) {
+    return song.charts.some((c) => (c.holds || 0) > 0);
+  }
+
   function visibleSongs() {
     const q = els.search.value.trim().toLowerCase();
     const ver = els.versionFilter.value;
+    const holdMode = els.holdFilter.value;
     const list = state.songs.filter((s) => {
       if (ver && s.version !== ver) return false;
+      if (holdMode === "hold" && !hasHold(s)) return false;
+      if (holdMode === "nohold" && hasHold(s)) return false;
       if (!q) return true;
       return s.title.toLowerCase().includes(q)
         || (s.artist || "").toLowerCase().includes(q)
@@ -1238,8 +1295,8 @@
           : "") +
         `</span>` +
         `<span class="tx"><span class="st"></span>` +
-        `<span class="sm"><span class="ver"></span><span class="ar"></span>` +
-        `<span class="lvset"></span></span>` +
+        `<span class="sm"><span class="ver"></span><span class="ar"></span></span>` +
+        `<span class="lvset"></span>` +
         `</span>`;
       const img = btn.querySelector(".cv img");
       if (img) {
@@ -1718,6 +1775,7 @@
         showNumbers: store(STORAGE.showNumbers),
         collapsed: store(STORAGE.collapsed),
         sort: store(STORAGE.sort),
+        holdFilter: store(STORAGE.holdFilter),
       };
       if (saved.beatPulse != null) els.beatPulse.checked = saved.beatPulse === "1";
       if (saved.metroSound != null) els.metroSound.value = saved.metroSound;
@@ -1728,6 +1786,7 @@
       if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
       if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
       if (saved.sort) els.sortSelect.value = saved.sort;
+      if (saved.holdFilter != null) els.holdFilter.value = saved.holdFilter;
       // 窄屏默认收起选项，给面板留空间
       const narrow = window.matchMedia("(max-width: 900px)").matches;
       setCollapsed(saved.collapsed != null ? saved.collapsed === "1" : narrow);
@@ -1736,6 +1795,10 @@
 
     els.sortSelect.addEventListener("change", () => {
       store(STORAGE.sort, els.sortSelect.value);
+      renderList();
+    });
+    els.holdFilter.addEventListener("change", () => {
+      store(STORAGE.holdFilter, els.holdFilter.value);
       renderList();
     });
     els.btnCollapse.addEventListener("click", () => setCollapsed(!els.transport.classList.contains("collapsed")));

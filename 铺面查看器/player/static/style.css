@@ -221,7 +221,14 @@ button:focus-visible,
 .song-item .tx {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 2px;
+}
+
+/* 难度单独一行，避免版本/作曲/难度挤在一起把宽度搞乱 */
+.song-item .lvset {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
 }
 
 .song-item:hover {

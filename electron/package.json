@@ -1,0 +1,22 @@
+{
+  "name": "jubeat-viewer",
+  "productName": "jubeatViewer",
+  "version": "0.3.0",
+  "description": "jubeat 谱面（铺面）确认播放器 —— 本地静态站点 + Electron 外壳",
+  "author": "Thregren",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --config electron-builder.config.js --mac --win --linux",
+    "dist:mac": "electron-builder --config electron-builder.config.js --mac",
+    "dist:win": "electron-builder --config electron-builder.config.js --win",
+    "dist:linux": "electron-builder --config electron-builder.config.js --linux",
+    "dist:with-site": "BUNDLE_SITE=1 electron-builder --config electron-builder.config.js --mac"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

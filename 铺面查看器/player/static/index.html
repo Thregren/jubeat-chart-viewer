@@ -2,14 +2,16 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>jubeat 铺面确认</title>
   <link rel="stylesheet" href="static/style.css" />
 </head>
 <body>
   <div id="app">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <header class="brand">
+        <button id="btnSidebar" class="icon-btn sidebar-toggle" type="button"
+                title="收起 / 展开曲库" aria-label="收起曲库">☰</button>
         <div class="brand-mark" aria-hidden="true">
           <span></span><span></span><span></span><span></span>
         </div>
@@ -21,14 +23,26 @@
 
       <div class="search-block">
         <input id="search" type="search" placeholder="搜索曲名 / 机台 / 作曲…" autocomplete="off" />
-        <select id="versionFilter" aria-label="机台版本">
-          <option value="">全部版本</option>
-        </select>
+        <div class="filter-row">
+          <select id="versionFilter" aria-label="机台版本">
+            <option value="">全部版本</option>
+          </select>
+          <select id="sortSelect" aria-label="排序方式">
+            <option value="title">排序：曲名</option>
+            <option value="version">排序：推出版本（旧→新）</option>
+            <option value="bsc-lv">排序：BSC 难度（高→低）</option>
+            <option value="adv-lv">排序：ADV 难度（高→低）</option>
+            <option value="ext-lv">排序：EXT 难度（高→低）</option>
+            <option value="bsc-notes">排序：BSC note 数（多→少）</option>
+            <option value="adv-notes">排序：ADV note 数（多→少）</option>
+            <option value="ext-notes">排序：EXT note 数（多→少）</option>
+          </select>
+        </div>
       </div>
 
       <div class="list-meta">
         <span id="listCount">加载中…</span>
-        <button id="reindex" class="ghost-btn" type="button">重建索引</button>
+        <button id="reindex" class="ghost-btn" type="button">重新读取</button>
       </div>
 
       <ul id="songList" class="song-list" aria-label="曲目列表"></ul>
@@ -40,16 +54,22 @@
           <img id="cover" alt="" />
           <div class="cover-fallback" id="coverFallback">JUBEAT</div>
         </div>
-        <div class="np-info">
+        <div class="np-main">
           <div class="np-kicker" id="npVersion">选择一首曲目</div>
           <h2 id="npTitle">未加载铺面</h2>
           <div class="np-artist" id="npArtist">—</div>
           <div class="diff-row" id="diffRow" role="tablist" aria-label="难度"></div>
+        </div>
+        <div class="np-side">
           <div class="stat-row" id="statRow">
             <div class="stat"><label>BPM</label><value id="statBpm">—</value></div>
             <div class="stat"><label>NOTE</label><value id="statNotes">—</value></div>
             <div class="stat"><label>HOLD</label><value id="statHolds">—</value></div>
             <div class="stat"><label>TIME</label><value id="statTime">—</value></div>
+          </div>
+          <div class="combo-box" id="comboBox" hidden>
+            <div class="combo-now"><label>COMBO</label><value id="comboNow">0</value></div>
+            <div class="combo-max"><label>MAX</label><value id="comboMax">0</value></div>
           </div>
         </div>
       </section>
@@ -71,39 +91,10 @@
         </div>
       </section>
 
-      <section class="transport">
-        <div class="marker-bar">
-          <label class="ctl ctl-wide">marker
-            <select id="markerSelect" aria-label="按键 marker 动画">
-              <option value="">无（仅面板灯）</option>
-            </select>
-          </label>
-          <label class="ctl">PERFECT 帧
-            <input id="anchorInput" type="number" min="0" step="1" value="0" title="这一帧会正好落在 note 时间上" />
-          </label>
-          <label class="ctl">marker 速度
-            <select id="markerSpeed" aria-label="marker 播放速度">
-              <option value="0.6">0.6×</option>
-              <option value="0.8">0.8×</option>
-              <option value="1" selected>1.0×</option>
-              <option value="1.25">1.25×</option>
-              <option value="1.5">1.5×</option>
-              <option value="2">2.0×</option>
-            </select>
-          </label>
-          <label class="ctl">判定特效
-            <select id="effectSelect" aria-label="命中特效">
-              <option value="">无</option>
-            </select>
-          </label>
-          <label class="ctl checkbox"><input id="beatPulse" type="checkbox" checked /> 节拍灯</label>
-          <label class="ctl checkbox"><input id="metronome" type="checkbox" /> 节拍器</label>
-          <div class="anchor-wrap">
-            <span class="anchor-label" id="anchorLabel">帧</span>
-            <div class="anchor-strip" id="anchorStrip" role="listbox" aria-label="选择 PERFECT 帧"></div>
-          </div>
-        </div>
+      <section class="transport" id="transport">
         <div class="transport-top">
+          <button id="btnCollapse" class="icon-btn" type="button" title="收起 / 展开选项"
+                  aria-expanded="true" aria-controls="optionsPanel">⌃</button>
           <button id="btnRestart" class="icon-btn" title="重播 (R)" type="button">↺</button>
           <button id="btnPlay" class="play-btn" title="播放/暂停 (Space)" type="button">
             <span id="playIcon">▶</span>
@@ -134,11 +125,67 @@
             循环
           </label>
         </div>
-        <div class="seek-row">
-          <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="进度" />
+
+        <div class="options" id="optionsPanel">
+          <div class="opt-row">
+            <label class="ctl ctl-wide">marker
+              <select id="markerSelect" aria-label="按键 marker 动画">
+                <option value="">无（仅面板灯）</option>
+              </select>
+            </label>
+            <label class="ctl">PERFECT 帧
+              <input id="anchorInput" type="number" min="0" step="1" value="0"
+                     title="这一帧会正好落在 note 时间上" />
+            </label>
+            <label class="ctl">marker 速度
+              <select id="markerSpeed" aria-label="marker 播放速度">
+                <option value="0.6">0.6×</option>
+                <option value="0.8">0.8×</option>
+                <option value="1" selected>1.0×</option>
+                <option value="1.25">1.25×</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2.0×</option>
+              </select>
+            </label>
+            <label class="ctl">判定特效
+              <select id="effectSelect" aria-label="命中特效">
+                <option value="">无</option>
+              </select>
+            </label>
+          </div>
+          <div class="opt-row">
+            <label class="ctl checkbox"><input id="showCombo" type="checkbox" /> 总连击</label>
+            <label class="ctl checkbox"><input id="showNumbers" type="checkbox" /> marker 顺序数字</label>
+            <label class="ctl checkbox"><input id="beatPulse" type="checkbox" checked /> 节拍灯</label>
+            <label class="ctl">节拍音
+              <select id="metroSound" aria-label="节拍音">
+                <option value="">关</option>
+                <option value="click">点击</option>
+                <option value="clap">拍手</option>
+                <option value="nyan">猫娘 nyan</option>
+                <option value="taiko">太鼓（咚/咔）</option>
+              </select>
+            </label>
+            <label class="ctl ctl-vol">音量
+              <input id="metroVolume" type="range" min="0" max="100" value="60" />
+              <span class="unit" id="metroVolumeLabel">60</span>
+            </label>
+          </div>
+          <div class="anchor-wrap">
+            <span class="anchor-label" id="anchorLabel">帧</span>
+            <div class="anchor-strip" id="anchorStrip" role="listbox" aria-label="选择 PERFECT 帧"></div>
+          </div>
         </div>
+
+        <div class="density-wrap" id="densityWrap">
+          <canvas id="densityCanvas" aria-label="物量显示 / 进度条"></canvas>
+          <div class="density-hud">
+            <span id="densityInfo">物量 · 拖这里跳转</span>
+          </div>
+        </div>
+
         <div class="hint-row">
-          <span>Space 播放/暂停 · R 重播 · ←/→ 快退快进 · 1–4 切难度 · 点击面板可试听 pad 音效</span>
+          <span>Space 播放/暂停 · R 重播 · ←/→ 快退快进 · 1–4 切难度 · M 换 marker · ,/. 微调 PERFECT 帧</span>
           <span id="syncBadge">sync —</span>
         </div>
       </section>

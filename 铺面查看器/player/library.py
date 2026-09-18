@@ -44,8 +44,18 @@ def scan_song(mcz_path: Path) -> dict | None:
                 if not parsed:
                     continue
                 code, level_str, level = parsed
-                charts.append({"file": name, "code": code, "level": level_str,
-                               "levelNum": level, "label": f"{code} Lv{level_str}"})
+                entry = {"file": name, "code": code, "level": level_str,
+                         "levelNum": level, "label": f"{code} Lv{level_str}"}
+                # note / hold 数量：排序和物量显示都要用，顺手读一次完整谱面
+                try:
+                    data = json.loads(zf.read(name).decode("utf-8"))
+                    notes = [n for n in (data.get("note") or []) if n.get("index") is not None]
+                    entry["notes"] = len(notes)
+                    entry["holds"] = sum(1 for n in notes if n.get("endbeat") is not None)
+                except Exception:
+                    entry["notes"] = 0
+                    entry["holds"] = 0
+                charts.append(entry)
             if not charts:
                 return None
             charts.sort(key=lambda c: (DIFF_ORDER.get(c["code"], 9), c["levelNum"], c["code"]))

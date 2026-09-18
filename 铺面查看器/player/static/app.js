@@ -22,6 +22,8 @@
     statTime: $("#statTime"),
     panel: $("#panel"),
     panelGlow: $("#panelGlow"),
+    sidebar: $("#sidebar"),
+    btnSidebar: $("#btnSidebar"),
     markerCanvas: $("#markerCanvas"),
     markerSelect: $("#markerSelect"),
     anchorInput: $("#anchorInput"),
@@ -29,8 +31,22 @@
     markerSpeed: $("#markerSpeed"),
     effectSelect: $("#effectSelect"),
     beatPulse: $("#beatPulse"),
-    metronome: $("#metronome"),
+    metroSound: $("#metroSound"),
+    metroVolume: $("#metroVolume"),
+    metroVolumeLabel: $("#metroVolumeLabel"),
+    showCombo: $("#showCombo"),
+    showNumbers: $("#showNumbers"),
+    comboBox: $("#comboBox"),
+    comboNow: $("#comboNow"),
+    comboMax: $("#comboMax"),
     beatDots: $("#beatDots"),
+    sortSelect: $("#sortSelect"),
+    transport: $("#transport"),
+    btnCollapse: $("#btnCollapse"),
+    optionsPanel: $("#optionsPanel"),
+    densityCanvas: $("#densityCanvas"),
+    densityWrap: $("#densityWrap"),
+    densityInfo: $("#densityInfo"),
     captionLeft: $("#captionLeft"),
     btnPlay: $("#btnPlay"),
     playIcon: $("#playIcon"),
@@ -41,7 +57,6 @@
     rate: $("#rate"),
     offset: $("#offset"),
     autoLoop: $("#autoLoop"),
-    seek: $("#seek"),
     syncBadge: $("#syncBadge"),
     audio: $("#audio"),
     toast: $("#toast"),
@@ -56,15 +71,19 @@
     bpmEvents: [], // {beat, bpm}
     duration: 0,
     playing: false,
-    seeking: false,
     raf: 0,
     padEls: [],
     hitUntil: new Array(16).fill(-1),
     holdUntil: new Array(16).fill(-1),
     holdFrom: new Array(16).fill(-1),
     armed: new Array(16).fill(false),
+    combo: 0,
+    maxCombo: 0,
+    comboShown: 0,
     lastFrameT: 0,
     chartCache: new Map(),
+    density: null, // {bucket, counts, max}
+    scrubbing: false,
     // —— marker / timing ——
     baseOffset: 0, // 谱面 beat 0 对应的音频时间（秒）
     padRects: [],
@@ -89,8 +108,61 @@
     speed: "jubeat.markerSpeed",
     anchor: (id) => `jubeat.anchor.${id}`,
     beatPulse: "jubeat.beatPulse",
-    metronome: "jubeat.metronome",
+    metroSound: "jubeat.metroSound",
+    metroVolume: "jubeat.metroVolume",
+    showCombo: "jubeat.showCombo",
+    showNumbers: "jubeat.showNumbers",
+    collapsed: "jubeat.collapsed",
+    sort: "jubeat.sort",
   };
+
+  // 按稼働日开始日的版本顺序（jubeat 2008-07 → 音乐魔方 2025-12）
+  const VERSION_ORDER = [
+    "jubeat", "jubeat-ripples", "jubeat-ripples-append", "jubeat-knit",
+    "jubeat-plus", "jubeat-copious", "jubeat-copious-append", "jubeat-saucer",
+    "jubeat-saucer-fulfill", "jubeat-prop", "jubeat-qubell", "jubeat-clan",
+    "jubeat-festo", "jubeat-ave", "jubeat-beyond-ave", "音乐魔方",
+  ];
+  const VERSION_LABEL = {
+    "jubeat": "jubeat（2008-07）",
+    "jubeat-ripples": "jubeat ripples（2009-08）",
+    "jubeat-ripples-append": "jubeat ripples APPEND（2010-03）",
+    "jubeat-knit": "jubeat knit（2010-07）",
+    "jubeat-plus": "jubeat plus（手机版 2010-11）",
+    "jubeat-copious": "jubeat copious（2011-09）",
+    "jubeat-copious-append": "jubeat copious APPEND（2012-03）",
+    "jubeat-saucer": "jubeat saucer（2012-09）",
+    "jubeat-saucer-fulfill": "jubeat saucer fulfill（2014-03）",
+    "jubeat-prop": "jubeat prop（2015-02）",
+    "jubeat-qubell": "jubeat Qubell（2016-03）",
+    "jubeat-clan": "jubeat clan（2017-07）",
+    "jubeat-festo": "jubeat festo（2018-09）",
+    "jubeat-ave": "jubeat Ave.（2022-08）",
+    "jubeat-beyond-ave": "jubeat beyond the Ave.（2023-09）",
+    "音乐魔方": "音乐魔方（中国版 2025-12）",
+  };
+  const DIFF_CLASS = { BSC: "lv-bsc", BAS: "lv-bsc", ADV: "lv-adv", EXT: "lv-ext" };
+  const DIFF_ORDER = { BSC: 0, BAS: 0, ADV: 1, EXT: 2 };
+
+  function versionRank(v) {
+    const i = VERSION_ORDER.indexOf(v);
+    return i < 0 ? VERSION_ORDER.length : i;
+  }
+
+  function versionLabel(v) {
+    return VERSION_LABEL[v] || v;
+  }
+
+  function diffClass(code) {
+    return DIFF_CLASS[String(code || "").toUpperCase()] || "";
+  }
+
+  /** 取某个难度的谱面（BAS 归到 BSC） */
+  function chartOf(song, code) {
+    const want = code === "BSC" ? ["BSC", "BAS"] : [code];
+    for (const c of song.charts) if (want.includes(c.code)) return c;
+    return null;
+  }
 
   // —— 数据布局 ——
   // 静态站点和开发服务器（player/server.py）用同一套路径，所以前端不需要区分模式。
@@ -280,6 +352,18 @@
     }
     notes.sort((a, b) => a.t - b.t);
 
+    // marker 顺序数字：同一秒内按出现先后编号（1,2,3…）
+    let bucket = -1;
+    let seq = 0;
+    for (const n of notes) {
+      const b = Math.floor(n.t);
+      if (b !== bucket) {
+        bucket = b;
+        seq = 0;
+      }
+      n.seq = ++seq;
+    }
+
     const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
     const baseBpm = bpms.length ? bpms[0] : 0;
     const multi = timeEvents.length > 1;
@@ -359,6 +443,129 @@
       o.connect(g).connect(audioCtx.destination);
       o.start(t);
       o.stop(t + 0.09);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  // ================= 节拍音（全部用 WebAudio 合成，不依赖音频素材）=================
+
+  function metroGain(gain) {
+    const vol = (Number(els.metroVolume.value) || 0) / 100;
+    return Math.max(0, gain * vol);
+  }
+
+  function noiseBuffer(ctx, seconds = 0.3) {
+    const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  /** 啪：白噪声 + 带通，三连击的拍手感 */
+  function soundClap(ctx, t, gain) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1500;
+    bp.Q.value = 1.1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    for (const [dt, amp] of [[0, 1], [0.012, 0.7], [0.024, 0.5]]) {
+      g.gain.setValueAtTime(gain * amp, t + dt);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.06);
+    }
+    src.connect(bp).connect(g).connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 0.18);
+  }
+
+  /** 猫娘 nyan：两段音高包络 + 低通，做一个「喵—」的滑音 */
+  function soundNyan(ctx, t, gain) {
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o1.type = "sawtooth";
+    o2.type = "square";
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(2600, t);
+    lp.frequency.exponentialRampToValueAtTime(900, t + 0.22);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+    // 喵：低 → 高 → 略降
+    for (const o of [o1, o2]) {
+      const f = o === o1 ? 1 : 2.02;
+      o.frequency.setValueAtTime(520 * f, t);
+      o.frequency.exponentialRampToValueAtTime(1040 * f, t + 0.09);
+      o.frequency.exponentialRampToValueAtTime(760 * f, t + 0.24);
+    }
+    o2.detune.value = 12;
+    o1.connect(lp);
+    o2.connect(lp);
+    lp.connect(g).connect(ctx.destination);
+    o1.start(t);
+    o2.start(t);
+    o1.stop(t + 0.28);
+    o2.stop(t + 0.28);
+  }
+
+  /** 太鼓：正拍「咚」= 低频鼓皮 + 一点噪声；反拍「咔」= 短促高频边击 */
+  function soundTaiko(ctx, t, gain, accent) {
+    if (accent) {
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(190, t);
+      o.frequency.exponentialRampToValueAtTime(70, t + 0.16);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(gain * 1.15, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      o.connect(g).connect(ctx.destination);
+      o.start(t);
+      o.stop(t + 0.24);
+      const n = ctx.createBufferSource();
+      n.buffer = noiseBuffer(ctx, 0.08);
+      const nf = ctx.createBiquadFilter();
+      nf.type = "lowpass";
+      nf.frequency.value = 700;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(gain * 0.5, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      n.connect(nf).connect(ng).connect(ctx.destination);
+      n.start(t);
+      n.stop(t + 0.12);
+    } else {
+      const n = ctx.createBufferSource();
+      n.buffer = noiseBuffer(ctx, 0.05);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "bandpass";
+      hp.frequency.value = 3200;
+      hp.Q.value = 0.9;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(gain * 0.9, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+      n.connect(hp).connect(g).connect(ctx.destination);
+      n.start(t);
+      n.stop(t + 0.08);
+    }
+  }
+
+  /** 节拍音入口：accent = 小节第一拍 */
+  function playMetro(accent) {
+    const kind = els.metroSound.value;
+    if (!kind) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audioCtx.currentTime + 0.005;
+      const gain = metroGain(accent ? 0.5 : 0.34);
+      if (gain <= 0) return;
+      if (kind === "click") blip(accent ? 1320 : 880, gain, "square");
+      else if (kind === "clap") soundClap(audioCtx, t, gain);
+      else if (kind === "nyan") soundNyan(audioCtx, t, gain);
+      else if (kind === "taiko") soundTaiko(audioCtx, t, gain, accent);
     } catch (_) {
       /* ignore */
     }
@@ -526,6 +733,7 @@
 
   function layoutCanvas() {
     if (!ctx || !els.panel) return;
+    fitPanel();
     const bezel = els.panel.parentElement.getBoundingClientRect();
     const inner = els.panel.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -544,6 +752,22 @@
       const r = el.getBoundingClientRect();
       return { x: r.left - box.left, y: r.top - box.top, w: r.width, h: r.height };
     });
+  }
+
+  /** 面板按「可用高度」自适应：小屏 + 选项展开时也不会被挤出可视区 */
+  function fitPanel() {
+    const stage = els.panel.closest(".panel-stage");
+    if (!stage) return;
+    const availW = Math.max(200, stage.clientWidth - 28);
+    let size;
+    if (isNarrow()) {
+      // 手机上选项是浮层，面板按视口高度给一个稳定的大小
+      size = Math.min(availW, window.innerHeight * 0.56, 430);
+    } else {
+      const availH = Math.max(200, stage.clientHeight - 26);
+      size = Math.min(availH, availW, 460);
+    }
+    els.panel.style.width = size + "px";
   }
 
   function roundRectPath(c, x, y, w, h, r) {
@@ -594,6 +818,24 @@
     ctx.restore();
   }
 
+  /** marker 顺序数字（同一秒内的第几个 note），画在 pad 中央 */
+  function drawOrderNumber(note, rect) {
+    if (!rect || !els.showNumbers || !els.showNumbers.checked) return;
+    const size = Math.max(14, Math.min(38, rect.w * 0.42));
+    ctx.save();
+    ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = Math.max(2, size * 0.16);
+    ctx.strokeStyle = "rgba(0,0,0,0.75)";
+    ctx.fillStyle = "#ffffff";
+    const x = rect.x + rect.w / 2;
+    const y = rect.y + rect.h / 2;
+    ctx.strokeText(String(note.seq || 0), x, y);
+    ctx.fillText(String(note.seq || 0), x, y);
+    ctx.restore();
+  }
+
   function drawMarkers(chartT) {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
@@ -636,6 +878,7 @@
         let spec = null;
         let image = null;
         let alpha = 1;
+        let showNumber = false;
 
         if (rel < 0) {
           // 1) 接近动画：anchor 帧落在 rel == 0
@@ -644,15 +887,20 @@
           frame = Math.min(anchor, k);
           spec = entry;
           image = sheet;
+          showNumber = true;
         } else if (seg.holdEnd != null && chartT < seg.holdEnd) {
-          // 2) hold 期间：动画停在判定帧（半透明，让下面的扇形填充看得见）
+          // 2) hold 期间：动画停在判定帧（半透明，让下面的扇形填充看得见），
+          //    末拍之后不再播 marker 收尾动画，倒计时结束就完事
           frame = anchor;
           spec = entry;
           image = sheet;
           alpha = 0.15;
+          showNumber = true;
+        } else if (seg.holdEnd != null) {
+          continue;   // hold 尾拍后没有 marker 动画
         } else {
           // 3) 收尾：tap 是命中之后，hold 是末拍之后，继续播剩余帧
-          const after = seg.holdEnd != null ? chartT - seg.holdEnd : rel;
+          const after = rel;
           if (after >= tail) continue;
           if (hitSpec) {
             const k = Math.floor(after * fps);
@@ -673,6 +921,7 @@
         if (count >= 6) continue;
         counts.set(seg.pad, count + 1);
         drawSheetFrame(image, spec, frame, state.padRects[seg.pad], alpha);
+        if (showNumber) drawOrderNumber(n, state.padRects[seg.pad]);
       }
 
       // 额外的判定特效（可选）：在头拍命中后叠加
@@ -687,6 +936,175 @@
   }
 
   // —— 节拍：用于核对「marker 是否踩在拍上」 ——
+  // ================= 物量显示（note 密度）+ 进度拖动 =================
+
+  const density = {
+    bucket: 2.0,          // 每根柱子代表 2 秒
+    counts: [],
+    max: 0,
+    dur: 0,
+    rect: null,
+    dpr: 1,
+  };
+
+  function buildDensity() {
+    const dur = state.duration || 0;
+    density.dur = dur;
+    density.counts = [];
+    density.max = 0;
+    if (!dur || !state.notes.length) {
+      layoutDensity();
+      return;
+    }
+    const n = Math.max(1, Math.ceil(dur / density.bucket));
+    const counts = new Array(n).fill(0);
+    for (const note of state.notes) {
+      const i = Math.min(n - 1, Math.max(0, Math.floor(note.t / density.bucket)));
+      counts[i]++;
+    }
+    density.counts = counts;
+    density.max = Math.max(1, ...counts);
+    layoutDensity();
+  }
+
+  function layoutDensity() {
+    const cv = els.densityCanvas;
+    if (!cv || !cv.getContext) return;
+    const box = cv.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const h = Math.max(44, Math.round(box.height));
+    cv.style.width = "100%";
+    cv.style.height = h + "px";
+    cv.width = Math.max(1, Math.round(box.width * dpr));
+    cv.height = Math.max(1, Math.round(h * dpr));
+    density.dpr = dpr;
+    density.rect = { w: box.width, h };
+    drawDensity();
+  }
+
+  function drawDensity(posSec = null) {
+    const cv = els.densityCanvas;
+    if (!cv || !density.rect) return;
+    const ctx2 = cv.getContext("2d");
+    if (!ctx2) return;
+    const { w, h } = density.rect;
+    const dpr = density.dpr;
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx2.clearRect(0, 0, w, h);
+
+    // 背景与网格（每 30 秒一条竖线）
+    ctx2.fillStyle = "#0a0d14";
+    ctx2.fillRect(0, 0, w, h);
+    if (!density.counts.length) {
+      ctx2.fillStyle = "#4a5266";
+      ctx2.font = "11px " + (getComputedStyle(document.body).fontFamily || "sans-serif");
+      ctx2.fillText("物量显示：加载谱面后显示每个时段的 note 数，可直接拖动跳转", 8, h / 2 + 4);
+      return;
+    }
+    const dur = density.dur || 1;
+    const barW = w / density.counts.length;
+    const top = 6;
+    const plot = h - 16;
+    ctx2.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx2.lineWidth = 1;
+    for (let s = 30; s < dur; s += 30) {
+      const x = Math.round((s / dur) * w) + 0.5;
+      ctx2.beginPath();
+      ctx2.moveTo(x, top);
+      ctx2.lineTo(x, top + plot);
+      ctx2.stroke();
+      ctx2.fillStyle = "#5b6478";
+      ctx2.font = "9px monospace";
+      ctx2.fillText(fmtTime(s).slice(0, 5), x + 3, h - 3);
+    }
+    // 柱子：越高越黄，峰值用白色
+    for (let i = 0; i < density.counts.length; i++) {
+      const c = density.counts[i];
+      if (!c) continue;
+      const ratio = c / density.max;
+      const bh = Math.max(2, ratio * plot);
+      const x = i * barW;
+      ctx2.fillStyle = ratio > 0.86 ? "#f2f7ff" : ratio > 0.55 ? "#ffb020" : "#7a8499";
+      ctx2.fillRect(x, top + plot - bh, Math.max(1, barW - 1), bh);
+    }
+    // 播放头
+    const now = posSec == null ? currentMediaTime() : posSec;
+    const px = Math.max(0, Math.min(w, (now / dur) * w));
+    ctx2.fillStyle = "#3ddc97";
+    ctx2.fillRect(px - 1, 0, 2, h);
+    ctx2.beginPath();
+    ctx2.moveTo(px - 5, 0);
+    ctx2.lineTo(px + 5, 0);
+    ctx2.lineTo(px, 7);
+    ctx2.closePath();
+    ctx2.fill();
+  }
+
+  function densitySeekFromEvent(ev) {
+    const cv = els.densityCanvas;
+    const box = cv.getBoundingClientRect();
+    const x = Math.max(0, Math.min(box.width, ev.clientX - box.left));
+    const sec = (x / box.width) * (density.dur || state.duration || 0);
+    seekTo(sec);
+    return sec;
+  }
+
+  function updateComboDisplay() {
+    if (!els.comboBox) return;
+    const on = els.showCombo.checked;
+    if (els.comboBox.hidden === on) els.comboBox.hidden = !on;
+    if (!on) return;
+    if (state.comboShown !== state.combo) {
+      state.comboShown = state.combo;
+      els.comboNow.textContent = String(state.combo);
+      els.comboMax.textContent = String(state.maxCombo);
+      els.comboBox.classList.toggle("hot", state.combo >= 50);
+    }
+  }
+
+  function resetCombo() {
+    state.combo = 0;
+    state.maxCombo = 0;
+    state.comboShown = -1;
+    updateComboDisplay();
+  }
+
+  function bumpCombo() {
+    state.combo++;
+    if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+  }
+
+  /** 物量条上某个时间点所在的柱子有多少 note */
+  function bucketInfo(sec) {
+    if (!density.counts.length) return "—";
+    const i = Math.min(density.counts.length - 1, Math.max(0, Math.floor(sec / density.bucket)));
+    const from = i * density.bucket;
+    return `${fmtTime(from)}–${fmtTime(from + density.bucket)} ${density.counts[i]} note`;
+  }
+
+  /** 收起 / 展开选项区（播放控制永远保留） */
+  function setCollapsed(on) {
+    els.transport.classList.toggle("collapsed", on);
+    els.btnCollapse.textContent = on ? "⌄" : "⌃";
+    els.btnCollapse.setAttribute("aria-expanded", on ? "false" : "true");
+    store(STORAGE.collapsed, on ? "1" : "0");
+    layoutCanvas();
+    layoutDensity();
+  }
+
+  /** 窄屏曲库抽屉 */
+  function isNarrow() {
+    return window.matchMedia("(max-width: 900px)").matches;
+  }
+
+  function setSidebarOpen(open) {
+    const narrow = isNarrow();
+    els.sidebar.classList.toggle("hidden", narrow ? !open : false);
+    const scrim = document.querySelector(".scrim");
+    if (scrim) scrim.hidden = !(narrow && open);
+    layoutCanvas();
+  }
+
   function updateBeat(chartT) {
     const parsed = state._parsed;
     if (!parsed || !parsed.secToBeat) return;
@@ -698,9 +1116,7 @@
       const inBar = ((idx % 4) + 4) % 4;
       for (let i = 0; i < dots.length; i++) dots[i].classList.toggle("on", i === inBar);
       if (dots[inBar]) dots[inBar].classList.toggle("accent", inBar === 0);
-      if (els.metronome.checked && state.playing && chartT >= 0) {
-        blip(inBar === 0 ? 1320 : 880, 0.05, "square");
-      }
+      if (state.playing && chartT >= 0) playMetro(inBar === 0);
     }
     if (!els.beatPulse.checked) {
       for (const d of dots) d.classList.remove("on", "accent");
@@ -721,10 +1137,11 @@
       const data = await res.json();
       state.songs = data.songs || [];
       if (!els.versionFilter.dataset.ready) {
-        for (const v of data.versions || []) {
+        const versions = (data.versions || []).slice().sort((a, b) => versionRank(a) - versionRank(b));
+        for (const v of versions) {
           const opt = document.createElement("option");
           opt.value = v;
-          opt.textContent = v;
+          opt.textContent = versionLabel(v);
           els.versionFilter.appendChild(opt);
         }
         els.versionFilter.dataset.ready = "1";
@@ -740,7 +1157,7 @@
   function visibleSongs() {
     const q = els.search.value.trim().toLowerCase();
     const ver = els.versionFilter.value;
-    return state.songs.filter((s) => {
+    const list = state.songs.filter((s) => {
       if (ver && s.version !== ver) return false;
       if (!q) return true;
       return s.title.toLowerCase().includes(q)
@@ -748,6 +1165,30 @@
         || s.filename.toLowerCase().includes(q)
         || s.version.toLowerCase().includes(q);
     });
+    return sortSongs(list, els.sortSelect.value);
+  }
+
+  /** 排序：曲名 / 推出版本（旧→新）/ 各难度等级、note 数（高→低） */
+  function sortSongs(list, mode) {
+    const num = (song, code, key) => {
+      const c = chartOf(song, code);
+      return c && typeof c[key] === "number" ? c[key] : -1;
+    };
+    const byTitle = (a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase(), "ja");
+    const byVersion = (a, b) => versionRank(a.version) - versionRank(b.version) || byTitle(a, b);
+    const byChart = (code, key) => (a, b) =>
+      num(b, code, key) - num(a, code, key) || byTitle(a, b);
+    const sorters = {
+      title: byTitle,
+      version: byVersion,
+      "bsc-lv": byChart("BSC", "levelNum"),
+      "adv-lv": byChart("ADV", "levelNum"),
+      "ext-lv": byChart("EXT", "levelNum"),
+      "bsc-notes": byChart("BSC", "notes"),
+      "adv-notes": byChart("ADV", "notes"),
+      "ext-notes": byChart("EXT", "notes"),
+    };
+    return list.sort(sorters[mode] || byTitle);
   }
 
   // 列表里上千首曲子，封面按需加载：进入可视范围附近才真的去请求
@@ -797,7 +1238,8 @@
           : "") +
         `</span>` +
         `<span class="tx"><span class="st"></span>` +
-        `<span class="sm"><span class="ver"></span><span class="ar"></span><span class="ch"></span></span>` +
+        `<span class="sm"><span class="ver"></span><span class="ar"></span>` +
+        `<span class="lvset"></span></span>` +
         `</span>`;
       const img = btn.querySelector(".cv img");
       if (img) {
@@ -818,7 +1260,15 @@
       btn.querySelector(".st").textContent = s.title;
       btn.querySelector(".ver").textContent = s.version;
       btn.querySelector(".ar").textContent = s.artist || "";
-      btn.querySelector(".ch").textContent = `${s.charts.length} diff`;
+      const lvset = btn.querySelector(".lvset");
+      for (const code of ["BSC", "ADV", "EXT"]) {
+        const c = chartOf(s, code);
+        if (!c) continue;
+        const chip = document.createElement("span");
+        chip.className = "lv-chip " + diffClass(code);
+        chip.textContent = c.level;
+        lvset.appendChild(chip);
+      }
       btn.addEventListener("click", () => selectSong(s));
       li.appendChild(btn);
       frag.appendChild(li);
@@ -829,6 +1279,7 @@
   async function selectSong(song, preferredCode = null) {
     state.song = song;
     renderList();
+    if (isNarrow()) setSidebarOpen(false);   // 手机上选完曲就把抽屉收起来
     els.npTitle.textContent = song.title;
     els.npArtist.textContent = song.artist || "—";
     els.npVersion.textContent = song.version.replace(/^jubeat/, "jubeat").toUpperCase();
@@ -846,7 +1297,7 @@
     song.charts.forEach((c, i) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "diff-btn";
+      b.className = "diff-btn " + diffClass(c.code);
       b.dataset.file = c.file;
       b.innerHTML = `${c.code}<span class="lv">${c.level}</span>`;
       b.addEventListener("click", () => loadChart(c.file));
@@ -933,8 +1384,10 @@
       els.timeTotal.textContent = fmtTime(state.duration);
 
       clearPads();
+      resetCombo();
       els.captionLeft.textContent = `${payload.chartMeta?.label || file} · ${parsed.nTotal} notes`;
       layoutCanvas();
+      buildDensity();
       const urlT = urlState().t;
       seekTo(urlT != null ? urlT : 0);
     } catch (err) {
@@ -984,13 +1437,14 @@
     state.beatIndex = -1;
     state.duration = 0;
     clearPads();
-    els.seek.value = "0";
+    state.density = null;
     els.timeNow.textContent = fmtTime(0);
     els.timeTotal.textContent = fmtTime(0);
     els.statBpm.textContent = "—";
     els.statNotes.textContent = "—";
     els.statHolds.textContent = "—";
     els.statTime.textContent = "—";
+    resetCombo();
   }
 
   /** Rebuild note/pad visual state for a given chart time (seconds). */
@@ -1039,7 +1493,6 @@
       els.audio.currentTime = Number.isFinite(dur) ? Math.max(0, Math.min(audioT, dur)) : audioT;
     }
     rebuildVisualState(currentMediaTime());
-    els.seek.value = String(Math.round((s / (state.duration || 1)) * 1000));
     els.timeNow.textContent = fmtTime(s);
   }
 
@@ -1111,6 +1564,7 @@
       if (n.kind === "tap") {
         n.flashEnd = n.t + FLASH;
         state.hitUntil[n.index] = Math.max(state.hitUntil[n.index] || -1, n.flashEnd);
+        bumpCombo();
         pulseGlow();
       } else {
         // enter hold immediately (flash start on both ends lightly)
@@ -1120,6 +1574,7 @@
         if (n.endIndex != null) setHold(n.endIndex, n.t, end);
         state.hitUntil[n.index] = n.t + FLASH;
         if (n.endIndex != null) state.hitUntil[n.endIndex] = n.t + FLASH;
+        bumpCombo();
         pulseGlow();
       }
     }
@@ -1130,14 +1585,8 @@
     const mediaT = currentMediaTime();
     state.lastFrameT = now;
 
-    if (!state.seeking) {
-      const audioT = els.audio.currentTime || 0;
-      const pct = state.duration ? (audioT / state.duration) * 1000 : 0;
-      if (document.activeElement !== els.seek) {
-        els.seek.value = String(Math.max(0, Math.min(1000, Math.round(pct))));
-      }
-      els.timeNow.textContent = fmtTime(audioT);
-    }
+    const audioT = els.audio.currentTime || 0;
+    els.timeNow.textContent = fmtTime(audioT);
 
     if (state.notes.length) {
       advanceNotes(mediaT);
@@ -1199,6 +1648,8 @@
     // marker 接近 / 判定动画 + 节拍指示
     drawMarkers(mediaT);
     updateBeat(mediaT);
+    updateComboDisplay();
+    if (!state.scrubbing) drawDensity(mediaT);
 
     if (state.playing && els.audio.ended) {
       if (els.autoLoop.checked && state.song) {
@@ -1240,14 +1691,101 @@
         store(STORAGE.beatPulse, els.beatPulse.checked ? "1" : "0");
         state.beatIndex = -1;
       });
-      els.metronome.addEventListener("change", () => {
-        store(STORAGE.metronome, els.metronome.checked ? "1" : "0");
+      els.metroSound.addEventListener("change", () => {
+        store(STORAGE.metroSound, els.metroSound.value);
+        if (els.metroSound.value) playMetro(true); // 试听
       });
-      const savedPulse = store(STORAGE.beatPulse);
-      if (savedPulse != null) els.beatPulse.checked = savedPulse === "1";
-      const savedMetro = store(STORAGE.metronome);
-      if (savedMetro != null) els.metronome.checked = savedMetro === "1";
+      els.metroVolume.addEventListener("input", () => {
+        els.metroVolumeLabel.textContent = els.metroVolume.value;
+        store(STORAGE.metroVolume, els.metroVolume.value);
+      });
+      els.metroVolume.addEventListener("change", () => store(STORAGE.metroVolume, els.metroVolume.value));
+      els.showCombo.addEventListener("change", () => {
+        store(STORAGE.showCombo, els.showCombo.checked ? "1" : "0");
+        state.comboShown = -1;
+        updateComboDisplay();
+      });
+      els.showNumbers.addEventListener("change", () => {
+        store(STORAGE.showNumbers, els.showNumbers.checked ? "1" : "0");
+      });
+
+      // 恢复上次的设置
+      const saved = {
+        beatPulse: store(STORAGE.beatPulse),
+        metroSound: store(STORAGE.metroSound),
+        metroVolume: store(STORAGE.metroVolume),
+        showCombo: store(STORAGE.showCombo),
+        showNumbers: store(STORAGE.showNumbers),
+        collapsed: store(STORAGE.collapsed),
+        sort: store(STORAGE.sort),
+      };
+      if (saved.beatPulse != null) els.beatPulse.checked = saved.beatPulse === "1";
+      if (saved.metroSound != null) els.metroSound.value = saved.metroSound;
+      if (saved.metroVolume != null) {
+        els.metroVolume.value = saved.metroVolume;
+        els.metroVolumeLabel.textContent = saved.metroVolume;
+      }
+      if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
+      if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
+      if (saved.sort) els.sortSelect.value = saved.sort;
+      // 窄屏默认收起选项，给面板留空间
+      const narrow = window.matchMedia("(max-width: 900px)").matches;
+      setCollapsed(saved.collapsed != null ? saved.collapsed === "1" : narrow);
+      updateComboDisplay();
     }
+
+    els.sortSelect.addEventListener("change", () => {
+      store(STORAGE.sort, els.sortSelect.value);
+      renderList();
+    });
+    els.btnCollapse.addEventListener("click", () => setCollapsed(!els.transport.classList.contains("collapsed")));
+    // 窄屏：曲库做成抽屉，点 ☰ 开关，点遮罩/选曲自动收起
+    const scrim = document.createElement("div");
+    scrim.className = "scrim";
+    scrim.hidden = true;
+    scrim.addEventListener("click", () => setSidebarOpen(false));
+    document.body.appendChild(scrim);
+    els.btnSidebar.addEventListener("click", () =>
+      setSidebarOpen(els.sidebar.classList.contains("hidden")));
+
+    // —— 物量条：按住拖动 = 拖进度 ——
+    let resumeAfterScrub = false;
+    els.densityCanvas.addEventListener("pointerdown", (ev) => {
+      if (!state.notes.length) return;
+      state.scrubbing = true;
+      resumeAfterScrub = state.playing;
+      if (state.playing) pause();
+      els.densityCanvas.setPointerCapture(ev.pointerId);
+      const sec = densitySeekFromEvent(ev);
+      els.densityInfo.textContent = `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`;
+      drawDensity(sec);
+    });
+    els.densityCanvas.addEventListener("pointermove", (ev) => {
+      const box = els.densityCanvas.getBoundingClientRect();
+      const sec = (Math.max(0, Math.min(box.width, ev.clientX - box.left)) / box.width) * (density.dur || 0);
+      if (!state.scrubbing) {
+        els.densityInfo.textContent = `物量 · ${fmtTime(sec)} 附近 ${bucketInfo(sec)}`;
+        return;
+      }
+      const s2 = densitySeekFromEvent(ev);
+      els.densityInfo.textContent = `跳转到 ${fmtTime(s2)} · ${bucketInfo(s2)}`;
+      drawDensity(s2);
+    });
+    const endScrub = (ev) => {
+      if (!state.scrubbing) return;
+      state.scrubbing = false;
+      try {
+        els.densityCanvas.releasePointerCapture(ev.pointerId);
+      } catch (_) {
+        /* ignore */
+      }
+      if (resumeAfterScrub) play();
+    };
+    els.densityCanvas.addEventListener("pointerup", endScrub);
+    els.densityCanvas.addEventListener("pointercancel", endScrub);
+    els.densityCanvas.addEventListener("pointerleave", () => {
+      if (!state.scrubbing) els.densityInfo.textContent = "物量 · 拖这里跳转";
+    });
 
     let searchTimer = 0;
     els.search.addEventListener("input", () => {
@@ -1277,26 +1815,6 @@
       els.audio.playbackRate = Number(els.rate.value) || 1;
     });
 
-    els.seek.addEventListener("pointerdown", () => {
-      state.seeking = true;
-    });
-    els.seek.addEventListener("input", () => {
-      const t = (Number(els.seek.value) / 1000) * (state.duration || 0);
-      els.timeNow.textContent = fmtTime(t);
-    });
-    const commitSeek = () => {
-      state.seeking = false;
-      const t = (Number(els.seek.value) / 1000) * (state.duration || 0);
-      seekTo(t);
-    };
-    els.seek.addEventListener("pointerup", commitSeek);
-    els.seek.addEventListener("change", commitSeek);
-    els.seek.addEventListener("keyup", (e) => {
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
-        commitSeek();
-      }
-    });
-
     els.audio.addEventListener("ended", () => {
       if (els.autoLoop.checked && state.song) {
         seekTo(0);
@@ -1318,9 +1836,7 @@
       if (!els.audio.ended) els.syncBadge.textContent = "sync paused";
     });
     els.audio.addEventListener("timeupdate", () => {
-      if (!state.seeking) {
-        // smoothed in rAF
-      }
+      // 时间显示统一在 rAF 里刷新，这里不用做事
     });
 
     document.addEventListener("keydown", (e) => {
@@ -1362,9 +1878,14 @@
     });
 
     window.addEventListener("resize", layoutCanvas);
+    window.addEventListener("resize", layoutDensity);
     if (window.ResizeObserver && els.panel) {
       const ro = new ResizeObserver(() => layoutCanvas());
       ro.observe(els.panel);
+    }
+    if (window.ResizeObserver && els.densityWrap) {
+      const ro2 = new ResizeObserver(() => layoutDensity());
+      ro2.observe(els.densityWrap);
     }
   }
 
@@ -1373,6 +1894,8 @@
     buildPanel();
     bindEvents();
     layoutCanvas();
+    layoutDensity();
+    setSidebarOpen(!isNarrow());   // 窄屏默认收起曲库抽屉
     loadLibrary();
     loadMarkers();
     state.raf = requestAnimationFrame(updateFrame);

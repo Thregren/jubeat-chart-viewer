@@ -51,3 +51,9 @@ gzip 和 ETag/304；贴上 `nginx-php.conf.example` 之后改由 nginx 直发。
 - Safari 不支持 Ogg Vorbis，没声音换 Chrome / Edge
 - 曲库里有 48 个包因为谱面文件名缺 `Lv<等级>` 而没被索引（需要的话可以放开这条规则）
 - 5 个源包里的封面本身就是坏 PNG，列表里显示 ♪ 占位
+
+## 曲库来源
+
+曲库用的是 [Swan416ya/Jubeat2Malody-GUI](https://github.com/Swan416ya/Jubeat2Malody-GUI/tree/mcz-releases)
+（`mcz-releases` 分支）打包好的 jubeat `.mcz`（Malody 谱面格式）。曲目、封面与 marker 图案的版权归
+KONAMI Digital Entertainment 及各原作者，本项目只做浏览与回放，曲库本身不入库。

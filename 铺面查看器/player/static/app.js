@@ -24,6 +24,7 @@
     panelGlow: $("#panelGlow"),
     sidebar: $("#sidebar"),
     btnSidebar: $("#btnSidebar"),
+    btnSidebarOpen: $("#btnSidebarOpen"),
     markerCanvas: $("#markerCanvas"),
     markerSelect: $("#markerSelect"),
     anchorInput: $("#anchorInput"),
@@ -757,7 +758,12 @@
     }
     void img;
     const el = strip.querySelector(".anchor");
-    if (el) el.scrollIntoView({ block: "nearest", inline: "center" });
+    // 只横向滚动这条帧条；不要用 scrollIntoView —— 它会连带把祖先容器（#app）也滚动，
+    // 手机上就会把整页往上顶掉一截（选项面板收起时尤其明显）
+    if (el) {
+      const target = el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2;
+      strip.scrollLeft = Math.max(0, target);
+    }
   }
 
   function layoutCanvas() {
@@ -2160,6 +2166,7 @@
     document.body.appendChild(scrim);
     els.btnSidebar.addEventListener("click", () =>
       setSidebarOpen(els.sidebar.classList.contains("hidden")));
+    els.btnSidebarOpen.addEventListener("click", () => setSidebarOpen(true));
 
     // —— 物量条：按住拖动 = 拖进度 ——
     // 拖动期间只做「预览」：更新画面和时间显示，但**不动 <audio>**。

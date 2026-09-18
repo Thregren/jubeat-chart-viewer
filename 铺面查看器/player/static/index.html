@@ -56,6 +56,12 @@
     </aside>
 
     <main class="stage">
+      <!-- 手机上曲库是抽屉，默认收起；必须留一个「在抽屉外面」的按钮才能打开它 -->
+      <div class="mobile-bar">
+        <button id="btnSidebarOpen" class="icon-btn" type="button"
+                title="打开曲库" aria-label="打开曲库">☰</button>
+        <span class="mobile-bar-title">铺面确认</span>
+      </div>
       <section class="now-playing" id="nowPlaying">
         <div class="cover-wrap">
           <img id="cover" alt="" />

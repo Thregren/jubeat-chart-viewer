@@ -957,14 +957,33 @@ input[type="range"] {
   backdrop-filter: blur(2px);
 }
 
+/* 手机上用来打开曲库的按钮：桌面端不显示（桌面端曲库常驻在左边） */
+.mobile-bar { display: none; }
+
 /* —— 移动端：曲库变抽屉，面板占满，控件加大 —— */
 @media (max-width: 900px) {
+  /* 抽屉默认收起，这个按钮是唯一入口 */
+  .mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px 0;
+  }
+  .mobile-bar-title {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .stage { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+
   #app {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
     height: 100vh;
     min-height: 0;
     overflow: hidden;
+    overflow: clip;      /* 禁止一切滚动（含 scrollIntoView 带动的），避免整页被顶掉 */
   }
   body { overflow: hidden; }
 

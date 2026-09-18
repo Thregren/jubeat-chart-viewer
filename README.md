@@ -3,7 +3,7 @@
 本地跑的 jubeat 谱面（铺面）确认播放器：浏览曲库、在 4×4 面板上按谱面回放，
 用 marker 的逐帧动画核对判定点。主要用途是做谱面视频、核对谱面、练谱前先看一遍节奏。
 
-![screenshot](docs/screenshot.jpg)
+[![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
 **一句话架构**：构建期把曲库（`.mcz`）展开成一棵纯静态文件树 `site/`，运行期浏览器只跟 HTTP 打交道——
 没有数据库，也没有常驻后端。四种跑法（nginx 静态站 / PHP 整包 / Python 开发服务器 / Electron 桌面版）

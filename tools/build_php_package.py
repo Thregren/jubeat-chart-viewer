@@ -14,11 +14,12 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-import subprocess
 import sys
 import time
-import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pack_zip import pack  # noqa: E402  （同目录下的打包工具，保证文件名 UTF-8 安全）
 
 ROOT = Path(__file__).resolve().parent.parent
 PHP_FILES = ["index.php", ".htaccess", "nginx-php.conf.example", "start.sh", "README.txt"]
@@ -62,15 +63,9 @@ def stage(site: Path, pkg: Path) -> tuple[int, int]:
 
 
 def make_zip(pkg: Path, out_zip: Path) -> None:
-    out_zip.unlink(missing_ok=True)
-    if shutil.which("zip"):            # 有 zip(1) 就用它，音源已经压过，几乎不耗时
-        subprocess.run(["zip", "-r", "-q", "-y", "-1", out_zip.name, pkg.name],
-                       cwd=pkg.parent, check=True)
-        return
-    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
-        for path in sorted(pkg.rglob("*")):
-            if path.is_file():
-                zf.write(path, Path(pkg.name) / path.relative_to(pkg))
+    # 用 tools/pack_zip.py 打包：非 ASCII（日文曲名）文件名会带 UTF-8 标记，
+    # 用 zip(1) 打出来的包在 Linux 上解压会变乱码，曲目路径一乱就全 404
+    pack(pkg, out_zip, prefix=pkg.name + "/")
 
 
 def main() -> int:

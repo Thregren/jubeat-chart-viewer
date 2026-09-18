@@ -352,6 +352,7 @@
     let bucket = -1;
     let seq = 0;
     let lastT = null;
+    let group = 0;                            // 全局批次号（seq 每秒会重置，不能拿它当键）
     for (const n of notes) {
       const b = Math.floor(n.t);
       if (b !== bucket) {
@@ -361,10 +362,16 @@
       }
       if (lastT === null || n.t - lastT > 1e-4) {
         seq++;
+        group++;
         lastT = n.t;
       }
       n.seq = seq;
+      n.group = group;
     }
+    // 同一批（共用同一个数字）有几个 note：≥2 就是要一起按的，数字上会加蓝色光晕
+    const groupSize = new Map();
+    for (const n of notes) groupSize.set(n.group, (groupSize.get(n.group) || 0) + 1);
+    for (const n of notes) n.groupSize = groupSize.get(n.group) || 1;
 
     const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
     const baseBpm = bpms.length ? bpms[0] : 0;
@@ -832,17 +839,45 @@
   function drawOrderNumber(note, rect) {
     if (!rect || !els.showNumbers || !els.showNumbers.checked) return;
     const size = Math.max(16, rect.w * 0.58);   // 参考视频里数字几乎占满格子
+    const x = rect.x + rect.w / 2;
+    const y = rect.y + rect.h / 2;
+    const text = String(note.seq || 0);
+    const chord = (note.groupSize || 1) > 1;     // 同一批（一起按）的 marker 数字
     ctx.save();
     ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+
+    if (chord) {
+      // 蓝色光晕 + 一圈往外扩的光环：同一批数字用同一个时钟，所以是同步呼吸的
+      const period = 700;                                   // ms，一个呼吸周期
+      const phase = (performance.now() % period) / period;   // 0 → 1
+      const glow = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // 0 → 1 → 0
+
+      // 外扩光环（从数字往外扩散后淡出）
+      ctx.globalAlpha = (1 - phase) * 0.7;
+      ctx.strokeStyle = "rgba(80, 185, 255, 0.95)";
+      ctx.lineWidth = Math.max(2, size * 0.08);
+      ctx.beginPath();
+      ctx.arc(x, y, size * (0.5 + 0.62 * phase), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // 数字本体背后的蓝色发光
+      ctx.shadowColor = `rgba(58, 160, 255, ${0.65 + 0.35 * glow})`;
+      ctx.shadowBlur = size * (0.42 + 0.5 * glow);
+      ctx.lineJoin = "round";
+      ctx.lineWidth = Math.max(3, size * 0.2);
+      ctx.strokeStyle = `rgba(130, 205, 255, ${0.85 + 0.15 * glow})`;
+      ctx.strokeText(text, x, y);
+      ctx.shadowBlur = 0;
+    }
+
     ctx.lineWidth = Math.max(2, size * 0.16);
     ctx.strokeStyle = "rgba(0,0,0,0.75)";
     ctx.fillStyle = "#ffffff";
-    const x = rect.x + rect.w / 2;
-    const y = rect.y + rect.h / 2;
-    ctx.strokeText(String(note.seq || 0), x, y);
-    ctx.fillText(String(note.seq || 0), x, y);
+    ctx.strokeText(text, x, y);
+    ctx.fillText(text, x, y);
     ctx.restore();
   }
 

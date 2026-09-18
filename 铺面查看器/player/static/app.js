@@ -1443,6 +1443,7 @@
 
       // audio
       const src = audioUrl(state.song);
+      if (backend.url !== src) prepareBuffer(src);     // 顺手解码成 AudioBuffer（失败就用 <audio>）
       if (els.audio.dataset.src !== src) {
         els.audio.src = src;
         els.audio.dataset.src = src;
@@ -1523,6 +1524,10 @@
 
   /** 切歌/切难度：先停播、进度归零、清掉上一首的状态，再去加载新谱面 */
   function stopForLoad() {
+    stopBufferSource();
+    backend.buf = null;
+    backend.mode = "element";
+    backend.anchorPos = 0;
     try {
       els.audio.pause();
     } catch (_) {
@@ -1587,69 +1592,90 @@
   // 注：曾经试过把 <audio> 接进 WebAudio（想让音乐和打点音共用一条输出、共用一个时钟），
   // 但页面不可见时 WebAudio 不渲染 —— 接管之后一转后台就没声音了，所以放弃，音乐仍然直出。
   //
-  // 后来实测确认：打开这条路的收益是「打点音和音乐不会再因为两条输出路径的延迟不同而错开」
-  // （seek 之后尤其明显）。所以重新加回来，但给了逃生开关 ?nomix=1 和后台恢复逻辑。
-  let mediaSource = null;      // <audio> 的 WebAudio 入口：接上之后音频只从这里出声
-  let mediaAnalyser = null;
-  let mixReady = false;
-  let mixChecked = false;
-  const MIX_OFF = new URLSearchParams(location.search).get("nomix") === "1";
+  // 结论：被 WebAudio 接管的 <audio> 在 seek 之后有速率怪癖（会整体跑快），这条路走不通。
+  // 改成 WebAudio 直接播解码好的 AudioBuffer：
+  //   * seek = 用新的 BufferSource 从指定 offset 起播，采样级精确，没有管线重建
+  //   * 音乐和打点音在同一个 AudioContext 里 → 画面/打点音/音乐三者同一个时钟
+  // 解码失败（个别坏文件）自动回落到 <audio>；想强制用 <audio> 加 ?media=1。
+  const backend = {
+    mode: "element",   // element | webaudio
+    buf: null,
+    src: null,
+    anchorPos: 0,      // 起播位置（音频秒）
+    anchorCtx: 0,      // 起播时刻（audioCtx.currentTime）
+    url: "",
+  };
+  const FORCE_MEDIA = new URLSearchParams(location.search).get("media") === "1";
 
-  /** 把 <audio> 接进 WebAudio（必须在用户手势里调用，否则 AudioContext 起不来） */
-  async function ensureAudioGraph() {
-    if (MIX_OFF) return false;
+  function stopBufferSource() {
+    if (!backend.src) return;
     try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state !== "running") await audioCtx.resume();
-      if (audioCtx.state !== "running") return false;   // 起不来就别接管，免得没声音
-      if (!mediaSource) {
-        mediaSource = audioCtx.createMediaElementSource(els.audio);
-        mediaAnalyser = audioCtx.createAnalyser();
-        mediaAnalyser.fftSize = 512;
-        mediaSource.connect(mediaAnalyser);
-        mediaAnalyser.connect(audioCtx.destination);
-        mixReady = true;
-        setTimeout(audioSelfTest, 1000);
-      }
-      return mixReady;
+      backend.src.stop();
     } catch (_) {
-      return false;
+      /* ignore */
+    }
+    try {
+      backend.src.disconnect();
+    } catch (_) {
+      /* ignore */
+    }
+    backend.src = null;
+  }
+
+  /** 把音源解码成 AudioBuffer（换歌时调用；失败就继续用 <audio>） */
+  async function prepareBuffer(url) {
+    stopBufferSource();
+    backend.buf = null;
+    backend.url = url;
+    backend.mode = "element";
+    if (FORCE_MEDIA) return;
+    try {
+      const res = await fetch(url, { cache: "force-cache" });
+      if (!res.ok) return;
+      const bytes = await res.arrayBuffer();
+      if (backend.url !== url) return;                       // 已经换歌了
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const buf = await audioCtx.decodeAudioData(bytes);
+      if (backend.url !== url) return;
+      backend.buf = buf;
+      backend.mode = "webaudio";
+      console.info(`[audio] 解码完成 ${buf.duration.toFixed(1)}s，改用 WebAudio 播放`);
+    } catch (err) {
+      console.warn("[audio] 解码失败，继续用 <audio>", err);
     }
   }
 
-  /** 接管之后确认真的出声了；没信号就提示一次（免得用户以为曲子坏了） */
-  function audioSelfTest() {
-    if (mixChecked || !mediaAnalyser) return;
-    const buf = new Uint8Array(mediaAnalyser.fftSize);
-    let peak = 0;
-    let tries = 0;
-    const tick = () => {
-      mediaAnalyser.getByteTimeDomainData(buf);
-      for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
-      tries += 1;
-      if (peak > 1 || tries >= 12) {          // 采样 3 秒（含安静前奏）再下结论
-        mixChecked = true;
-        if (peak <= 1 && state.playing && !els.audio.paused) {
-          console.warn("[audio] WebAudio 接管后没检测到信号");
-          toast("音频好像没出来：刷新一次，或在网址后加 ?nomix=1", true);
-        }
-        return;
-      }
-      setTimeout(tick, 250);
-    };
-    tick();
+  /** 从音频秒 pos 起播（webaudio 模式）；打点音和音乐挂在同一条输出上 */
+  async function startBufferAt(pos) {
+    if (!backend.buf || !audioCtx) return;
+    try {
+      if (audioCtx.state !== "running") await audioCtx.resume();
+    } catch (_) {
+      /* ignore */
+    }
+    const rate = Number(els.rate.value) || 1;
+    const off = Math.max(0, Math.min(pos, Math.max(0, backend.buf.duration - 0.02)));
+    stopBufferSource();
+    const src = audioCtx.createBufferSource();
+    src.buffer = backend.buf;
+    src.playbackRate.value = rate;
+    src.connect(sfxBus() || audioCtx.destination);
+    src.start(0, off);
+    backend.src = src;
+    backend.anchorPos = off;
+    backend.anchorCtx = audioCtx.currentTime;
   }
 
-  /** WebAudio 的输出延迟（音乐和打点音共用同一条输出，这个值两边都一样） */
+  /** 输出延迟：画面要提前这么多，marker 才和你听到的声音对齐 */
   function outputLatency() {
-    if (!mixReady || !audioCtx) return 0;
+    if (!audioCtx || backend.mode !== "webaudio") return 0;
     const l = Number(audioCtx.outputLatency);
     return Number.isFinite(l) && l > 0 ? Math.min(0.2, l) : 0;
   }
 
   /** 页面切回前台时，如果 AudioContext 被系统挂起了就恢复（否则会没声音） */
   function keepAudioAlive() {
-    if (!mixReady || !audioCtx) return;
+    if (!audioCtx) return;
     if (state.playing && audioCtx.state !== "running") audioCtx.resume().catch(() => {});
   }
 
@@ -1664,6 +1690,12 @@
   const audioClock = { base: 0, at: 0, fresh: 0 };
 
   function audioNow() {
+    // WebAudio 直接播 buffer：位置就是「起播点 + 经过的 ctx 时间」，连续、无量化台阶
+    if (backend.mode === "webaudio") {
+      if (!state.playing || !audioCtx) return backend.anchorPos;
+      const rate = Number(els.rate.value) || 1;
+      return backend.anchorPos + Math.max(0, audioCtx.currentTime - backend.anchorCtx) * rate;
+    }
     const raw = els.audio.currentTime || 0;
     const now = performance.now();
     if (raw !== audioClock.base) {
@@ -1695,7 +1727,7 @@
    * 打点音不受影响 —— 它和音乐在同一条输出里，本来就是按音乐位置排的。
    */
   function renderMediaTime() {
-    return currentMediaTime() - outputLatency();
+    return Math.max(0, currentMediaTime() - outputLatency());
   }
 
   /** 不做任何外推的原始谱面时间：排打点音用它，宁可差半帧也不要提前响 */
@@ -1706,10 +1738,15 @@
 
   function seekTo(sec) {
     const s = Math.max(0, Math.min(sec, state.duration || 0));
-    if (els.audio.readyState >= 1) {
+    const off = (Number(els.offset.value) || 0) / 1000;
+    const audioT = s + (state.baseOffset || 0) - off;
+    if (backend.mode === "webaudio") {
+      // 直接换一个 BufferSource 从新位置起播：采样级精确，不存在「管线重建」
+      const lim = backend.buf ? backend.buf.duration : audioT;
+      backend.anchorPos = Math.max(0, Math.min(audioT, lim));
+      if (state.playing) startBufferAt(backend.anchorPos);
+    } else if (els.audio.readyState >= 1) {
       const dur = els.audio.duration;
-      const off = (Number(els.offset.value) || 0) / 1000;
-      const audioT = s + (state.baseOffset || 0) - off;
       els.audio.currentTime = Number.isFinite(dur) ? Math.max(0, Math.min(audioT, dur)) : audioT;
     }
     audioClock.base = els.audio.currentTime || 0;
@@ -1725,8 +1762,19 @@
       toast("先从左侧选择一首曲目");
       return;
     }
+    if (backend.mode === "webaudio") {
+      try {
+        await startBufferAt(backend.anchorPos);
+        state.playing = true;
+        els.playIcon.textContent = "❚❚";
+        els.btnPlay.setAttribute("aria-label", "暂停");
+        sfxReset();
+      } catch (err) {
+        toast(`无法播放：${err.message}`, true);
+      }
+      return;
+    }
     try {
-      await ensureAudioGraph();      // 音乐也接进 WebAudio：和打点音同一条输出、同一个延迟
       els.audio.playbackRate = Number(els.rate.value) || 1;
       await els.audio.play();
       state.playing = true;
@@ -1739,7 +1787,12 @@
   }
 
   function pause() {
-    els.audio.pause();
+    if (backend.mode === "webaudio") {
+      backend.anchorPos = audioNow();       // 先记下位置再停
+      stopBufferSource();
+    } else {
+      els.audio.pause();
+    }
     state.playing = false;
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
@@ -1761,6 +1814,11 @@
    * 听起来就是「整体错位」。等 seeked / canplay 之后再播放，并重新锚定打点音。
    */
   function resumeAfterSeek(fallbackMs = 800) {
+    if (backend.mode === "webaudio") {       // 没有媒体管线，位置已经精确落好，直接续播
+      sfxReset();
+      play();
+      return;
+    }
     const el = els.audio;
     if (!el.seeking && el.readyState >= 3) {
       sfxReset();
@@ -1784,6 +1842,11 @@
 
   /** 暂停状态下跳转：等 seek 落地后按最终位置重建一次状态 */
   function settleAfterSeek() {
+    if (backend.mode === "webaudio") {
+      rebuildVisualState(renderMediaTime());
+      sfxReset();
+      return;
+    }
     const el = els.audio;
     if (!el.seeking) {
       rebuildVisualState(renderMediaTime());
@@ -1867,20 +1930,15 @@
           + "color:#9fe8c8;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:4px;pointer-events:none";
         document.body.appendChild(dbgEl);
       }
-      const raw = els.audio.currentTime || 0;
-      let mixDbg = "";
-      if (mixReady && mediaAnalyser) {
-        const mb = new Uint8Array(mediaAnalyser.fftSize);
-        mediaAnalyser.getByteTimeDomainData(mb);
-        let p = 0;
-        for (const v of mb) p = Math.max(p, Math.abs(v - 128));
-        mixDbg = ` mixPeak=${p} ctx=${audioCtx ? audioCtx.state : "-"}`;
-      }
+      const raw = backend.mode === "webaudio"
+        ? (state.playing ? audioNow() : backend.anchorPos)
+        : (els.audio.currentTime || 0);
+      const mode = backend.mode === "webaudio" ? "wa" : "el";
       dbgEl.textContent = `chart=${mediaT.toFixed(3)} audio=${raw.toFixed(3)}`
         + ` base=${(state.baseOffset || 0).toFixed(3)} off=${Number(els.offset.value) || 0}`
         + ` dur=${(state.duration || 0).toFixed(2)} scrub=${state.scrubbing ? state.scrubSec.toFixed(2) : "-"}`
         + ` ${els.audio.paused ? "paused" : "playing"} rs=${els.audio.readyState}`
-        + ` mix=${mixReady ? 1 : 0}${mixDbg}`;
+        + ` mode=${mode} ctx=${audioCtx ? audioCtx.state : "-"} playing=${state.playing ? 1 : 0}`;
     }
 
     // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳
@@ -2146,7 +2204,14 @@
     els.btnStop.addEventListener("click", stop);
 
     els.rate.addEventListener("change", () => {
-      els.audio.playbackRate = Number(els.rate.value) || 1;
+      const rate = Number(els.rate.value) || 1;
+      if (backend.mode === "webaudio") {
+        const pos = audioNow();
+        if (state.playing) startBufferAt(pos);   // 用新速率重起一个源
+        else backend.anchorPos = pos;
+      } else {
+        els.audio.playbackRate = rate;
+      }
       sfxReset();                       // 变速后重排，别用旧速度算出来的时刻
     });
 

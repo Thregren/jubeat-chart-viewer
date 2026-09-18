@@ -825,15 +825,16 @@
       // 同押光晕：背后一大团彩色光晕 + 两圈错开半个周期往外扩的光环 + 数字本身的霓虹描边。
       // 同一批用同一个时钟，所以整组是同步呼吸的。
       const rgb = glowRgb();
-      const period = 700;                                     // ms，一个呼吸周期
+      const period = 560;                                     // ms，一个呼吸周期（收得比之前快）
       const phase = (performance.now() % period) / period;     // 0 → 1
-      const glow = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);  // 0 → 1 → 0
+      const stroke = Math.pow(1 - phase, 1.4);                 // 波纹 / 描边淡出的速度
+      const glow = Math.pow(0.5 - 0.5 * Math.cos(phase * Math.PI * 2), 0.75); // 峰更尖，落得更快
 
       // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0
-      const haloR = size * (0.78 + 0.08 * glow);
+      const haloR = size * (0.72 + 0.12 * glow);
       const grad = ctx.createRadialGradient(x, y, size * 0.1, x, y, haloR);
-      grad.addColorStop(0, `rgba(${rgb}, ${0.62 + 0.2 * glow})`);
-      grad.addColorStop(0.45, `rgba(${rgb}, ${0.34 + 0.14 * glow})`);
+      grad.addColorStop(0, `rgba(${rgb}, ${0.34 + 0.5 * glow})`);
+      grad.addColorStop(0.45, `rgba(${rgb}, ${0.16 + 0.3 * glow})`);
       grad.addColorStop(1, `rgba(${rgb}, 0)`);
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -844,7 +845,7 @@
       ctx.lineCap = "round";
       for (const offset of [0, 0.5]) {
         const p = (phase + offset) % 1;
-        ctx.globalAlpha = (1 - p) * 0.85;
+        ctx.globalAlpha = Math.pow(1 - p, 1.5) * 0.85;
         ctx.strokeStyle = `rgb(${rgb})`;
         ctx.lineWidth = Math.max(2.5, size * 0.1);
         ctx.beginPath();
@@ -856,15 +857,17 @@
       // 3) 数字的霓虹描边：外面一层散光、里面一层实色
       ctx.lineJoin = "round";
       ctx.shadowColor = `rgba(${rgb}, 0.95)`;
-      ctx.shadowBlur = size * (0.85 + 0.4 * glow);
+      ctx.shadowBlur = size * (0.6 + 0.65 * glow);
       ctx.lineWidth = Math.max(5, size * 0.34);
-      ctx.strokeStyle = `rgba(${rgb}, ${0.72 + 0.28 * glow})`;
+      ctx.strokeStyle = `rgba(${rgb}, ${0.5 + 0.5 * glow})`;
       ctx.strokeText(text, x, y);
-      ctx.shadowBlur = size * 0.35;
+      ctx.shadowBlur = size * 0.35 * stroke;
+      ctx.globalAlpha = 0.35 + 0.65 * stroke;
       ctx.lineWidth = Math.max(3, size * 0.2);
       ctx.strokeStyle = `rgb(${rgb})`;
       ctx.strokeText(text, x, y);
       ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
     }
 
     ctx.lineWidth = Math.max(2, size * 0.14);

@@ -8,6 +8,9 @@ const path = require("node:path");
 const fs = require("node:fs");
 
 const bundleSite = process.env.NO_SITE !== "1";
+// 在 macOS 上交叉打包 Windows 需要 wine 去改 exe 的版本信息 / 图标；
+// 沙箱、CI 之类没有 wine 的环境设 NO_WINE=1 跳过这一步（zip 照样能出，exe 用默认图标）。
+const noWine = process.env.NO_WINE === "1";
 const siteDir = path.resolve(__dirname, "..", "site");
 
 const extraResources = [{ from: "../docs/README-electron.txt", to: "README-electron.txt" }];
@@ -32,6 +35,7 @@ module.exports = {
     target: [{ target: "zip", arch: ["x64", "arm64"] }],
   },
   win: {
+    ...(noWine ? { signAndEditExecutable: false } : {}),
     target: [{ target: "zip", arch: ["x64", "arm64"] }],
   },
   linux: {

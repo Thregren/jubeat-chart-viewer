@@ -12,6 +12,10 @@ cache/
 # 构建出来的静态站点（上传到服务器用，不入库）
 site/
 
+# PHP 整包 / 发版用的产物（体积大，不入库）
+dist-php/
+dist-release/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -1,0 +1,31 @@
+# 宝塔「PHP 站点」用的 nginx 片段。
+# 面板 → 网站 → 设置 → 配置文件，把下面几段放进 server { } 里
+# （保留面板自己生成的 listen / ssl_certificate / access_log 等）。
+#
+# 目标是：静态文件（含音源）全部由 nginx 直发 —— 有 Range、有缓存、不占 PHP，
+# index.php 只是兜底，正常浏览根本不会被调用。
+
+index index.html index.php;
+
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+
+# 音源 / 封面 / marker 素材：直发 + 长缓存
+location ~* \.(ogg|oga|mp3|wav|jpg|jpeg|png|webp|gif|ico|woff2?|ttf)$ {
+    expires 7d;
+    add_header Cache-Control "public";
+    access_log off;
+}
+
+# 谱面 / 索引 json：每次都回来问一句（改谱之后立即生效），并且 gzip
+location ~* ^/data/.*\.json$ {
+    add_header Cache-Control "no-cache";
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types application/json;
+}
+
+# 自己偷偷用的话，把这两行前面的 # 去掉（先在面板里生成 htpasswd）
+# auth_basic "jubeat";
+# auth_basic_user_file /www/server/panel/vhost/htpasswd/jubeat;

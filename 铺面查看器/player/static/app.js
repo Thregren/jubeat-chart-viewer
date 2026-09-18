@@ -1678,12 +1678,57 @@
     play();
   }
 
+  /**
+   * 跳转之后不要立刻 play()：seek 还没落地时 play() 有可能先按旧位置出声，
+   * 听起来就是「整体错位」。等 seeked / canplay 之后再播放，并重新锚定打点音。
+   */
+  function resumeAfterSeek(fallbackMs = 800) {
+    const el = els.audio;
+    if (!el.seeking && el.readyState >= 3) {
+      sfxReset();
+      play();
+      return;
+    }
+    let fired = false;
+    const fire = () => {
+      if (fired) return;
+      fired = true;
+      el.removeEventListener("seeked", fire);
+      el.removeEventListener("canplay", fire);
+      clearTimeout(timer);
+      sfxReset();                       // 位置定了，再按最终位置锚打点音
+      play();
+    };
+    el.addEventListener("seeked", fire);
+    el.addEventListener("canplay", fire);
+    const timer = setTimeout(fire, fallbackMs);
+  }
+
+  /** 暂停状态下跳转：等 seek 落地后按最终位置重建一次状态 */
+  function settleAfterSeek() {
+    const el = els.audio;
+    if (!el.seeking) {
+      rebuildVisualState(currentMediaTime());
+      sfxReset();
+      return;
+    }
+    const fire = () => {
+      el.removeEventListener("seeked", fire);
+      rebuildVisualState(currentMediaTime());
+      sfxReset();
+    };
+    el.addEventListener("seeked", fire, { once: true });
+  }
+
   function stop() {
     pause();
     seekTo(0);
   }
 
   // —— frame render ——
+  const DEBUG_TIMELINE = new URLSearchParams(location.search).get("debug") === "1";
+  let dbgEl = null;
+
   const FLASH = 0.14; // seconds pad stays lit after hit
   const ARM = 0.12; // pre-arm window
 
@@ -1735,6 +1780,21 @@
     state.raf = requestAnimationFrame(updateFrame);
     const mediaT = currentMediaTime();
     state.lastFrameT = now;
+
+    // ?debug=1：把时间轴的关键值写进 DOM，方便从外部核对（排查对拍问题用）
+    if (DEBUG_TIMELINE) {
+      if (!dbgEl) {
+        dbgEl = document.createElement("div");
+        dbgEl.style.cssText = "position:fixed;left:8px;bottom:4px;z-index:99;font:11px monospace;"
+          + "color:#9fe8c8;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:4px;pointer-events:none";
+        document.body.appendChild(dbgEl);
+      }
+      const raw = els.audio.currentTime || 0;
+      dbgEl.textContent = `chart=${mediaT.toFixed(3)} audio=${raw.toFixed(3)}`
+        + ` base=${(state.baseOffset || 0).toFixed(3)} off=${Number(els.offset.value) || 0}`
+        + ` dur=${(state.duration || 0).toFixed(2)} scrub=${state.scrubbing ? state.scrubSec.toFixed(2) : "-"}`
+        + ` ${els.audio.paused ? "paused" : "playing"} rs=${els.audio.readyState}`;
+    }
 
     // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳
     els.timeNow.textContent = fmtTime(mediaT + (state.baseOffset || 0)
@@ -1965,7 +2025,8 @@
       const target = state.scrubSec;
       state.scrubSec = -1;
       if (target >= 0) seekTo(target);          // 松手时只 seek 这一次
-      if (resumeAfterScrub) play();
+      if (resumeAfterScrub) resumeAfterSeek();  // 等 seek 落地再续播
+      else settleAfterSeek();
     };
     els.densityCanvas.addEventListener("pointerup", endScrub);
     els.densityCanvas.addEventListener("pointercancel", endScrub);

@@ -41,7 +41,6 @@
     holdFilter: $("#holdFilter"),
     transport: $("#transport"),
     btnCollapse: $("#btnCollapse"),
-    optionsPanel: $("#optionsPanel"),
     densityCanvas: $("#densityCanvas"),
     densityWrap: $("#densityWrap"),
     densityInfo: $("#densityInfo"),
@@ -86,7 +85,6 @@
     // —— marker / timing ——
     baseOffset: 0, // 谱面 beat 0 对应的音频时间（秒）
     padRects: [],
-    beatIndex: -1,
   };
 
   const markerCfg = {
@@ -1204,14 +1202,6 @@
     layoutCanvas();
   }
 
-  function updateBeat(chartT) {
-    const parsed = state._parsed;
-    if (!parsed || !parsed.secToBeat) return;
-    const beat = parsed.secToBeat(chartT);
-    const idx = Math.floor(beat + 1e-6);
-    if (idx !== state.beatIndex) state.beatIndex = idx;   // 只在需要时记账
-  }
-
   // —— library ——
   /**
    * 曲库索引只拉一次（gzip 后约 100 KB），搜索/筛选在本地做：
@@ -1431,7 +1421,6 @@
       state._parsed = parsed;
       // .mc 里 type-1 note 的 offset（ms）= beat 0 相对音频起点的时间
       state.baseOffset = (parsed.type1 && Number(parsed.type1.offset)) / 1000 || 0;
-      state.beatIndex = -1;
       state.hitUntil.fill(-1);
       state.holdUntil.fill(-1);
       state.holdFrom.fill(-1);
@@ -1539,7 +1528,6 @@
     els.syncBadge.textContent = "sync —";
     state.notes = [];
     state._parsed = null;
-    state.beatIndex = -1;
     state.duration = 0;
     clearPads();
     state.density = null;
@@ -1589,14 +1577,18 @@
   }
 
   // —— transport ——
-  // 注：曾经试过把 <audio> 接进 WebAudio（想让音乐和打点音共用一条输出、共用一个时钟），
-  // 但页面不可见时 WebAudio 不渲染 —— 接管之后一转后台就没声音了，所以放弃，音乐仍然直出。
   //
-  // 结论：被 WebAudio 接管的 <audio> 在 seek 之后有速率怪癖（会整体跑快），这条路走不通。
-  // 改成 WebAudio 直接播解码好的 AudioBuffer：
-  //   * seek = 用新的 BufferSource 从指定 offset 起播，采样级精确，没有管线重建
-  //   * 音乐和打点音在同一个 AudioContext 里 → 画面/打点音/音乐三者同一个时钟
-  // 解码失败（个别坏文件）自动回落到 <audio>；想强制用 <audio> 加 ?media=1。
+  // 播放后端有两种，优先 WebAudio：
+  //
+  //   webaudio：换歌时把音源解码成 AudioBuffer，seek = 换一个 BufferSource 从指定
+  //             offset 起播（采样级精确、没有媒体管线重建），音乐和打点音挂同一条
+  //             输出总线 → 画面 / 打点音 / 音乐三者同一个时钟、同一个输出延迟。
+  //             （试过把 <audio> 用 MediaElementAudioSourceNode 接进来，但它在 seek
+  //              之后有速率怪癖会把音乐放快，所以不用那条路。）
+  //   element ：解码失败（个别坏文件）、或加了 ?media=1 时，回落原来的 <audio> 直出。
+  //
+  // 想排查对拍问题：?debug=1 会在左下角显示 chart / audio / 后端 / 输出峰值；
+  // 输出峰值（out）恒为 0 就说明声音没送到输出。
   const backend = {
     mode: "element",   // element | webaudio
     buf: null,
@@ -1665,6 +1657,12 @@
       const buf = await audioCtx.decodeAudioData(bytes);
       if (backend.url !== url) return;
       backend.buf = buf;
+      // 解码是异步的：如果这会儿已经开播（走的是 <audio>），就别中途换后端，
+      // 否则时钟会在半路换源。下一首（或重新加载）自然就用上 buffer 了。
+      if (state.playing) {
+        console.info("[audio] 解码完成，但正在播放，保持 <audio> 直到下次加载");
+        return;
+      }
       backend.mode = "webaudio";
       console.info(`[audio] 解码完成 ${buf.duration.toFixed(1)}s，改用 WebAudio 播放`);
     } catch (err) {
@@ -2038,7 +2036,6 @@
 
     // marker 接近 / 判定动画 + 节拍指示
     drawMarkers(mediaT);
-    updateBeat(mediaT);
     updateComboDisplay();
     if (!state.scrubbing) drawDensity(mediaT);
 

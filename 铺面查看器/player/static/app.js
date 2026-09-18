@@ -559,7 +559,7 @@
     if (!sfxSched.bus) {
       sfxSched.bus = audioCtx.createGain();
       sfxSched.bus.gain.value = 1;
-      sfxSched.bus.connect(audioCtx.destination);
+      sfxSched.bus.connect(master() || audioCtx.destination);   // 和音乐共用输出总线
     }
     return sfxSched.bus;
   }
@@ -1607,6 +1607,33 @@
   };
   const FORCE_MEDIA = new URLSearchParams(location.search).get("media") === "1";
 
+  // 输出总线：音乐和打点音都接到这里 → 同一条输出、同一个延迟；
+  // 顺带挂一个分析器，`?debug=1` 时能直接看到「到底有没有声音送到输出」。
+  let masterBus = null;
+  let masterAnalyser = null;
+
+  function master() {
+    if (!audioCtx) return null;
+    if (!masterBus) {
+      masterBus = audioCtx.createGain();
+      masterAnalyser = audioCtx.createAnalyser();
+      masterAnalyser.fftSize = 512;
+      masterBus.connect(masterAnalyser);
+      masterAnalyser.connect(audioCtx.destination);
+    }
+    return masterBus;
+  }
+
+  /** 输出上当前的信号峰值（0~128）：调试用，确认声音真的出去了 */
+  function masterPeak() {
+    if (!masterAnalyser) return -1;
+    const buf = new Uint8Array(masterAnalyser.fftSize);
+    masterAnalyser.getByteTimeDomainData(buf);
+    let p = 0;
+    for (const v of buf) p = Math.max(p, Math.abs(v - 128));
+    return p;
+  }
+
   function stopBufferSource() {
     if (!backend.src) return;
     try {
@@ -1649,7 +1676,11 @@
   async function startBufferAt(pos) {
     if (!backend.buf || !audioCtx) return;
     try {
-      if (audioCtx.state !== "running") await audioCtx.resume();
+      // resume() 在某些环境下会一直 pending（状态其实已经是 running），所以加超时兜底，
+      // 绝不能因为等它而卡住播放
+      if (audioCtx.state !== "running") {
+        await Promise.race([audioCtx.resume(), new Promise((r) => setTimeout(r, 400))]);
+      }
     } catch (_) {
       /* ignore */
     }
@@ -1659,7 +1690,7 @@
     const src = audioCtx.createBufferSource();
     src.buffer = backend.buf;
     src.playbackRate.value = rate;
-    src.connect(sfxBus() || audioCtx.destination);
+    src.connect(master() || audioCtx.destination);   // 接输出总线（不是打点音总线！）
     src.start(0, off);
     backend.src = src;
     backend.anchorPos = off;
@@ -1938,7 +1969,8 @@
         + ` base=${(state.baseOffset || 0).toFixed(3)} off=${Number(els.offset.value) || 0}`
         + ` dur=${(state.duration || 0).toFixed(2)} scrub=${state.scrubbing ? state.scrubSec.toFixed(2) : "-"}`
         + ` ${els.audio.paused ? "paused" : "playing"} rs=${els.audio.readyState}`
-        + ` mode=${mode} ctx=${audioCtx ? audioCtx.state : "-"} playing=${state.playing ? 1 : 0}`;
+        + ` mode=${mode} ctx=${audioCtx ? audioCtx.state : "-"} playing=${state.playing ? 1 : 0}`
+        + ` out=${masterPeak()}`;
     }
 
     // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳

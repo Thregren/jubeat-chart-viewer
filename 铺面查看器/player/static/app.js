@@ -861,6 +861,13 @@
     ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    // 光晕 / 数字一律裁剪在这格 marker 的范围内：光晕不许溢出到相邻格子
+    const inset = Math.max(1, rect.w * 0.02);
+    roundRectPath(ctx,
+      rect.x + inset, rect.y + inset,
+      rect.w - inset * 2, rect.h - inset * 2,
+      Math.max(4, rect.w * 0.12));
+    ctx.clip();
 
     if (chord) {
       // 同押光晕：背后一大团彩色光晕 + 两圈错开半个周期往外扩的光环 + 数字本身的霓虹描边。
@@ -870,8 +877,8 @@
       const phase = (performance.now() % period) / period;     // 0 → 1
       const glow = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);  // 0 → 1 → 0
 
-      // 1) 数字背后的大团光晕（径向渐变铺满大半格，够浓才看得出是一组）
-      const haloR = size * (1.05 + 0.28 * glow);
+      // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0
+      const haloR = size * (0.78 + 0.08 * glow);
       const grad = ctx.createRadialGradient(x, y, size * 0.1, x, y, haloR);
       grad.addColorStop(0, `rgba(${rgb}, ${0.62 + 0.2 * glow})`);
       grad.addColorStop(0.45, `rgba(${rgb}, ${0.34 + 0.14 * glow})`);
@@ -887,9 +894,9 @@
         const p = (phase + offset) % 1;
         ctx.globalAlpha = (1 - p) * 0.85;
         ctx.strokeStyle = `rgb(${rgb})`;
-        ctx.lineWidth = Math.max(2.5, size * 0.12);
+        ctx.lineWidth = Math.max(2.5, size * 0.1);
         ctx.beginPath();
-        ctx.arc(x, y, size * (0.5 + 0.72 * p), 0, Math.PI * 2);
+        ctx.arc(x, y, size * (0.46 + 0.38 * p), 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;

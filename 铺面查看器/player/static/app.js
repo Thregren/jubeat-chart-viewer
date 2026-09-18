@@ -36,6 +36,7 @@
     showCombo: $("#showCombo"),
     showNumbers: $("#showNumbers"),
     showChordGlow: $("#showChordGlow"),
+    chordGlowColor: $("#chordGlowColor"),
     sortSelect: $("#sortSelect"),
     holdFilter: $("#holdFilter"),
     transport: $("#transport"),
@@ -109,6 +110,7 @@
     showCombo: "jubeat.showCombo",
     showNumbers: "jubeat.showNumbers",
     showChordGlow: "jubeat.showChordGlow",
+    chordGlowColor: "jubeat.chordGlowColor",
     collapsed: "jubeat.collapsed",
     sort: "jubeat.sort",
     holdFilter: "jubeat.holdFilter",
@@ -838,6 +840,15 @@
   }
 
   /** marker 顺序数字（同一秒内的第几个 note），画在 pad 中央 */
+  /** 同押光晕的颜色（取「光晕颜色」选项，返回 "r,g,b" 便于拼 rgba） */
+  function glowRgb() {
+    const raw = ((els.chordGlowColor && els.chordGlowColor.value) || "#3aa0ff").trim();
+    const m = /^#?([0-9a-f]{6})$/i.exec(raw);
+    if (!m) return "58,160,255";
+    const n = parseInt(m[1], 16);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+  }
+
   function drawOrderNumber(note, rect) {
     if (!rect || !els.showNumbers || !els.showNumbers.checked) return;
     const size = Math.max(16, rect.w * 0.58);   // 参考视频里数字几乎占满格子
@@ -852,31 +863,52 @@
     ctx.textBaseline = "middle";
 
     if (chord) {
-      // 蓝色光晕 + 一圈往外扩的光环：同一批数字用同一个时钟，所以是同步呼吸的
-      const period = 700;                                   // ms，一个呼吸周期
-      const phase = (performance.now() % period) / period;   // 0 → 1
-      const glow = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // 0 → 1 → 0
+      // 同押光晕：背后一大团彩色光晕 + 两圈错开半个周期往外扩的光环 + 数字本身的霓虹描边。
+      // 同一批用同一个时钟，所以整组是同步呼吸的。
+      const rgb = glowRgb();
+      const period = 700;                                     // ms，一个呼吸周期
+      const phase = (performance.now() % period) / period;     // 0 → 1
+      const glow = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);  // 0 → 1 → 0
 
-      // 外扩光环（从数字往外扩散后淡出）
-      ctx.globalAlpha = (1 - phase) * 0.7;
-      ctx.strokeStyle = "rgba(80, 185, 255, 0.95)";
-      ctx.lineWidth = Math.max(2, size * 0.08);
+      // 1) 数字背后的大团光晕（径向渐变铺满大半格，够浓才看得出是一组）
+      const haloR = size * (1.05 + 0.28 * glow);
+      const grad = ctx.createRadialGradient(x, y, size * 0.1, x, y, haloR);
+      grad.addColorStop(0, `rgba(${rgb}, ${0.62 + 0.2 * glow})`);
+      grad.addColorStop(0.45, `rgba(${rgb}, ${0.34 + 0.14 * glow})`);
+      grad.addColorStop(1, `rgba(${rgb}, 0)`);
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(x, y, size * (0.5 + 0.62 * phase), 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.arc(x, y, haloR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2) 两圈外扩光环（相位差半圈，看起来是连续往外推的波纹）
+      ctx.lineCap = "round";
+      for (const offset of [0, 0.5]) {
+        const p = (phase + offset) % 1;
+        ctx.globalAlpha = (1 - p) * 0.85;
+        ctx.strokeStyle = `rgb(${rgb})`;
+        ctx.lineWidth = Math.max(2.5, size * 0.12);
+        ctx.beginPath();
+        ctx.arc(x, y, size * (0.5 + 0.72 * p), 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.globalAlpha = 1;
 
-      // 数字本体背后的蓝色发光
-      ctx.shadowColor = `rgba(58, 160, 255, ${0.65 + 0.35 * glow})`;
-      ctx.shadowBlur = size * (0.42 + 0.5 * glow);
+      // 3) 数字的霓虹描边：外面一层散光、里面一层实色
       ctx.lineJoin = "round";
+      ctx.shadowColor = `rgba(${rgb}, 0.95)`;
+      ctx.shadowBlur = size * (0.85 + 0.4 * glow);
+      ctx.lineWidth = Math.max(5, size * 0.34);
+      ctx.strokeStyle = `rgba(${rgb}, ${0.72 + 0.28 * glow})`;
+      ctx.strokeText(text, x, y);
+      ctx.shadowBlur = size * 0.35;
       ctx.lineWidth = Math.max(3, size * 0.2);
-      ctx.strokeStyle = `rgba(130, 205, 255, ${0.85 + 0.15 * glow})`;
+      ctx.strokeStyle = `rgb(${rgb})`;
       ctx.strokeText(text, x, y);
       ctx.shadowBlur = 0;
     }
 
-    ctx.lineWidth = Math.max(2, size * 0.16);
+    ctx.lineWidth = Math.max(2, size * 0.14);
     ctx.strokeStyle = "rgba(0,0,0,0.75)";
     ctx.fillStyle = "#ffffff";
     ctx.strokeText(text, x, y);
@@ -1768,6 +1800,12 @@
       els.showChordGlow.addEventListener("change", () => {
         store(STORAGE.showChordGlow, els.showChordGlow.checked ? "1" : "0");
       });
+      els.chordGlowColor.addEventListener("input", () => {
+        store(STORAGE.chordGlowColor, els.chordGlowColor.value);
+      });
+      els.chordGlowColor.addEventListener("change", () => {
+        store(STORAGE.chordGlowColor, els.chordGlowColor.value);
+      });
 
       // 恢复上次的设置
       const saved = {
@@ -1776,6 +1814,7 @@
         showCombo: store(STORAGE.showCombo),
         showNumbers: store(STORAGE.showNumbers),
         showChordGlow: store(STORAGE.showChordGlow),
+        chordGlowColor: store(STORAGE.chordGlowColor),
         collapsed: store(STORAGE.collapsed),
         sort: store(STORAGE.sort),
         holdFilter: store(STORAGE.holdFilter),
@@ -1788,6 +1827,7 @@
       if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
       if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
+      if (saved.chordGlowColor) els.chordGlowColor.value = saved.chordGlowColor;
       if (saved.sort) els.sortSelect.value = saved.sort;
       if (saved.holdFilter != null) els.holdFilter.value = saved.holdFilter;
       // 窄屏默认收起选项，给面板留空间

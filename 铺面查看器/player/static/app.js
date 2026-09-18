@@ -82,6 +82,7 @@
     chartCache: new Map(),
     density: null, // {bucket, counts, max}
     scrubbing: false,
+    scrubSec: -1,  // 拖动中的预览位置（拖动时不动 <audio>，松手才真正 seek）
     // —— marker / timing ——
     baseOffset: 0, // 谱面 beat 0 对应的音频时间（秒）
     padRects: [],
@@ -589,7 +590,9 @@
     if (metroGain(1) <= 0) return;
     const bus = sfxBus();
     if (!bus || !audioCtx) return;
-    const now = rawMediaTime();          // 排程用原始时间：外推值只会让音提前响
+    // 用 AudioContext 时钟推算的谱面时间：它和音乐在同一条输出上，
+    // 「现在」估得越准，排出来的打点音就越贴拍子（用原始时间会整体晚 10~30ms）
+    const now = currentMediaTime();
     const rate = Number(els.rate.value) || 1;
     const horizon = now + sfxSched.horizon;
     while (sfxSched.idx < state.notes.length && state.notes[sfxSched.idx].t <= horizon) {
@@ -1150,9 +1153,7 @@
     const cv = els.densityCanvas;
     const box = cv.getBoundingClientRect();
     const x = Math.max(0, Math.min(box.width, ev.clientX - box.left));
-    const sec = (x / box.width) * (density.dur || state.duration || 0);
-    seekTo(sec);
-    return sec;
+    return (x / box.width) * (density.dur || state.duration || 0);
   }
 
   function updateComboDisplay() {
@@ -1583,6 +1584,8 @@
   }
 
   // —— transport ——
+  // 注：曾经试过把 <audio> 接进 WebAudio（想让音乐和打点音共用一条输出、共用一个时钟），
+  // 但页面不可见时 WebAudio 不渲染 —— 接管之后一转后台就没声音了，所以放弃，音乐仍然直出。
   // audio 元素的 currentTime 大约每 30~40ms 才更新一次，直接拿来驱动渲染会一顿一顿的
   // （marker 会整块往前跳）。这里在两次采样之间用 performance.now() 外推，采样一到就拉回真实值。
   //
@@ -1610,6 +1613,8 @@
   }
 
   function currentMediaTime() {
+    // 拖动进度条时用指针位置做预览（此时音频没动，也不该动）
+    if (state.scrubbing && state.scrubSec >= 0) return state.scrubSec;
     // chart time = audio time + user offset − 谱面自身起点偏移
     // （user offset 为正 = 视觉整体推迟，用来做视听校准）
     const off = (Number(els.offset.value) || 0) / 1000;
@@ -1736,7 +1741,9 @@
       - (Number(els.offset.value) || 0) / 1000);
 
     if (state.notes.length) {
-      advanceNotes(mediaT);
+      // 拖动预览时只按位置重建状态（不推进连击、不闪灯），松手 seek 后自然会重建
+      if (state.scrubbing) rebuildVisualState(mediaT);
+      else advanceNotes(mediaT);
     }
 
     // arm upcoming (pending within ARM window)
@@ -1921,6 +1928,9 @@
       setSidebarOpen(els.sidebar.classList.contains("hidden")));
 
     // —— 物量条：按住拖动 = 拖进度 ——
+    // 拖动期间只做「预览」：更新画面和时间显示，但**不动 <audio>**。
+    // 以前每移动一下就 seek 一次，一秒能打断音频管线几十次，松手后音轨要重新起、
+    // 还会从不对的位置出声，拍子就乱了。现在松手才 seek 一次。
     let resumeAfterScrub = false;
     els.densityCanvas.addEventListener("pointerdown", (ev) => {
       if (!state.notes.length) return;
@@ -1929,6 +1939,7 @@
       if (state.playing) pause();
       els.densityCanvas.setPointerCapture(ev.pointerId);
       const sec = densitySeekFromEvent(ev);
+      state.scrubSec = sec;
       els.densityInfo.textContent = `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`;
       drawDensity(sec);
     });
@@ -1939,9 +1950,9 @@
         els.densityInfo.textContent = `物量 · ${fmtTime(sec)} 附近 ${bucketInfo(sec)}`;
         return;
       }
-      const s2 = densitySeekFromEvent(ev);
-      els.densityInfo.textContent = `跳转到 ${fmtTime(s2)} · ${bucketInfo(s2)}`;
-      drawDensity(s2);
+      state.scrubSec = sec;                    // 只记录预览位置，不碰音频
+      els.densityInfo.textContent = `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`;
+      drawDensity(sec);
     });
     const endScrub = (ev) => {
       if (!state.scrubbing) return;
@@ -1951,6 +1962,9 @@
       } catch (_) {
         /* ignore */
       }
+      const target = state.scrubSec;
+      state.scrubSec = -1;
+      if (target >= 0) seekTo(target);          // 松手时只 seek 这一次
       if (resumeAfterScrub) play();
     };
     els.densityCanvas.addEventListener("pointerup", endScrub);

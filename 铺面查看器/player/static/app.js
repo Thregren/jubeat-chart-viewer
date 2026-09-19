@@ -967,26 +967,21 @@
    * 长押的方向箭头（对应游戏里长押那个三角箭头）。
    *
    * .mc 的长押只给一个键（index）加一个「尾巴尖朝哪边」（tailTip），游戏里就是靠箭头
-   * 告诉你这条长押往哪个方向收尾。这里照着画一根朝尾尖方向的箭杆 + 尖端的三角：
-   *   - 接近段：箭头从尾尖那一侧滑进位，越接近拍点越大越清楚（这就是那个「箭头移动」）
-   *   - 按住段：箭头顺着方向慢慢推到格子边，按得越久推得越远，松手就不再画
+   * 告诉你这条长押往哪个方向收尾。这里照着画一根朝尾尖方向的箭杆 + 尖端的三角。
+   *
+   * **不动**：位置 / 大小 / 朝向都是固定的，只在接近和按住期间淡入，
+   * 拍点前滑进位、按住时往外推那几版太闹，去掉了。
    * 一律裁在自己的格子里，和光晕 / 数字同一个规矩。
    */
   function drawHoldArrow(note, rect, chartT, lead) {
     if (!rect || !note.dir || note.endT == null) return;
     const end = note.endT;
-    const span = Math.max(0.001, end - note.t);
-    let pos;          // 0 = 贴在默认位置，1 = 推到箭头方向那一侧
-    let alpha = 1;
-    if (chartT < note.t) {
-      const p = lead > 0 ? Math.min(1, Math.max(0, (chartT - (note.t - lead)) / lead)) : 1;
-      pos = 1 - p;                        // 从外面滑进来
-      alpha = 0.45 + 0.55 * p;
-    } else if (chartT < end) {
-      pos = Math.min(1, (chartT - note.t) / span);
-    } else {
-      return;
-    }
+    if (chartT >= end) return;
+    // 只在进场那一小段淡入，避免硬闪；位置本身不动
+    const fadeIn = 0.15;
+    const alpha = chartT >= note.t
+      ? 1
+      : Math.min(1, Math.max(0.25, (chartT - (note.t - lead)) / Math.max(0.01, fadeIn)));
 
     const dx = note.dir.x;
     const dy = note.dir.y;
@@ -995,11 +990,10 @@
     const short = Math.min(rect.w, rect.h);
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;
-    const grow = chartT < note.t ? Math.max(0.55, 1 - 0.75 * pos) : 1;
-    const travel = short * (0.05 + 0.20 * pos);
-    const headLen = short * 0.24 * grow;
+    const travel = short * 0.20;          // 固定贴在格子中心偏尾尖方向那一侧
+    const headLen = short * 0.20;
     const headHalf = headLen * 0.62;
-    const shaft = short * 0.30;
+    const shaft = short * 0.24;
 
     const baseX = cx + dx * travel;
     const baseY = cy + dy * travel;

@@ -2916,9 +2916,15 @@
    * 省得让用户自己去清缓存。
    */
   let versionReloaded = false;
+  let versionCheckedAt = 0;
 
   async function checkFrontVersion() {
     if (versionReloaded || FRONT_VERSION === "dev") return;   // dev（没有 ?v=）不参与
+    // 节流：切前台很频繁（每次都可能触发），一分钟查一次足够。
+    // 这个请求是 cache:no-store + 唯一 query，会穿透 CDN 直达源站，别打太勤。
+    const now = Date.now();
+    if (now - versionCheckedAt < 60_000) return;
+    versionCheckedAt = now;
     try {
       const res = await fetch(`index.html?__v=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) return;

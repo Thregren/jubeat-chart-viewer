@@ -70,7 +70,7 @@
     song: null,
     chartMeta: null,
     chart: null,
-    notes: [], // {t, endT, index, endIndex|null, kind}
+    notes: [], // {t, endT, index, tailTip|null, kind}（tailTip 只是长押尾巴方向，不参与渲染）
     bpmEvents: [], // {beat, bpm}
     duration: 0,
     playing: false,
@@ -353,12 +353,10 @@
       const t = beatToSec(beatToFloat(raw.beat));
       const startBeat = beatToFloat(raw.beat);
       let endT = null;
-      let endIndex = null;
       let endBeat = null;
       if (raw.endbeat != null) {
         endBeat = beatToFloat(raw.endbeat);
         endT = beatToSec(endBeat);
-        endIndex = raw.endindex != null ? raw.endindex : raw.index;
         nHold++;
       } else {
         nTap++;
@@ -371,7 +369,11 @@
         endBeat,
         endT,
         index: raw.index | 0,
-        endIndex: endIndex == null ? null : endIndex | 0,
+        // ⚠️ .mc 里的 endindex 是长押「尾巴尖朝哪边」的方向（jubeatools 的 tail_tip），
+        // 不是另一个 pad，更不是第二条 note。以前把它当第二个格子点亮，
+        // 于是每个长押都凭空多出一个亮着的键（密集长押的曲子看着像多了几十个 note）。
+        // 这里只留作方向参考（暂时没用上），渲染一律只用 index。
+        tailTip: raw.endindex == null ? null : raw.endindex | 0,
         kind: endT != null ? "hold" : "tap",
         state: "pending", // pending | flashing | holding | done
         flashEnd: 0,
@@ -1646,7 +1648,6 @@
         if (chartT >= n.t && chartT < n.endT) {
           n.state = "holding";
           setHold(n.index, n.t, n.endT);
-          if (n.endIndex != null) setHold(n.endIndex, n.t, n.endT);
         } else if (chartT >= n.endT) {
           n.state = "done";
         } else {
@@ -2348,14 +2349,8 @@
           n.state = "flashing";
           n.flashEnd = n.endT + FLASH;
           state.hitUntil[n.index] = n.flashEnd;
-          if (n.endIndex != null) {
-            state.hitUntil[n.endIndex] = n.flashEnd;
-          }
           if (state.holdUntil[n.index] > 0 && chartT > n.endT) {
             state.holdUntil[n.index] = -1;
-          }
-          if (n.endIndex != null && state.holdUntil[n.endIndex] > 0 && chartT > n.endT) {
-            state.holdUntil[n.endIndex] = -1;
           }
         }
         continue;
@@ -2370,13 +2365,11 @@
         // 打点音交给 sfxTick 提前排程（不再跟着渲染帧走）
         pulseGlow();
       } else {
-        // enter hold immediately (flash start on both ends lightly)
+        // 立刻进入 hold（长押只占它自己那一格，另一头是尾巴方向，不是第二个键）
         n.state = "holding";
         const end = n.endT ?? n.t + FLASH;
         setHold(n.index, n.t, end);
-        if (n.endIndex != null) setHold(n.endIndex, n.t, end);
         state.hitUntil[n.index] = n.t + FLASH;
-        if (n.endIndex != null) state.hitUntil[n.endIndex] = n.t + FLASH;
         bumpCombo();
         // hold 的头拍同样要有打点音，同样交给排程器
         pulseGlow();
@@ -2428,7 +2421,6 @@
         if (n.state !== "pending") continue;
         if (n.t - ARM <= mediaT && mediaT < n.t) {
           state.armed[n.index] = true;
-          if (n.kind === "hold" && n.endIndex != null) state.armed[n.endIndex] = true;
         }
       }
     }

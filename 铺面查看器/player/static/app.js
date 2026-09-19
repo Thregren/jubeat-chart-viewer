@@ -272,7 +272,7 @@
   const PHRASE_LOOKBACK = 8;
   // 一句话最多数到几：纯粹是兜底，避免连续不断的长段把数字堆到几十上百。
   // 正常情况都由上面的「换气」自然断句，只有真的没空档的段落才会数到这个数。
-  const PHRASE_MAX = 16;
+  const PHRASE_MAX = 12;
 
   function store(key, value) {
     try {

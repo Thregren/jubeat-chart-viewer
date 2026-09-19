@@ -363,19 +363,8 @@
       }
       maxSec = Math.max(maxSec, t, endT || 0);
       if (endT != null) maxHold = Math.max(maxHold, endT - t);
-      // 长押的方向：尾尖相对起点的方位（实测都是正东西 / 正南北），渲染箭头用
       const head = raw.index | 0;
       const tip = raw.endindex == null ? null : raw.endindex | 0;
-      let dir = null;
-      if (tip != null && tip !== head) {
-        const dx = (tip % 4) - (head % 4);
-        const dy = Math.floor(tip / 4) - Math.floor(head / 4);
-        if (dx || dy) {
-          dir = Math.abs(dx) >= Math.abs(dy)
-            ? { x: dx > 0 ? 1 : -1, y: 0 }
-            : { x: 0, y: dy > 0 ? 1 : -1 };   // 注意 index = x + 4y，(0,0) 在左上，y 向下为正
-        }
-      }
       notes.push({
         t,
         beat: startBeat,
@@ -387,7 +376,6 @@
         // 于是每个长押都凭空多出一个亮着的键（密集长押的曲子看着像多了几十个 note）。
         // 现在只用来画方向箭头，键位一律只用 index。
         tailTip: tip,
-        dir,
         kind: endT != null ? "hold" : "tap",
         state: "pending", // pending | flashing | holding | done
         flashEnd: 0,
@@ -963,99 +951,6 @@
     return hexRgb(slot ? pair.alt : pair.main);
   }
 
-  /**
-   * 长押的方向箭头（对应游戏里长押那个三角箭头）。
-   *
-   * .mc 的长押只给一个键（index）加一个「尾巴尖朝哪边」（tailTip），游戏里就是靠箭头
-   * 告诉你这条长押往哪个方向收尾。这里照着画一根朝尾尖方向的箭杆 + 尖端的三角。
-   *
-   * **不动**：位置 / 大小 / 朝向都是固定的，只在接近和按住期间淡入，
-   * 拍点前滑进位、按住时往外推那几版太闹，去掉了。
-   * 一律裁在自己的格子里，和光晕 / 数字同一个规矩。
-   */
-  function drawHoldArrow(note, rect, chartT, lead) {
-    if (!rect || !note.dir || note.endT == null) return;
-    const end = note.endT;
-    if (chartT >= end) return;
-    // 只在进场那一小段淡入，避免硬闪；位置本身不动
-    const fadeIn = 0.15;
-    const alpha = chartT >= note.t
-      ? 1
-      : Math.min(1, Math.max(0.25, (chartT - (note.t - lead)) / Math.max(0.01, fadeIn)));
-
-    const dx = note.dir.x;
-    const dy = note.dir.y;
-    const px = -dy;                       // 与箭头垂直的方向，用来画三角的底边
-    const py = dx;
-    const short = Math.min(rect.w, rect.h);
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    const travel = short * 0.20;          // 固定贴在格子中心偏尾尖方向那一侧
-    const headLen = short * 0.20;
-    const headHalf = headLen * 0.62;
-    const shaft = short * 0.24;
-
-    const baseX = cx + dx * travel;
-    const baseY = cy + dy * travel;
-    const tipX = baseX + dx * headLen;
-    const tipY = baseY + dy * headLen;
-
-    ctx.save();
-    const inset = Math.max(1, rect.w * 0.02);
-    roundRectPath(ctx, rect.x + inset, rect.y + inset,
-                  rect.w - inset * 2, rect.h - inset * 2,
-                  Math.max(4, rect.w * 0.12));
-    ctx.clip();
-    ctx.globalAlpha = alpha;
-
-    // 箭杆：从箭头的底边往回画（深色底 + 亮边，浅色的 hold 填充上也看得清）
-    ctx.strokeStyle = "rgba(16, 24, 40, 0.85)";
-    ctx.lineCap = "round";
-    ctx.lineWidth = Math.max(3, short * 0.075);
-    ctx.beginPath();
-    ctx.moveTo(baseX - dx * shaft, baseY - dy * shaft);
-    ctx.lineTo(baseX, baseY);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(242, 247, 255, 0.92)";
-    ctx.lineWidth = Math.max(1.5, short * 0.032);
-    ctx.stroke();
-
-    // 箭头：尖端朝尾尖方向
-    ctx.beginPath();
-    ctx.moveTo(tipX, tipY);
-    ctx.lineTo(baseX + px * headHalf, baseY + py * headHalf);
-    ctx.lineTo(baseX - px * headHalf, baseY - py * headHalf);
-    ctx.closePath();
-    ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
-    ctx.shadowBlur = short * 0.12;
-    ctx.fillStyle = "rgba(16, 24, 40, 0.82)";
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "rgba(242, 247, 255, 0.95)";
-    ctx.lineWidth = Math.max(1.5, short * 0.036);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  /** 当前 marker 的接近时长；没选 marker 就按 0.5 秒走，箭头动画不跟着停 */
-  function markerLead(entry) {
-    if (!entry) return 0.5;
-    const baseFps = Number(entry.fps) || FPS_FALLBACK[entry.id] || markerCfg.fps;
-    const fps = baseFps * (markerCfg.speed || 1);
-    return (currentAnchor(entry) + 1) / fps;
-  }
-
-  function drawHoldArrows(chartT) {
-    if (!state.notes.length) return;
-    const lead = markerLead(markerCfg.entry);
-    const holdBack = (state._parsed && state._parsed.maxHold) || 0;
-    // 上界要到 chartT + lead：接近段的箭头在拍点之前就要进场
-    for (const n of notesInWindow(chartT - lead - holdBack, chartT + lead + 0.02)) {
-      if (n.kind === "hold") drawHoldArrow(n, state.padRects[n.index], chartT, lead);
-    }
-  }
-
   function drawOrderNumber(note, rect) {
     if (!rect || !els.showNumbers || !els.showNumbers.checked) return;
     const size = Math.max(16, rect.w * 0.58);   // 参考视频里数字几乎占满格子
@@ -1138,7 +1033,6 @@
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
     drawComboOverlay();     // 连击在最底层：marker 会压住它（和游戏一致）
-    drawHoldArrows(chartT); // 长押方向箭头：和 marker 无关，选了「无（仅面板灯）」也要画
     const entry = markerCfg.entry;
     if (!entry || !state.notes.length) return;
 

@@ -66,3 +66,65 @@ rsync -av --delete site/ root@server:/www/wwwroot/jubeat/site/
 ```
 
 nginx 无需重启（同名文件覆盖即可；前端静态文件是 `no-cache` + ETag，会立即生效）。
+
+## 接了 Cloudflare CDN 之后
+
+线上（ub.thregren.world）目前是 `CF 代理 → 源站 nginx`，实测下来有几点要注意：
+
+### 1. 让限流和日志按真实访客 IP 算（必须）
+
+CDN 之后源站看到的客户端 IP 全是 CF 边缘的（162.159.x.x 之类），于是：
+
+- 访问日志里记不到真实访客
+- `limit_req` / `limit_conn` 变成「所有走同一个边缘节点的用户共用一个桶」，
+  音频那个 `4r/s burst=20` / `limit_conn 8` 很容易误伤正常用户
+
+做法：把 [cloudflare-realip.conf](cloudflare-realip.conf) 存到 nginx 能读的位置，
+在站点 server 块里 include 一次：
+
+```nginx
+include /www/server/panel/vhost/nginx/snippets/cloudflare-realip.conf;
+```
+
+它用 CF 官方 IP 段（`https://www.cloudflare.com/ips-v4` 与 `/ips-v6`，官方会变，建议定期同步）
+配 `real_ip_header CF-Connecting-IP`。因为只在连接来自 CF 段时才信任这个头，
+别人直连源站伪造这个头没有用。
+
+### 2. `.json` 默认不会被 CF 缓存（要在面板加 Cache Rule）
+
+CF 免费版默认**只按文件扩展名决定缓存**，它的默认列表里有 `.js/.css/.ogg/.png/.jpg` 这些，
+**没有 `.json`**。所以 `/data/library.json`（115 KB gzip 后）和每张谱面 json 目前是
+`cf-cache-status: DYNAMIC`——每次访问都回源。
+
+在本站 nginx 里已经把 `/data/*.json` 的响应头改成：
+
+```
+Cache-Control: public, max-age=0, s-maxage=30, stale-while-revalidate=60
+```
+
+（浏览器每次都回源校验 → 改谱立即生效；CDN 可以存 30 秒。）
+
+但要让 CF 真的缓存它，还需要在 Cloudflare 面板加一条 **Cache Rule**：
+
+```
+Rules → Cache Rules → Create rule
+  名称：jubeat data json
+  匹配：URI Path  matches  ^/data/.*\.json$
+  然后：Cache eligibility → Eligible for cache
+        Edge TTL → Override origin，30 seconds
+        Browser TTL → Respect origin
+```
+
+加完之后 `/data/*.json` 就应该是 `HIT`，`library.json` 那 115 KB 不再每次回源。
+
+（前端「重新读取」按钮走的是 `?reindex=1`，那是另一个缓存键，点了仍然是新的。）
+
+### 3. 顺带说明
+
+- **命令行 curl（LibreSSL）会被 CF 重置 TLS 握手**，测的时候要用真实浏览器，
+  或者用 Chrome 的 `--headless` 打 CDP
+- CF 在中国大陆没有节点，国内访客通常落在香港/日本/新加坡的 POP。
+  实测国内到边缘的 RTT 大约 200–500 ms——**小文件（HTML/JSON）不一定比直连上海源站快**，
+  CDN 在这里的真正收益是「音源/封面这些大文件缓存住 + 源站带宽和并发压力下降」
+- 想彻底挡住「直连源站绕过 CDN」，要在腾讯云安全组里只放行 Cloudflare 的 IP 段
+  （v4 + v6 都要），否则别人仍可绕过 CDN 拿源站 IP 直接拉音频

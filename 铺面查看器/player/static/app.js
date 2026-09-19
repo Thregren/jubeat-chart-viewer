@@ -5,6 +5,16 @@
 
   const $ = (sel) => document.querySelector(sel);
 
+  /**
+   * 前端版本 = 自己那个 script 标签上的 ?v=。
+   * 后面用来自检「浏览器是不是还捧着一份旧页面」。
+   */
+  const FRONT_VERSION = (() => {
+    const tag = document.querySelector('script[src*="app.js"]');
+    const m = tag && /\?v=([^&"']+)/.exec(tag.getAttribute("src") || "");
+    return m ? m[1] : "dev";
+  })();
+
   const els = {
     search: $("#search"),
     versionFilter: $("#versionFilter"),
@@ -2801,11 +2811,43 @@
     }
   }
 
+  /**
+   * 前端版本自检。
+   *
+   * nginx 给 js/css 挂了 12h 缓存，靠 index.html 上的 ?v= 换新。但如果浏览器手里还捧着一份
+   * **旧的 index.html**（iOS 的缓存、后台标签页从内存里恢复、bfcache 都会这样），它就只会去拿
+   * 旧的 ?v=…那份 js —— 表现就是「明明上线了，页面上还是老样子」。
+   *
+   * 这里在切回前台时（以及每 5 分钟）对一下服务器上的版本号，不一样就重载一次，
+   * 省得让用户自己去清缓存。
+   */
+  let versionReloaded = false;
+
+  async function checkFrontVersion() {
+    if (versionReloaded || FRONT_VERSION === "dev") return;   // dev（没有 ?v=）不参与
+    try {
+      const res = await fetch(`index.html?__v=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const m = /app\.js\?v=([^"'&\s]+)/.exec(await res.text());
+      if (!m || m[1] === FRONT_VERSION) return;
+      versionReloaded = true;                                 // 只重载一次，别来回刷
+      console.info(`[jubeat] 前端已更新 ${FRONT_VERSION} → ${m[1]}，重载`);
+      location.reload();
+    } catch (_) {
+      /* 离线 / 被拦截就算了，下次再说 */
+    }
+  }
+
   // —— boot ——
   async function main() {
     buildGlowPairOptions();
     buildPanel();
     bindEvents();
+    checkFrontVersion();
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) checkFrontVersion();
+    });
+    setInterval(checkFrontVersion, 5 * 60 * 1000);
     layoutCanvas();
     layoutDensity();
     setSidebarOpen(!isNarrow());   // 窄屏默认收起曲库抽屉

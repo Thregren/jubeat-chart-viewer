@@ -37,7 +37,8 @@
     showCombo: $("#showCombo"),
     showNumbers: $("#showNumbers"),
     showChordGlow: $("#showChordGlow"),
-    chordGlowColor: $("#chordGlowColor"),
+    chordGlowPair: $("#chordGlowPair"),
+    glowPairChips: $("#glowPairChips"),
     sortSelect: $("#sortSelect"),
     holdFilter: $("#holdFilter"),
     transport: $("#transport"),
@@ -55,7 +56,11 @@
     rate: $("#rate"),
     offset: $("#offset"),
     autoLoop: $("#autoLoop"),
-    syncBadge: $("#syncBadge"),
+    loadRow: $("#loadRow"),
+    loadLabel: $("#loadLabel"),
+    loadBar: $("#loadBar"),
+    loadFill: $("#loadFill"),
+    loadPct: $("#loadPct"),
     audio: $("#audio"),
     toast: $("#toast"),
   };
@@ -110,7 +115,7 @@
     showCombo: "jubeat.showCombo",
     showNumbers: "jubeat.showNumbers",
     showChordGlow: "jubeat.showChordGlow",
-    chordGlowColor: "jubeat.chordGlowColor",
+    chordGlowPair: "jubeat.chordGlowPair",
     settingsVersion: "jubeat.settingsVersion",
     collapsed: "jubeat.collapsed",
     sort: "jubeat.sort",
@@ -216,6 +221,27 @@
   const FPS_FALLBACK = {
     "07_flower_slow": 60, // 「展开速度 50%」素材是 2 倍帧数，按 60fps 播才和常规 marker 等速
   };
+
+  /**
+   * 同押光晕的配色对（主色 / 副色）。
+   *
+   * 为什么是「对」而不是单色：同押密的地方（相邻两批挨得很近）光晕挤成一片，
+   * 同一个颜色看过去分不出哪几个键是一起按的。相邻两批用色相拉开的两种颜色交替，
+   * 分组关系一眼就出来了；稀疏的地方只有一批，用主色就够，免得画面太花。
+   *
+   * 选色原则：色相互补或接近互补、明度接近（都不要暗，不然在深色面板上糊成一团）。
+   */
+  const GLOW_PAIRS = [
+    { name: "青 / 洋红", main: "#22d3ee", alt: "#ff3d9a" },
+    { name: "琥珀 / 蓝", main: "#ffb020", alt: "#4c8dff" },
+    { name: "薄荷 / 珊瑚", main: "#34d399", alt: "#ff6b57" },
+    { name: "柠檬 / 紫", main: "#e2ff3d", alt: "#a855f7" },
+    { name: "天蓝 / 玫红", main: "#38bdf8", alt: "#fb7185" },
+    { name: "橙 / 青绿", main: "#ff8a3d", alt: "#2dd4bf" },
+  ];
+
+  // 相邻两批同押挨得比这个还近，就算「密」，改用双色交替
+  const GLOW_DENSE_GAP = 0.35;
 
   function store(key, value) {
     try {
@@ -378,6 +404,25 @@
     for (const n of notes) groupSize.set(n.group, (groupSize.get(n.group) || 0) + 1);
     for (const n of notes) n.groupSize = groupSize.get(n.group) || 1;
 
+    // 同押光晕用主色还是副色：按「这一批同押密不密」预先算好，逐帧再算没必要。
+    // 密的地方相邻两批交替上色（0 = 主色，1 = 副色），稀疏的地方一律主色。
+    const chords = [];
+    for (const n of notes) {
+      if (!chords.length || chords[chords.length - 1].group !== n.group) {
+        chords.push({ group: n.group, t: n.t, size: n.groupSize });
+      }
+    }
+    const chordGroups = chords.filter((c) => c.size >= 2);
+    const glowSlot = new Map();
+    chordGroups.forEach((c, i) => {
+      const prev = chordGroups[i - 1];
+      const next = chordGroups[i + 1];
+      const dense = (prev && c.t - prev.t <= GLOW_DENSE_GAP)
+        || (next && next.t - c.t <= GLOW_DENSE_GAP);
+      glowSlot.set(c.group, dense ? i % 2 : 0);
+    });
+    for (const n of notes) n.glowSlot = glowSlot.get(n.group) || 0;
+
     const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
     const baseBpm = bpms.length ? bpms[0] : 0;
     const multi = timeEvents.length > 1;
@@ -406,6 +451,29 @@
     const whole = Math.floor(s);
     const cs = Math.floor((s - whole) * 100);
     return `${m}:${String(whole).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+  }
+
+  /** 下载量显示：服务器没给总长度时用它代替百分比 */
+  function fmtBytes(n) {
+    if (!isFinite(n) || n <= 0) return "";
+    const mb = n / 1048576;
+    if (mb >= 10) return `${Math.round(mb)} MB`;
+    if (mb >= 1) return `${mb.toFixed(1)} MB`;
+    return `${Math.max(1, Math.round(n / 1024))} KB`;
+  }
+
+  /**
+   * 曲尾常有一段既没有 note、也没有声音的空白：按最后一个 note 截掉，
+   * 同时不超过音源自身的长度。
+   * 音源元数据没到之前先按谱面长度算（慢网下不能为了等它把谱面也卡住），到了再修正。
+   */
+  const CHART_TAIL = 1.2;
+
+  function computeDuration(parsed) {
+    const audioDur = Number.isFinite(els.audio.duration) ? els.audio.duration : null;
+    let dur = ((parsed && parsed.maxSec) || 0) + CHART_TAIL;
+    if (audioDur) dur = Math.min(dur, audioDur);
+    return Math.max(dur, 1);
   }
 
   function toast(msg, isErr = false) {
@@ -859,14 +927,24 @@
     ctx.restore();
   }
 
-  /** marker 顺序数字（同一秒内的第几个 note），画在 pad 中央 */
-  /** 同押光晕的颜色（取「光晕颜色」选项，返回 "r,g,b" 便于拼 rgba） */
-  function glowRgb() {
-    const raw = ((els.chordGlowColor && els.chordGlowColor.value) || "#3aa0ff").trim();
-    const m = /^#?([0-9a-f]{6})$/i.exec(raw);
+  /** 当前选中的光晕配色对 */
+  function glowPair() {
+    const i = Number(els.chordGlowPair && els.chordGlowPair.value);
+    const idx = Number.isFinite(i) ? Math.max(0, Math.min(GLOW_PAIRS.length - 1, i)) : 0;
+    return GLOW_PAIRS[idx];
+  }
+
+  function hexRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
     if (!m) return "58,160,255";
     const n = parseInt(m[1], 16);
     return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+  }
+
+  /** 同押光晕的颜色（slot 0 = 主色，1 = 副色），返回 "r,g,b" 便于拼 rgba */
+  function glowRgb(slot = 0) {
+    const pair = glowPair();
+    return hexRgb(slot ? pair.alt : pair.main);
   }
 
   function drawOrderNumber(note, rect) {
@@ -892,7 +970,8 @@
     if (chord) {
       // 同押光晕：背后一大团彩色光晕 + 两圈错开半个周期往外扩的光环 + 数字本身的霓虹描边。
       // 同一批用同一个时钟，所以整组是同步呼吸的。
-      const rgb = glowRgb();
+      // 颜色按这一批所在位置的密度取：密的地方相邻两批在主色 / 副色之间交替。
+      const rgb = glowRgb(note.glowSlot || 0);
       const period = 560;                                     // ms，一个呼吸周期（收得比之前快）
       const phase = (performance.now() % period) / period;     // 0 → 1
       const stroke = Math.pow(1 - phase, 1.4);                 // 波纹 / 描边淡出的速度
@@ -1064,6 +1143,7 @@
     dur: 0,
     rect: null,
     dpr: 1,
+    placeholder: false,   // true = 音源还没就绪，只画外框和提示，不画柱子和播放头
   };
 
   function buildDensity() {
@@ -1091,7 +1171,7 @@
     if (!cv || !cv.getContext) return;
     const box = cv.parentElement.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const h = Math.max(44, Math.round(box.height));
+    const h = Math.max(24, Math.round(box.height));   // 物量条压扁了，别再兜到 44
     cv.style.width = "100%";
     cv.style.height = h + "px";
     cv.width = Math.max(1, Math.round(box.width * dpr));
@@ -1114,16 +1194,20 @@
     // 背景与网格（每 30 秒一条竖线）
     ctx2.fillStyle = "#0a0d14";
     ctx2.fillRect(0, 0, w, h);
-    if (!density.counts.length) {
+    if (!density.counts.length || density.placeholder) {
       ctx2.fillStyle = "#4a5266";
       ctx2.font = "11px " + (getComputedStyle(document.body).fontFamily || "sans-serif");
-      ctx2.fillText("物量显示：加载谱面后显示每个时段的 note 数，可直接拖动跳转", 8, h / 2 + 4);
+      ctx2.fillText(
+        density.counts.length
+          ? "音源加载中 · 就绪后显示物量"                                   // 谱面有了，但还播不了
+          : "物量显示：加载谱面后显示每个时段的 note 数，可直接拖动跳转",
+        8, h / 2 + 4);
       return;
     }
     const dur = density.dur || 1;
     const barW = w / density.counts.length;
-    const top = 6;
-    const plot = h - 16;
+    const top = 4;
+    const plot = h - 16;      // 底部留 12px 给时间刻度，柱子别压到刻度上
     ctx2.strokeStyle = "rgba(255,255,255,0.06)";
     ctx2.lineWidth = 1;
     for (let s = 30; s < dur; s += 30) {
@@ -1134,7 +1218,7 @@
       ctx2.stroke();
       ctx2.fillStyle = "#5b6478";
       ctx2.font = "9px monospace";
-      ctx2.fillText(fmtTime(s).slice(0, 5), x + 3, h - 3);
+      ctx2.fillText(fmtTime(s).slice(0, 5), x + 3, h - 2);
     }
     // 柱子：越高越黄，峰值用白色
     for (let i = 0; i < density.counts.length; i++) {
@@ -1414,6 +1498,10 @@
     const key = `${state.song.id}::${file}`;
     stopForLoad();
     els.captionLeft.textContent = "LOADING CHART…";
+    // 换歌的第一段等待：谱面 json + 音源首包。这时候进度条先出来，别让界面看起来是死的。
+    audioLoad.pending = true;
+    audioLoad.pendingLabel = state.chartCache.has(key) ? "音频加载" : "谱面读取";
+    updateLoadMeter();
     try {
       let payload = state.chartCache.get(key);
       if (!payload) {
@@ -1444,36 +1532,25 @@
 
       // audio
       const src = audioUrl(state.song);
-      if (backend.url !== src) prepareBuffer(src);     // 顺手解码成 AudioBuffer（失败就用 <audio>）
+      if (backend.url !== src) {
+        prepareBuffer(src);        // 整首下来解码成 AudioBuffer（失败就用 <audio> 直出）
+      } else {
+        // 同一首歌换难度：音源没变，不用重下，进度条按现有的来
+        audioLoad.pending = false;
+        audioLoad.wantPlay = false;
+        updateLoadMeter();
+      }
       if (els.audio.dataset.src !== src) {
+        audioLoad.pendingLabel = "音频加载";
+        audioLoad.pending = !audioLoad.fetching;
+        updateLoadMeter();
         els.audio.src = src;
         els.audio.dataset.src = src;
         els.audio.currentTime = 0;
-        await new Promise((resolve, reject) => {
-          const onOk = () => {
-            cleanup();
-            resolve();
-          };
-          const onErr = () => {
-            cleanup();
-            reject(new Error("音频加载失败"));
-          };
-          const cleanup = () => {
-            els.audio.removeEventListener("loadedmetadata", onOk);
-            els.audio.removeEventListener("error", onErr);
-          };
-          els.audio.addEventListener("loadedmetadata", onOk);
-          els.audio.addEventListener("error", onErr);
-          els.audio.load();
-        });
+        els.audio.load();          // 元数据到了自己修正时长（见 bindLoadEvents）
       }
 
-      // 曲尾常有一段既没有 note、也没有声音的空白：按最后一个 note 截掉
-      const CHART_TAIL = 1.2;
-      const audioDur = Number.isFinite(els.audio.duration) ? els.audio.duration : null;
-      let dur = (parsed.maxSec || 0) + CHART_TAIL;
-      if (audioDur) dur = Math.min(dur, audioDur);
-      state.duration = Math.max(dur, 1);
+      state.duration = computeDuration(parsed);
 
       els.statBpm.textContent = parsed.multiBpm
         ? `${parsed.baseBpm}~`
@@ -1491,10 +1568,14 @@
       layoutCanvas();
       buildDensity();
       const urlT = urlState().t;
-      seekTo(urlT != null ? urlT : 0);
+      // 音源还没就绪时这一跳会被挂起，等可播了再落下去（深链接 / 截图脚本都靠它）
+      seekWhenReady(urlT != null ? urlT : 0);
     } catch (err) {
       console.error(err);
       els.captionLeft.textContent = "LOAD FAILED";
+      audioLoad.pending = false;
+      audioLoad.wantPlay = false;
+      updateLoadMeter();
       toast(`铺面加载失败：${err.message}`, true);
     }
   }
@@ -1529,6 +1610,8 @@
     backend.buf = null;
     backend.mode = "element";
     backend.anchorPos = 0;
+    pendingSeek = null;      // 上一首没落下去的跳转作废
+    resetLoadMeter();
     try {
       els.audio.pause();
     } catch (_) {
@@ -1537,7 +1620,6 @@
     state.playing = false;
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
-    els.syncBadge.textContent = "sync —";
     state.notes = [];
     state._parsed = null;
     state.duration = 0;
@@ -1653,32 +1735,321 @@
     backend.src = null;
   }
 
-  /** 把音源解码成 AudioBuffer（换歌时调用；失败就继续用 <audio>） */
+  // —— 音源加载进度 ——
+  //
+  // 换歌时整首音源要从服务器下下来（慢网下这是最耗时间的一步），这期间 <audio>
+  // 是播不动的。以前界面上没有任何反馈，看着就像按钮坏了，所以把「还差多少」显式画出来。
+  //
+  // 进度有两个来源，谁靠前用谁：
+  //   1. prepareBuffer() 整首下载的字节数 —— WebAudio 后端要用，通常是大头
+  //   2. <audio> 自己的 buffered 区间 —— element 后端（?media=1）或解码失败时的退路
+  const audioLoad = {
+    pending: false,     // 已在加载，但音源还没开始下（比如还在读谱面 json）
+    pendingLabel: "加载中",
+    fetching: false,    // prepareBuffer 正在整首下载
+    decoding: false,    // 下载完了，正在解码成 AudioBuffer
+    fetchTotal: 0,      // 字节；0 = 服务器没给 Content-Length
+    fetchDone: 0,
+    buffering: false,   // <audio> 正在等数据（播放中途卡住也会置上）
+    wantPlay: false,    // 加载途中点了播放：数据够了自己会起播，这里只用于提示
+    visible: false,
+    hideTimer: 0,
+    lastLabel: "",
+    lastPct: -2,
+  };
+
+  /** <audio> 已经缓冲到哪了（0~1）；拿不到时长就返回 -1 */
+  function mediaBufferedRatio() {
+    const el = els.audio;
+    const dur = el.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return -1;
+    let end = 0;
+    try {
+      for (let i = 0; i < el.buffered.length; i++) end = Math.max(end, el.buffered.end(i));
+    } catch (_) {
+      return -1;
+    }
+    return Math.max(0, Math.min(1, end / dur));
+  }
+
+  /** 当前这首歌准备好了多少（0~1）；-1 = 还估不出来 */
+  function loadRatio() {
+    if (audioLoad.pending || audioLoad.fetching) {
+      return audioLoad.fetchTotal > 0 ? audioLoad.fetchDone / audioLoad.fetchTotal : -1;
+    }
+    if (audioLoad.decoding) return 1;
+    return mediaBufferedRatio();
+  }
+
+  /**
+   * 进度条要不要显示。
+   * 注意不能拿「mediaBufferedRatio() < 1」当条件：一首两分钟的歌几乎不会整首缓冲完，
+   * 那样进度条会一直挂在那儿。只在真的在等数据时才显示。
+   */
+  function loadBusy() {
+    if (audioLoad.fetching || audioLoad.decoding) return true;
+    // pending 只是「还没拿到能播的数据」；只要现在能立刻出声，它就该让位
+    if (audioLoad.pending && !playbackLoaded()) return true;
+    // 播放中卡住 / 点了播放还在等数据才算「缓冲中」。
+    // 没在播的时候即使标志是脏的也不显示，免得转圈停不下来。
+    if (audioLoad.buffering && (state.playing || audioLoad.wantPlay || !els.audio.paused)) {
+      return true;
+    }
+    return audioLoad.wantPlay && !state.playing;          // 点了播放，还在等数据
+  }
+
+  function setLoadVisible(on) {
+    if (audioLoad.visible === on) return;
+    audioLoad.visible = on;
+    els.loadRow.hidden = !on;
+    els.btnPlay.classList.toggle("is-loading", on);
+  }
+
+  function renderLoadMeter() {
+    const busy = loadBusy();
+    const ratio = busy ? loadRatio() : 1;   // 收尾那一帧直接推到 100%
+
+    let label = "音频加载";
+    if (audioLoad.wantPlay && !state.playing) label = "加载完自动播放";
+    else if (audioLoad.decoding) label = "音源解码";
+    else if (audioLoad.pending) label = audioLoad.pendingLabel;
+    else if (!audioLoad.fetching && audioLoad.buffering) label = "缓冲中";
+    else if (!audioLoad.fetching) label = "音频缓冲";
+
+    const pct = ratio < 0 ? -1 : Math.round(ratio * 100);
+    if (label === audioLoad.lastLabel && pct === audioLoad.lastPct) return;
+    audioLoad.lastLabel = label;
+    audioLoad.lastPct = pct;
+
+    const text = pct >= 0 ? `${pct}%` : (fmtBytes(audioLoad.fetchDone) || "…");
+    els.loadLabel.textContent = label;
+    els.loadPct.textContent = text;
+    els.loadRow.classList.toggle("indeterminate", pct < 0);
+    els.loadFill.style.width = pct < 0 ? "" : `${pct}%`;
+    els.loadBar.setAttribute("aria-valuenow", String(pct < 0 ? 0 : pct));
+    els.loadBar.setAttribute("aria-valuetext", text);
+  }
+
+  // 音源没就绪的时候，物量条只把「里面的柱子和播放头」收起来，外框留着：
+  // 换歌那一刻物量条画的已经是新谱面了，可音源还在下、还播不了，柱子摆在那儿容易误判；
+  // 但整个框一起 display:none 会让下面的高度来回跳，所以改成框不动、只换内容。
+  // 加一点点延迟再切，免得命中缓存秒开时闪一下。
+  const DENSITY_PLACEHOLDER_DELAY = 160;
+  let densityTimer = 0;
+
+  function setDensityReady(ready) {
+    if (!ready) {
+      if (density.placeholder || densityTimer) return;
+      densityTimer = setTimeout(() => {
+        densityTimer = 0;
+        if (!loadBusy()) return;          // 这期间已经加载好了，不用切
+        density.placeholder = true;
+        drawDensity(currentMediaTime());
+      }, DENSITY_PLACEHOLDER_DELAY);
+      return;
+    }
+    clearTimeout(densityTimer);
+    densityTimer = 0;
+    if (!density.placeholder) return;
+    density.placeholder = false;
+    drawDensity(currentMediaTime());
+  }
+
+  /** 重新算一遍：该显示就显示，加载完了先亮个 100% 再淡出，别闪一下就没了 */
+  function updateLoadMeter() {
+    const busy = loadBusy();
+    setDensityReady(!busy);
+    if (busy) {
+      clearTimeout(audioLoad.hideTimer);
+      audioLoad.hideTimer = 0;
+      setLoadVisible(true);
+      renderLoadMeter();
+      return;
+    }
+    if (!audioLoad.visible || audioLoad.hideTimer) return;
+    renderLoadMeter();
+    audioLoad.hideTimer = setTimeout(() => {
+      audioLoad.hideTimer = 0;
+      if (loadBusy()) {
+        updateLoadMeter();
+        return;
+      }
+      setLoadVisible(false);
+      audioLoad.lastLabel = "";
+      audioLoad.lastPct = -2;
+    }, 500);
+  }
+
+  /** 只清下载 / 解码的计数，保留「用户已经点了播放」这类交互状态 */
+  function resetFetchProgress() {
+    audioLoad.pending = false;
+    audioLoad.fetching = false;
+    audioLoad.decoding = false;
+    audioLoad.fetchTotal = 0;
+    audioLoad.fetchDone = 0;
+    audioLoad.lastLabel = "";
+    audioLoad.lastPct = -2;
+  }
+
+  /** 换歌 / 换难度：进度归零重来（这次点击已经不算数了） */
+  function resetLoadMeter() {
+    resetFetchProgress();
+    audioLoad.buffering = false;
+    audioLoad.wantPlay = false;
+  }
+
+  /**
+   * 读完响应体，边读边报进度。total = 0 表示服务器没给 Content-Length。
+   * 返回 ArrayBuffer，可以直接喂给 decodeAudioData。
+   */
+  async function readWithProgress(res, onProgress) {
+    const total = Number(res.headers.get("Content-Length") || 0) || 0;
+    if (!res.body || typeof res.body.getReader !== "function") {
+      const buf = await res.arrayBuffer();
+      onProgress(buf.byteLength, total || buf.byteLength);
+      return buf;
+    }
+    const reader = res.body.getReader();
+    const chunks = [];
+    let done = 0;
+    for (;;) {
+      const { value, done: fin } = await reader.read();
+      if (fin) break;
+      chunks.push(value);
+      done += value.byteLength;
+      onProgress(done, total);
+    }
+    const out = new Uint8Array(done);
+    let at = 0;
+    for (const c of chunks) {
+      out.set(c, at);
+      at += c.byteLength;
+    }
+    return out.buffer;
+  }
+
+  /**
+   * <audio> 自己的缓冲状态：换歌首播、播放中途卡住都会走到这里。
+   * 只在 bindEvents() 里挂一次，不是每首歌都重新挂。
+   */
+  function bindLoadEvents() {
+    const el = els.audio;
+    const refresh = () => {
+      updateLoadMeter();
+      maybeAutoPlay();      // 加载途中点过播放的话，数据够了在这里起播
+    };
+    el.addEventListener("loadedmetadata", () => {
+      // 慢网下谱面可能已经先显示出来了（当时只按谱面长度估的时长），元数据一到就修正
+      if (state.song && state._parsed && el.dataset.src === audioUrl(state.song)) {
+        const dur = computeDuration(state._parsed);
+        if (Math.abs(dur - (state.duration || 0)) > 0.01) {
+          state.duration = dur;
+          els.statTime.textContent = fmtTime(dur);
+          els.timeTotal.textContent = fmtTime(dur);
+          buildDensity();
+        }
+      }
+      flushPendingSeek();
+      refresh();
+    });
+    el.addEventListener("progress", refresh);
+    el.addEventListener("canplay", () => {
+      audioLoad.buffering = false;
+      flushPendingSeek();
+      refresh();
+    });
+    el.addEventListener("canplaythrough", () => {
+      audioLoad.buffering = false;
+      flushPendingSeek();
+      refresh();
+    });
+    el.addEventListener("playing", () => {
+      audioLoad.buffering = false;
+      audioLoad.wantPlay = false;
+      refresh();
+    });
+    // 「缓冲中」只在**真的要出声**的时候才算数。
+    // 预加载阶段的 <audio> 拿不到数据也会发 stalled / waiting（尤其它在跟整首下载
+    // 抢带宽的时候），可那时候根本没人等它，算进去只会让播放按钮一直转圈 —— 之前就是这么卡的。
+    const markBuffering = () => {
+      if (!state.playing && els.audio.paused) return;
+      audioLoad.buffering = true;
+      refresh();
+    };
+    el.addEventListener("waiting", markBuffering);
+    el.addEventListener("stalled", markBuffering);
+    el.addEventListener("pause", () => {
+      if (!el.seeking) audioLoad.buffering = false;
+      refresh();
+    });
+    el.addEventListener("emptied", () => {
+      audioLoad.buffering = false;
+      refresh();
+    });
+    el.addEventListener("error", () => {
+      audioLoad.buffering = false;
+      audioLoad.wantPlay = false;
+      refresh();
+    });
+  }
+
+  /** 音源是不是已经到齐、可以立刻出声了 */
+  function playbackLoaded() {
+    if (backend.mode === "webaudio") return !!backend.buf;
+    return els.audio.readyState >= 3;      // HAVE_FUTURE_DATA
+  }
+
+  /** 把音源解码成 AudioBuffer（换歌时调用；失败就继续用 <audio> 直出） */
   async function prepareBuffer(url) {
     stopBufferSource();
     backend.buf = null;
     backend.url = url;
     backend.mode = "element";
-    if (FORCE_MEDIA) return;
+    resetFetchProgress();
+    if (FORCE_MEDIA) {
+      // ?media=1：故意的直出模式，进度交给 <audio> 自己报
+      updateLoadMeter();
+      return;
+    }
+    audioLoad.pending = false;
+    audioLoad.fetching = true;
+    updateLoadMeter();
     try {
       const res = await fetch(url, { cache: "force-cache" });
-      if (!res.ok) return;
-      const bytes = await res.arrayBuffer();
+      if (!res.ok) throw new Error(`音源读取失败（${res.status}）`);
+      const bytes = await readWithProgress(res, (done, total) => {
+        if (backend.url !== url) return;
+        audioLoad.fetchDone = done;
+        audioLoad.fetchTotal = total;
+        updateLoadMeter();
+      });
+      audioLoad.fetching = false;
       if (backend.url !== url) return;                       // 已经换歌了
+      audioLoad.decoding = true;
+      updateLoadMeter();
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       const buf = await audioCtx.decodeAudioData(bytes);
       if (backend.url !== url) return;
       backend.buf = buf;
       // 解码是异步的：如果这会儿已经开播（走的是 <audio>），就别中途换后端，
       // 否则时钟会在半路换源。下一首（或重新加载）自然就用上 buffer 了。
-      if (state.playing) {
+      if (state.playing || !els.audio.paused) {
         console.info("[audio] 解码完成，但正在播放，保持 <audio> 直到下次加载");
         return;
       }
       backend.mode = "webaudio";
       console.info(`[audio] 解码完成 ${buf.duration.toFixed(1)}s，改用 WebAudio 播放`);
+      flushPendingSeek();   // ?t= 深链接：buffer 一好就把位置落下去
+      maybeAutoPlay();      // 用户在下载途中点过播放的话，这里用上更好的后端起播
     } catch (err) {
       console.warn("[audio] 解码失败，继续用 <audio>", err);
+    } finally {
+      // 换过歌就别动进度条了，那是新一首的状态
+      if (backend.url === url) {
+        audioLoad.fetching = false;
+        audioLoad.decoding = false;
+        updateLoadMeter();
+      }
     }
   }
 
@@ -1777,6 +2148,28 @@
     return (els.audio.currentTime || 0) + off - (state.baseOffset || 0);
   }
 
+  // 换歌时不阻塞界面，音源可能还没就绪。这时要跳转（?t= 深链接）先记下来，
+  // 等 <audio> 有元数据 / buffer 解码好再落下去。
+  let pendingSeek = null;
+
+  function canSeekNow() {
+    if (backend.mode === "webaudio") return !!backend.buf;
+    return els.audio.readyState >= 1;
+  }
+
+  /** 能跳就跳，不能跳就挂起，等就绪事件里补 */
+  function seekWhenReady(sec) {
+    if (canSeekNow()) seekTo(sec);
+    else pendingSeek = sec;
+  }
+
+  function flushPendingSeek() {
+    if (pendingSeek == null || !canSeekNow()) return;
+    const sec = pendingSeek;
+    pendingSeek = null;
+    seekTo(sec);
+  }
+
   function seekTo(sec) {
     const s = Math.max(0, Math.min(sec, state.duration || 0));
     const off = (Number(els.offset.value) || 0) / 1000;
@@ -1786,9 +2179,15 @@
       const lim = backend.buf ? backend.buf.duration : audioT;
       backend.anchorPos = Math.max(0, Math.min(audioT, lim));
       if (state.playing) startBufferAt(backend.anchorPos);
-    } else if (els.audio.readyState >= 1) {
-      const dur = els.audio.duration;
-      els.audio.currentTime = Number.isFinite(dur) ? Math.max(0, Math.min(audioT, dur)) : audioT;
+    } else {
+      if (els.audio.readyState >= 1) {
+        const dur = els.audio.duration;
+        els.audio.currentTime = Number.isFinite(dur) ? Math.max(0, Math.min(audioT, dur)) : audioT;
+      }
+      // 位置同时记进 anchorPos：整首下载/解码完成后会切到 WebAudio 后端，
+      // 那边只认 anchorPos，不记的话一切后端位置就跳回 0（深链接、暂停时拖动都会中招）
+      const lim = backend.buf ? backend.buf.duration : audioT;
+      backend.anchorPos = Math.max(0, Math.min(audioT, lim));
     }
     audioClock.base = els.audio.currentTime || 0;
     audioClock.at = performance.now();
@@ -1803,10 +2202,11 @@
       toast("先从左侧选择一首曲目");
       return;
     }
-    if (backend.mode === "webaudio") {
+    if (backend.mode === "webaudio" && backend.buf) {
       try {
         await startBufferAt(backend.anchorPos);
         state.playing = true;
+        audioLoad.wantPlay = false;   // 已经出声了，排队的这次请求就算用掉了
         els.playIcon.textContent = "❚❚";
         els.btnPlay.setAttribute("aria-label", "暂停");
         sfxReset();
@@ -1815,6 +2215,19 @@
       }
       return;
     }
+    if (!playbackLoaded()) {
+      // 音源还没到齐（慢网换歌就是这个状态）。这里不能直接把 play() 丢给 <audio>：
+      // 换歌时 loadChart 会给它换 src + load()，排队中的 play() 会被打断、而且不报错，
+      // 用户看到的就是「点了播放没反应」。所以自己记下这次点击，等数据够了再起播。
+      audioLoad.wantPlay = true;
+      updateLoadMeter();
+      return;
+    }
+    startElementPlay();
+  }
+
+  /** element 后端起播（音频已经可以出声了） */
+  async function startElementPlay() {
     try {
       els.audio.playbackRate = Number(els.rate.value) || 1;
       await els.audio.play();
@@ -1823,11 +2236,23 @@
       els.btnPlay.setAttribute("aria-label", "暂停");
       sfxReset();
     } catch (err) {
+      // 自己 pause / 换歌打断的排队请求，不是错误，别弹提示
+      if (err && err.name === "AbortError") return;
       toast(`无法播放：${err.message}`, true);
     }
   }
 
+  /** 用户在加载途中点过播放：数据一到就自动起播 */
+  function maybeAutoPlay() {
+    if (!audioLoad.wantPlay || state.playing) return;
+    if (!playbackLoaded()) return;
+    // 先清标记再起播：万一又失败，不要在这里反复重试
+    audioLoad.wantPlay = false;
+    play();
+  }
+
   function pause() {
+    audioLoad.wantPlay = false;
     if (backend.mode === "webaudio") {
       backend.anchorPos = audioNow();       // 先记下位置再停
       stopBufferSource();
@@ -1837,6 +2262,7 @@
     state.playing = false;
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
+    updateLoadMeter();
     sfxReset();
   }
 
@@ -2080,6 +2506,28 @@
     };
   }
 
+  /** 把配色对填进下拉框（不提供自定义取色：对比不够的两种颜色等于没区分） */
+  function buildGlowPairOptions() {
+    els.chordGlowPair.innerHTML = "";
+    GLOW_PAIRS.forEach((p, i) => {
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = p.name;
+      els.chordGlowPair.appendChild(opt);
+    });
+    els.chordGlowPair.value = "0";
+    updateGlowChips();
+  }
+
+  /** 下拉框后面那两个小色块 = 当前主色 / 副色 */
+  function updateGlowChips() {
+    if (!els.glowPairChips) return;
+    const pair = glowPair();
+    const chips = els.glowPairChips.querySelectorAll("i");
+    if (chips[0]) chips[0].style.background = pair.main;
+    if (chips[1]) chips[1].style.background = pair.alt;
+  }
+
   function bindEvents() {
     if (els.markerSelect) {
       els.markerSelect.addEventListener("change", () => selectMarker(els.markerSelect.value));
@@ -2119,11 +2567,9 @@
       els.showChordGlow.addEventListener("change", () => {
         store(STORAGE.showChordGlow, els.showChordGlow.checked ? "1" : "0");
       });
-      els.chordGlowColor.addEventListener("input", () => {
-        store(STORAGE.chordGlowColor, els.chordGlowColor.value);
-      });
-      els.chordGlowColor.addEventListener("change", () => {
-        store(STORAGE.chordGlowColor, els.chordGlowColor.value);
+      els.chordGlowPair.addEventListener("change", () => {
+        store(STORAGE.chordGlowPair, els.chordGlowPair.value);
+        updateGlowChips();
       });
 
       // 恢复上次的设置
@@ -2133,7 +2579,7 @@
         showCombo: store(STORAGE.showCombo),
         showNumbers: store(STORAGE.showNumbers),
         showChordGlow: store(STORAGE.showChordGlow),
-        chordGlowColor: store(STORAGE.chordGlowColor),
+        chordGlowPair: store(STORAGE.chordGlowPair),
         collapsed: store(STORAGE.collapsed),
         sort: store(STORAGE.sort),
         holdFilter: store(STORAGE.holdFilter),
@@ -2153,7 +2599,10 @@
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
       }
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
-      if (saved.chordGlowColor) els.chordGlowColor.value = saved.chordGlowColor;
+      if (saved.chordGlowPair != null && GLOW_PAIRS[Number(saved.chordGlowPair)]) {
+        els.chordGlowPair.value = saved.chordGlowPair;
+      }
+      updateGlowChips();
       if (saved.sort) els.sortSelect.value = saved.sort;
       if (saved.holdFilter != null) els.holdFilter.value = saved.holdFilter;
       // 窄屏默认收起选项，给面板留空间
@@ -2197,7 +2646,7 @@
     // 还会从不对的位置出声，拍子就乱了。现在松手才 seek 一次。
     let resumeAfterScrub = false;
     els.densityCanvas.addEventListener("pointerdown", (ev) => {
-      if (!state.notes.length) return;
+      if (!state.notes.length || density.placeholder) return;   // 音源没就绪时不给拖
       state.scrubbing = true;
       resumeAfterScrub = state.playing;
       if (state.playing) pause();
@@ -2278,6 +2727,8 @@
     document.addEventListener("visibilitychange", keepAudioAlive);
     window.addEventListener("focus", keepAudioAlive);
 
+    bindLoadEvents();     // 音源加载进度：<audio> 的缓冲状态都在这里收
+
     els.audio.addEventListener("ended", () => {
       if (els.autoLoop.checked && state.song) {
         seekTo(0);
@@ -2291,12 +2742,10 @@
     els.audio.addEventListener("play", () => {
       state.playing = true;
       els.playIcon.textContent = "❚❚";
-      els.syncBadge.textContent = "sync live";
     });
     els.audio.addEventListener("pause", () => {
       state.playing = false;
       els.playIcon.textContent = "▶";
-      if (!els.audio.ended) els.syncBadge.textContent = "sync paused";
     });
     els.audio.addEventListener("timeupdate", () => {
       // 时间显示统一在 rAF 里刷新，这里不用做事
@@ -2360,6 +2809,7 @@
 
   // —— boot ——
   async function main() {
+    buildGlowPairOptions();
     buildPanel();
     bindEvents();
     layoutCanvas();
@@ -2389,6 +2839,21 @@
       seState: () =>
         Object.fromEntries([...seCache.entries()].map(
           ([k, v]) => [k, v === "loading" ? "loading" : v ? "sample" : "synth"])),
+      // 音源加载进度（自测 / 排查「切歌后要等多久」用）
+      loadState: () => ({
+        visible: audioLoad.visible,
+        label: audioLoad.lastLabel,
+        pending: audioLoad.pending,
+        fetching: audioLoad.fetching,
+        decoding: audioLoad.decoding,
+        fetchDone: audioLoad.fetchDone,
+        fetchTotal: audioLoad.fetchTotal,
+        buffering: audioLoad.buffering,
+        wantPlay: audioLoad.wantPlay,
+        mode: backend.mode,
+        hasBuffer: !!backend.buf,
+        ratio: loadRatio(),
+      }),
     };
     const url = urlState();
     if (url.song) {
@@ -2400,7 +2865,9 @@
           return null;
         }).then(() => {
           if (url.play) play();
-          else pause();
+          // 不自动播就把界面摆成暂停态。别直接 pause()：音源还在下的时候
+          // 用户可能已经点过播放，那是个排队中的请求，不能被这里取消。
+          else if (!state.playing && !audioLoad.wantPlay) pause();
         });
       };
       if (state.songs.length) ready();

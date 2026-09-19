@@ -174,7 +174,9 @@ button:focus-visible,
   list-style: none;
   margin: 0;
   padding: 0 8px 16px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;     /* 曲目项不横向撑开：竖着滚就行，别让人把列表左右拖走 */
+  touch-action: pan-y;
   flex: 1;
   min-height: 0;
 }
@@ -224,6 +226,9 @@ button:focus-visible,
 .song-item .tx {
   min-width: 0;
   display: grid;
+  /* 这一列必须写死 minmax(0, 1fr)：隐式列是 auto，而曲名和作曲都带 white-space: nowrap，
+     它们的 min-content 就是整行文字的宽度，会把这一列撑到几百 px，整个列表跟着能横向拖 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 
@@ -576,7 +581,7 @@ button:focus-visible,
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #0a0d14;
-  height: 72px;
+  height: 36px;
   overflow: hidden;
   cursor: pointer;
   touch-action: none;
@@ -585,15 +590,15 @@ button:focus-visible,
 #densityCanvas {
   display: block;
   width: 100%;
-  height: 72px;
+  height: 36px;
 }
 
 .density-hud {
   position: absolute;
   right: 8px;
-  top: 4px;
+  top: 2px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9px;
   color: var(--muted);
   pointer-events: none;
   text-shadow: 0 1px 2px rgba(0,0,0,.8);
@@ -813,6 +818,83 @@ button:focus-visible,
   flex-wrap: wrap;
 }
 
+/* —— 音源加载进度（换歌 / 缓冲） —— */
+.load-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.load-row[hidden] { display: none; }
+
+.load-label {
+  flex-shrink: 0;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.load-bar {
+  position: relative;
+  flex: 1;
+  min-width: 60px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--void);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.load-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--amber-dim), var(--amber));
+  transition: width 0.18s linear;
+}
+
+/* 总长度未知（服务器没给 Content-Length）：来一条来回跑的条子 */
+.load-row.indeterminate .load-fill {
+  width: 38%;
+  transition: none;
+  animation: load-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes load-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(370%); }
+}
+
+.load-pct {
+  flex-shrink: 0;
+  min-width: 46px;
+  text-align: right;
+  color: var(--amber);
+}
+
+/* 播放按钮上的加载环：按钮还能点（会排队等数据），但一眼看得出在加载 */
+.play-btn { position: relative; }
+
+.play-btn.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 15px;
+  border: 2px solid rgba(255, 176, 32, 0.2);
+  border-top-color: var(--amber);
+  animation: play-spin 0.9s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes play-spin {
+  to { transform: rotate(360deg); }
+}
+
 .spacer { flex: 1; }
 
 .icon-btn,
@@ -883,6 +965,23 @@ button:focus-visible,
   border-radius: 4px;
 }
 
+/* 同押光晕的配色对预览：两个色块，一眼看出主色 / 副色对比够不够 */
+.pair-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pair-chips i {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.pair-chips i:last-child { border-radius: 50%; }
+
 .ctl .unit {
   font-family: var(--mono);
   font-size: 11px;
@@ -901,22 +1000,6 @@ input[type="range"] {
   width: 100%;
   accent-color: var(--amber);
   height: 6px;
-}
-
-.hint-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-}
-
-#syncBadge {
-  color: var(--ok);
-  white-space: nowrap;
 }
 
 .toast {
@@ -949,6 +1032,9 @@ input[type="range"] {
     transition: none !important;
     animation: none !important;
   }
+  /* 加载指示保留，但放慢（它是状态提示，不是装饰，不能直接关掉） */
+  .play-btn.is-loading::after,
+  .load-row.indeterminate .load-fill { animation-duration: 2.6s; }
 }
 
 /* —— 抽屉遮罩 —— */
@@ -1066,15 +1152,15 @@ input[type="range"] {
   .transport { padding: 8px 12px max(10px, env(safe-area-inset-bottom)); }
   .transport { overflow: visible; }   /* 浮层要能伸到控件上方，别被 overflow 裁掉 */
   .transport-top { gap: 8px; }
+  .load-row { margin-top: 8px; font-size: 9px; }
+  .load-pct { min-width: 40px; }
   .icon-btn, .play-btn { height: 44px; min-width: 44px; }
   .play-btn { width: 58px; }
   .time-block { font-size: 12px; }
-  .density-wrap, #densityCanvas { height: 92px; }
+  .density-wrap, #densityCanvas { height: 46px; }
   .opt-row { gap: 10px; }
   .ctl select, .ctl input[type="number"] { padding: 8px 10px; }
   .filter-row { grid-template-columns: 1fr; }
-  .hint-row span:first-child { display: none; }
-
   /* 手机上选项做成底部浮层：不挤压面板，展开时可以内部滚动 */
   .options {
     position: absolute;
@@ -1118,6 +1204,6 @@ input[type="range"] {
   .np-artist { display: none; }        /* 作曲那行省掉 */
   .diff-btn { padding: 2px 9px; font-size: 10px; }
   .transport { padding: 6px 10px max(8px, env(safe-area-inset-bottom)); }
-  .density-wrap, #densityCanvas { height: 64px; }
+  .density-wrap, #densityCanvas { height: 32px; }
   .panel-caption { font-size: 10px; }
 }

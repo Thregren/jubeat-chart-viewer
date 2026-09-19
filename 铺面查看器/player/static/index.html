@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>jubeat 铺面确认</title>
-  <link rel="stylesheet" href="static/style.css" />
+  <!-- nginx 给 js/css 挂了 12h 缓存：改完 style.css / app.js 记得把 ?v= 一起改掉，
+       否则老页面会一直吃缓存里的旧文件（index.html 本身会回源校验，不会卡住）。 -->
+  <link rel="stylesheet" href="static/style.css?v=0.5.4" />
 </head>
 <body>
   <div id="app">
@@ -113,27 +115,40 @@
             <span id="timeTotal">0:00.00</span>
           </div>
           <div class="spacer"></div>
-          <label class="ctl">速度
-            <select id="rate">
-              <option value="0.5">0.5×</option>
-              <option value="0.75">0.75×</option>
-              <option value="1" selected>1.0×</option>
-              <option value="1.25">1.25×</option>
-              <option value="1.5">1.5×</option>
-              <option value="2">2.0×</option>
-            </select>
-          </label>
-          <label class="ctl">偏移
-            <input id="offset" type="number" value="0" step="5" min="-500" max="500" />
-            <span class="unit">ms</span>
-          </label>
-          <label class="ctl checkbox">
-            <input id="autoLoop" type="checkbox" />
-            循环
-          </label>
+        </div>
+
+        <!-- 音源加载进度：换歌时整首要从服务器上下来，慢网下这段等待得让用户看得见 -->
+        <div class="load-row" id="loadRow" hidden>
+          <span class="load-label" id="loadLabel">音频加载</span>
+          <div class="load-bar" id="loadBar" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <i class="load-fill" id="loadFill"></i>
+          </div>
+          <span class="load-pct" id="loadPct">0%</span>
         </div>
 
         <div class="options" id="optionsPanel">
+          <!-- 变速 / 偏移 / 循环收进折叠区：控制条只留播放按钮和时间，省竖向高度 -->
+          <div class="opt-row">
+            <label class="ctl">速度
+              <select id="rate">
+                <option value="0.5">0.5×</option>
+                <option value="0.75">0.75×</option>
+                <option value="1" selected>1.0×</option>
+                <option value="1.25">1.25×</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2.0×</option>
+              </select>
+            </label>
+            <label class="ctl">偏移
+              <input id="offset" type="number" value="0" step="5" min="-500" max="500" />
+              <span class="unit">ms</span>
+            </label>
+            <label class="ctl checkbox">
+              <input id="autoLoop" type="checkbox" />
+              循环
+            </label>
+          </div>
           <div class="opt-row">
             <label class="ctl ctl-wide">marker
               <select id="markerSelect" aria-label="按键 marker 动画">
@@ -164,8 +179,9 @@
             <label class="ctl checkbox"><input id="showCombo" type="checkbox" checked /> 总连击</label>
             <label class="ctl checkbox"><input id="showNumbers" type="checkbox" checked /> marker 顺序数字</label>
             <label class="ctl checkbox"><input id="showChordGlow" type="checkbox" checked /> 同押光晕</label>
-            <label class="ctl">光晕颜色
-              <input id="chordGlowColor" type="color" value="#3aa0ff" aria-label="同押光晕颜色" />
+            <label class="ctl">光晕配色
+              <select id="chordGlowPair" aria-label="同押光晕配色"></select>
+              <span class="pair-chips" id="glowPairChips" aria-hidden="true"><i></i><i></i></span>
             </label>
             <label class="ctl">打点音
               <select id="metroSound" aria-label="节拍音">
@@ -194,10 +210,6 @@
           </div>
         </div>
 
-        <div class="hint-row">
-          <span>Space 播放/暂停 · R 重播 · ←/→ 快退快进 · 1–4 切难度 · M 换 marker · ,/. 微调 PERFECT 帧</span>
-          <span id="syncBadge">sync —</span>
-        </div>
       </section>
     </main>
   </div>
@@ -205,6 +217,6 @@
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="metadata"></audio>
   <script src="static/sfx.js"></script>
-  <script src="static/app.js"></script>
+  <script src="static/app.js?v=0.5.4"></script>
 </body>
 </html>

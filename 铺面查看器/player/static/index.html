@@ -6,7 +6,7 @@
   <title>jubeat 铺面确认</title>
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 style.css / app.js / sfx.js 记得把 ?v= 一起改掉
        （三个都要改，漏一个那个文件就会吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.5.12" />
+  <link rel="stylesheet" href="static/style.css?v=0.5.13" />
 </head>
 <body>
   <div id="app">
@@ -130,7 +130,7 @@
         <div class="options" id="optionsPanel">
           <!-- 变速 / 偏移 / 循环收进折叠区：控制条只留播放按钮和时间，省竖向高度 -->
           <div class="opt-row">
-            <label class="ctl">速度
+            <label class="ctl">播放速度
               <select id="rate">
                 <option value="0.5">0.5×</option>
                 <option value="0.75">0.75×</option>
@@ -140,27 +140,27 @@
                 <option value="2">2.0×</option>
               </select>
             </label>
-            <label class="ctl">偏移
+            <label class="ctl">声画偏移
               <input id="offset" type="number" value="0" step="5" min="-500" max="500" />
               <span class="unit">ms</span>
             </label>
             <label class="ctl checkbox">
               <input id="autoLoop" type="checkbox" />
-              循环
+              循环播放
             </label>
           </div>
           <div class="opt-row">
-            <label class="ctl ctl-wide">marker
-              <select id="markerSelect" aria-label="按键 marker 动画">
+            <label class="ctl ctl-wide">按键动画
+              <select id="markerSelect" aria-label="按键动画样式">
                 <option value="">无（仅面板灯）</option>
               </select>
             </label>
-            <label class="ctl">PERFECT 帧
+            <label class="ctl">动画对齐帧
               <input id="anchorInput" type="number" min="0" step="1" value="0"
-                     title="这一帧会正好落在 note 时间上" />
+                     title="动画的这一帧正好落在拍点上（默认自动识别，可手动改）" />
             </label>
-            <label class="ctl">marker 速度
-              <select id="markerSpeed" aria-label="marker 播放速度">
+            <label class="ctl">动画速度
+              <select id="markerSpeed" aria-label="按键动画播放速度">
                 <option value="0.6">0.6×</option>
                 <option value="0.8">0.8×</option>
                 <option value="1" selected>1.0×</option>
@@ -169,21 +169,21 @@
                 <option value="2">2.0×</option>
               </select>
             </label>
-            <label class="ctl">判定特效
+            <label class="ctl">命中特效
               <select id="effectSelect" aria-label="命中特效">
                 <option value="">无</option>
               </select>
             </label>
           </div>
           <div class="opt-row">
-            <label class="ctl checkbox"><input id="showCombo" type="checkbox" checked /> 总连击</label>
-            <label class="ctl checkbox"><input id="showNumbers" type="checkbox" checked /> marker 顺序数字</label>
-            <label class="ctl checkbox"><input id="showChordGlow" type="checkbox" checked /> 同押光晕</label>
-            <label class="ctl">光晕配色
+            <label class="ctl checkbox"><input id="showCombo" type="checkbox" checked /> 总连击数</label>
+            <label class="ctl checkbox"><input id="showNumbers" type="checkbox" checked /> 音符序号</label>
+            <label class="ctl checkbox"><input id="showChordGlow" type="checkbox" checked /> 同押高亮</label>
+            <label class="ctl">高亮配色
               <select id="chordGlowPair" aria-label="同押光晕配色"></select>
               <span class="pair-chips" id="glowPairChips" aria-hidden="true"><i></i><i></i></span>
             </label>
-            <label class="ctl">打点音
+            <label class="ctl">按键音效
               <select id="metroSound" aria-label="节拍音">
                 <option value="">关</option>
                 <option value="click">点击</option>
@@ -192,14 +192,42 @@
                 <option value="taiko">太鼓（咚/咔）</option>
               </select>
             </label>
-            <label class="ctl ctl-vol">音量
+            <label class="ctl ctl-vol">音效音量
               <input id="metroVolume" type="range" min="0" max="200" value="60" />
               <span class="unit" id="metroVolumeLabel">60%</span>
             </label>
           </div>
+          <!-- 音符序号的切分参数：按「换气」分句，句内从 1 数起 -->
+          <div class="opt-row">
+            <label class="ctl">序号断句
+              <select id="phraseMult" aria-label="音符序号的断句灵敏度"
+                      title="空档比周围大多少就算换气：倍数越小断得越勤">
+                <option value="1.1">灵敏（小换气就重数）</option>
+                <option value="1.25" selected>标准</option>
+                <option value="1.6">迟钝（大换气才重数）</option>
+              </select>
+            </label>
+            <label class="ctl">最小换气
+              <select id="phraseFloor" aria-label="换气的最小空档"
+                      title="空档小于这个拍数就不算换气，免得密的地方乱切">
+                <option value="0.25">0.25 拍</option>
+                <option value="0.5" selected>0.5 拍</option>
+                <option value="1">1 拍</option>
+              </select>
+            </label>
+            <label class="ctl">序号上限
+              <select id="phraseMax" aria-label="音符序号的最大值"
+                      title="一句话最多数到几，到点重新从 1 数">
+                <option value="9" selected>9（个位）</option>
+                <option value="12">12</option>
+                <option value="16">16</option>
+                <option value="0">不限</option>
+              </select>
+            </label>
+          </div>
           <div class="anchor-wrap">
-            <span class="anchor-label" id="anchorLabel">帧</span>
-            <div class="anchor-strip" id="anchorStrip" role="listbox" aria-label="选择 PERFECT 帧"></div>
+            <span class="anchor-label" id="anchorLabel">动画帧</span>
+            <div class="anchor-strip" id="anchorStrip" role="listbox" aria-label="选择动画对齐帧"></div>
           </div>
         </div>
 
@@ -216,7 +244,7 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="metadata"></audio>
-  <script src="static/sfx.js?v=0.5.12"></script>
-  <script src="static/app.js?v=0.5.12"></script>
+  <script src="static/sfx.js?v=0.5.13"></script>
+  <script src="static/app.js?v=0.5.13"></script>
 </body>
 </html>

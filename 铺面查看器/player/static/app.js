@@ -55,6 +55,9 @@
     showCombo: $("#showCombo"),
     showNumbers: $("#showNumbers"),
     showChordGlow: $("#showChordGlow"),
+    phraseMult: $("#phraseMult"),
+    phraseFloor: $("#phraseFloor"),
+    phraseMax: $("#phraseMax"),
     chordGlowPair: $("#chordGlowPair"),
     glowPairChips: $("#glowPairChips"),
     sortSelect: $("#sortSelect"),
@@ -133,6 +136,9 @@
     showCombo: "jubeat.showCombo",
     showNumbers: "jubeat.showNumbers",
     showChordGlow: "jubeat.showChordGlow",
+    phraseMult: "jubeat.phraseMult",
+    phraseFloor: "jubeat.phraseFloor",
+    phraseMax: "jubeat.phraseMax",
     chordGlowPair: "jubeat.chordGlowPair",
     settingsVersion: "jubeat.settingsVersion",
     collapsed: "jubeat.collapsed",
@@ -261,11 +267,10 @@
   // 相邻两批同押挨得比这个还近，就算「密」，改用双色交替
   const GLOW_DENSE_GAP = 0.35;
 
-  // 顺序数字的「换气」判定：
-  //   间隔 ≥ 最近几个间隔中位数的 PHRASE_BREAK_MULT 倍（比周围稀疏），
-  //   且至少 PHRASE_BREAK_FLOOR 拍（避免在一串 16 分音里乱切）。
-  // 参数是在全库 4099 份谱面上扫出来的：1.25×/0.5 拍时约 8.7% 的音会显示两位数，
-  // 90% 的音在个位；2.0×/0.75 拍（第一版）有 16% 是两位数。倍数越小断句越勤。
+  // 顺序数字的「换气」判定默认值（选项区里可以改，见 numberNotes）：
+  //   空档 ≥ 最近几个空档中位数的 PHRASE_BREAK_MULT 倍，且至少 PHRASE_BREAK_FLOOR 拍。
+  // 参数是在全库 4099 份谱面上扫出来的：1.25×/0.5 拍时约 8.7% 的音会显示两位数；
+  // 2.0×/0.75 拍（第一版）有 16% 是两位数。倍数越小断句越勤。
   const PHRASE_BREAK_MULT = 1.25;
   const PHRASE_BREAK_FLOOR = 0.5;
   const PHRASE_LOOKBACK = 8;
@@ -360,6 +365,83 @@
     return { beatToSec, secToBeat, bpmAt, segments: segs };
   }
 
+  /** 顺序数字的三个参数（选项区可改，默认见上面常量） */
+  function phraseParams() {
+    const num = (el, dflt) => {
+      const v = Number(el && el.value);
+      return Number.isFinite(v) ? v : dflt;
+    };
+    return {
+      mult: num(els.phraseMult, PHRASE_BREAK_MULT),
+      floor: num(els.phraseFloor, PHRASE_BREAK_FLOOR),
+      max: num(els.phraseMax, PHRASE_MAX),      // 0 = 不限
+    };
+  }
+
+  /**
+   * 给音符编「顺序数字」：按换气切句，句内 1、2、3…，同一时刻一起按的共用同一个数字。
+   *
+   * 换气判定：某个空档 ≥ 最近 8 个空档中位数的 mult 倍（说明这一段明显变稀疏了）、
+   * 且至少 floor 拍（免得在一串 16 分音里乱切）→ 新的一句，数字从 1 重来。
+   * 再数到 max 也重来（兜底，避免连续长段把数字堆到几十）。
+   *
+   * 单独抽成函数是因为这三个参数在选项区可以改，改完要立刻重编一遍。
+   */
+  function numberNotes(notes, bpmAt) {
+    const { mult, floor, max } = phraseParams();
+    let seq = 0;
+    let lastT = null;
+    let group = 0;                            // 全局批次号（seq 只在一句内递增，不能拿它当键）
+    const recent = [];                        // 最近几个空档（拍），用来判断「比周围稀疏」
+    for (const n of notes) {
+      if (lastT === null || n.t - lastT > 1e-4) {
+        const gapBeats = lastT === null ? 0 : ((n.t - lastT) * bpmAt(lastT)) / 60;
+        if (recent.length) {
+          const sorted = [...recent].sort((a, b) => a - b);
+          const med = sorted[sorted.length >> 1];
+          if (gapBeats >= Math.max(mult * med, floor)) seq = 0;
+        }
+        if (max > 0 && seq >= max) seq = 0;
+        seq++;
+        group++;
+        lastT = n.t;
+        if (recent.length >= PHRASE_LOOKBACK) recent.shift();
+        recent.push(gapBeats);
+      }
+      n.seq = seq;
+      n.group = group;
+    }
+    // 同一批（共用同一个数字）有几个 note：≥2 就是要一起按的，数字上会加光晕
+    const groupSize = new Map();
+    for (const n of notes) groupSize.set(n.group, (groupSize.get(n.group) || 0) + 1);
+    for (const n of notes) n.groupSize = groupSize.get(n.group) || 1;
+
+    // 同押光晕用主色还是副色：按「这一批同押密不密」预先算好，逐帧再算没必要。
+    // 密的地方相邻两批交替上色（0 = 主色，1 = 副色），稀疏的地方一律主色。
+    const chords = [];
+    for (const n of notes) {
+      if (!chords.length || chords[chords.length - 1].group !== n.group) {
+        chords.push({ group: n.group, t: n.t, size: n.groupSize });
+      }
+    }
+    const chordGroups = chords.filter((c) => c.size >= 2);
+    const glowSlot = new Map();
+    chordGroups.forEach((c, i) => {
+      const prev = chordGroups[i - 1];
+      const next = chordGroups[i + 1];
+      const dense = (prev && c.t - prev.t <= GLOW_DENSE_GAP)
+        || (next && next.t - c.t <= GLOW_DENSE_GAP);
+      glowSlot.set(c.group, dense ? i % 2 : 0);
+    });
+    for (const n of notes) n.glowSlot = glowSlot.get(n.group) || 0;
+  }
+
+  /** 改了顺序数字的参数之后重编一遍当前谱面（下一帧就会用新数字重画） */
+  function renumberCurrent() {
+    if (!state.notes.length || !state._parsed || !state._parsed.bpmAt) return;
+    numberNotes(state.notes, state._parsed.bpmAt);
+  }
+
   function parseNotes(chart) {
     const timeEvents = (chart.time || []).map((e) => ({
       beat: e.beat,
@@ -414,54 +496,7 @@
     }
     notes.sort((a, b) => a.t - b.t);
 
-    // marker 顺序数字：同一秒内按出现先后编号；同一时刻一起出现的（和弦）共用同一个数字
-    // 顺序数字按「换气」切句：遇到明显比周围长的空档就从 1 重新数。
-    // （以前按整秒切，经常一句中间突然重新从 1 开始，很反直觉；改后整句连号。）
-    let seq = 0;
-    let lastT = null;
-    let group = 0;                            // 全局批次号（seq 只在一句内递增，不能拿它当键）
-    const recent = [];                        // 最近几个间隔（拍），用来判断「明显变稀疏」
-    for (const n of notes) {
-      if (lastT === null || n.t - lastT > 1e-4) {
-        const gapBeats = lastT === null ? 0 : ((n.t - lastT) * map.bpmAt(lastT)) / 60;
-        if (recent.length) {
-          const sorted = [...recent].sort((a, b) => a - b);
-          const med = sorted[sorted.length >> 1];
-          if (gapBeats >= Math.max(PHRASE_BREAK_MULT * med, PHRASE_BREAK_FLOOR)) seq = 0;
-        }
-        if (seq >= PHRASE_MAX) seq = 0;     // 数满了也重新数，数字不让它变大
-        seq++;
-        group++;
-        lastT = n.t;
-        if (recent.length >= PHRASE_LOOKBACK) recent.shift();
-        recent.push(gapBeats);
-      }
-      n.seq = seq;
-      n.group = group;
-    }
-    // 同一批（共用同一个数字）有几个 note：≥2 就是要一起按的，数字上会加蓝色光晕
-    const groupSize = new Map();
-    for (const n of notes) groupSize.set(n.group, (groupSize.get(n.group) || 0) + 1);
-    for (const n of notes) n.groupSize = groupSize.get(n.group) || 1;
-
-    // 同押光晕用主色还是副色：按「这一批同押密不密」预先算好，逐帧再算没必要。
-    // 密的地方相邻两批交替上色（0 = 主色，1 = 副色），稀疏的地方一律主色。
-    const chords = [];
-    for (const n of notes) {
-      if (!chords.length || chords[chords.length - 1].group !== n.group) {
-        chords.push({ group: n.group, t: n.t, size: n.groupSize });
-      }
-    }
-    const chordGroups = chords.filter((c) => c.size >= 2);
-    const glowSlot = new Map();
-    chordGroups.forEach((c, i) => {
-      const prev = chordGroups[i - 1];
-      const next = chordGroups[i + 1];
-      const dense = (prev && c.t - prev.t <= GLOW_DENSE_GAP)
-        || (next && next.t - c.t <= GLOW_DENSE_GAP);
-      glowSlot.set(c.group, dense ? i % 2 : 0);
-    });
-    for (const n of notes) n.glowSlot = glowSlot.get(n.group) || 0;
+    numberNotes(notes, map.bpmAt);
 
     const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
     const baseBpm = bpms.length ? bpms[0] : 0;
@@ -803,7 +838,7 @@
       );
     } catch (err) {
       console.warn("marker manifest 加载失败", err);
-      toast("marker 素材清单加载失败，已退化为面板灯模式", true);
+      toast("按键动画素材加载失败，已退化为面板灯模式", true);
     }
   }
 
@@ -850,7 +885,7 @@
     if (!entry) {
       const span = document.createElement("span");
       span.className = "anchor-label";
-      span.textContent = "未选择 marker";
+      span.textContent = "未选择按键动画";
       strip.appendChild(span);
       return;
     }
@@ -859,7 +894,7 @@
     for (let i = 0; i < entry.frames; i++) {
       const b = document.createElement("button");
       b.type = "button";
-      b.title = `第 ${i} 帧${i === anchor ? "（当前 PERFECT）" : ""}`;
+      b.title = `第 ${i} 帧${i === anchor ? "（当前对齐帧）" : ""}`;
       b.dataset.frame = String(i);
       if (i === anchor) b.classList.add("anchor");
       const col = i % entry.cols;
@@ -2617,6 +2652,17 @@
         store(STORAGE.chordGlowPair, els.chordGlowPair.value);
         updateGlowChips();
       });
+      // 顺序数字的三个参数：改完立刻重编当前谱面（下一帧重画）
+      for (const [el, key] of [
+        [els.phraseMult, STORAGE.phraseMult],
+        [els.phraseFloor, STORAGE.phraseFloor],
+        [els.phraseMax, STORAGE.phraseMax],
+      ]) {
+        el.addEventListener("change", () => {
+          store(key, el.value);
+          renumberCurrent();
+        });
+      }
 
       // 恢复上次的设置
       const saved = {
@@ -2625,6 +2671,9 @@
         showCombo: store(STORAGE.showCombo),
         showNumbers: store(STORAGE.showNumbers),
         showChordGlow: store(STORAGE.showChordGlow),
+        phraseMult: store(STORAGE.phraseMult),
+        phraseFloor: store(STORAGE.phraseFloor),
+        phraseMax: store(STORAGE.phraseMax),
         chordGlowPair: store(STORAGE.chordGlowPair),
         collapsed: store(STORAGE.collapsed),
         sort: store(STORAGE.sort),
@@ -2645,6 +2694,9 @@
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
       }
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
+      if (saved.phraseMult != null) els.phraseMult.value = saved.phraseMult;
+      if (saved.phraseFloor != null) els.phraseFloor.value = saved.phraseFloor;
+      if (saved.phraseMax != null) els.phraseMax.value = saved.phraseMax;
       if (saved.chordGlowPair != null && GLOW_PAIRS[Number(saved.chordGlowPair)]) {
         els.chordGlowPair.value = saved.chordGlowPair;
       }
@@ -2824,7 +2876,7 @@
           const cur = markerCfg.entries.findIndex((m) => m.id === markerCfg.entry?.id);
           const next = markerCfg.entries[(cur + 1) % markerCfg.entries.length];
           selectMarker(next.id);
-          toast(`marker：${next.name}`);
+          toast(`按键动画：${next.name}`);
         }
       } else if (e.key === "," || e.key === ".") {
         // 微调 PERFECT 锚点帧

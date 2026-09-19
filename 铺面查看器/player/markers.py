@@ -20,6 +20,8 @@ def _clean_sheet(rel: str) -> str:
 
 
 def _normalize(data: dict) -> dict:
+    # generated_by 是素材库的来路记录（指向构建脚本名），没必要跟着产物发到公网
+    data.pop("generated_by", None)
     for entry in list(data.get("markers") or []) + list(data.get("effects") or []):
         if isinstance(entry.get("sheet"), str):
             entry["sheet"] = _clean_sheet(entry["sheet"])
@@ -77,7 +79,9 @@ def manifest() -> dict:
         if _cache.get("root") == str(MARKERS_ROOT) and _cache.get("stamp") == stamp:
             return _cache["data"]
 
-    data: dict = {"root": str(MARKERS_ROOT), "fps": 30, "markers": [], "effects": [], "error": None}
+    # 注意别把 root（本机绝对路径）放进 data：这个 dict 会直接当 /data/markers.json 发出去，
+    # 缓存的失效判断用下面的 _cache["root"]，和载荷无关。
+    data: dict = {"fps": 30, "markers": [], "effects": [], "error": None}
     if manifest_path.is_file():
         try:
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))

@@ -144,9 +144,9 @@ class Handler(BaseHTTPRequestHandler):
         LIB.load()
         return self._json({
             "ok": True,
-            "library": str(LIB.root),
+            # 不回本机绝对路径 / 缓存目录：这个接口会被 nginx 反代出去
             "songs": len(LIB.songs),
-            "cache": str(config.CACHE_DIR),
+            "cache": config.CACHE_DIR.name,
             "thumb_backend": thumbs.backend(),
             "thumb_size": config.THUMB_SIZE,
             "x_accel": config.X_ACCEL_PREFIX or None,
@@ -157,7 +157,6 @@ class Handler(BaseHTTPRequestHandler):
         LIB.load()
         return self._json({
             "version": config.INDEX_VERSION,
-            "library": str(LIB.root),
             "versions": LIB.versions,
             "songs": LIB.songs,   # 搜索/筛选在前端做，这里只发一次全量
         })

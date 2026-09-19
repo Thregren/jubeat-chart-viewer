@@ -2,6 +2,23 @@
 #
 # 站点根目录 = 构建产物 site/（默认 <仓库>/site）
 # 运行时不需要 Python / PHP / Node，nginx 直接发文件。
+#
+# ⚠️ nginx 的 add_header 是「有子无父」：某个 location 里只要有任意一条 add_header，
+#    父级（server 块）的所有 add_header 在那个 location 里就**全部失效**。
+#    本配置大量使用 location 级缓存头，所以安全头必须做成 snippet，
+#    在 server 块和每个带 add_header 的 location 里都 include 一次（见 deploy/security-headers.conf）。
+
+# —— 限流 / 并发限制的 zone 必须写在 http {} 块里（不能写进 server {}），例如 ——
+# limit_req_zone  $binary_remote_addr zone=jubeat_req:10m   rate=20r/s;
+# limit_conn_zone $binary_remote_addr zone=jubeat_conn:10m;
+# limit_req_zone  $binary_remote_addr zone=jubeat_media:10m rate=2r/s;
+
+# —— 泛解析兜底：没匹配到 server_name 的请求直接断连（不给扫描器任何指纹）——
+# server {
+#     listen 443 ssl default_server;
+#     listen 80  default_server;
+#     return 444;
+# }
 
 server {
     listen 80;
@@ -22,40 +39,75 @@ server {
     gzip_min_length 1k;
     gzip_types application/json application/javascript text/css text/plain image/svg+xml;
 
+    # —— 安全响应头（每个 location 都要再 include 一次，原因见文件开头）——
+    include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+
+    # —— 全站限流兜底 ——
+    # limit_req  zone=jubeat_req burst=60 nodelay;
+    # limit_conn jubeat_conn 32;
+    # limit_req_status  429;
+    # limit_conn_status 429;
+
+    # 目录本身不给看（默认会 403，暴露「这个目录存在」，统一成 404；子目录也要盖住）
+    location ~ ^/(data|media|markers|static)(/.*)?/$ { return 404; }
+
+    # 搜索引擎别收录：robots.txt 只是君子协定，再加一条响应头
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
     # —— 曲库索引：一次拉全量（gzip 后约 93 KB），每次校验 ——
     location = /data/library.json {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "no-cache" always;
         try_files $uri =404;
     }
 
     # —— 谱面 JSON：不会变，缓存一天（gzip 后 ~15 KB/张）——
     location /data/ {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "public, max-age=86400" always;
         try_files $uri =404;
     }
 
     # —— 音源：nginx 自动处理 Range/断点续传 ——
+    # 2.6 GB 音源是这个站最大的敞口：源站公网可直连时，务必加限流 + 防盗链
     location /media/audio/ {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "public, max-age=604800" always;
         try_files $uri =404;
+
+        # limit_req  zone=jubeat_media burst=10 nodelay;   # zone 定义在 http {} 里
+        # limit_conn jubeat_conn 8;
+
+        # 防盗链：只允许本站和空 Referer（直接访问）
+        valid_referers none blocked server_names *.thregren.world;
+        if ($invalid_referer) { return 403; }
     }
 
     # —— 封面与缩略图 ——
     location ~ ^/media/(cover|thumb)/ {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "public, max-age=604800" always;
         try_files $uri =404;
     }
 
     # —— marker 素材：换素材时改文件名或等一天 ——
     location /markers/ {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "public, max-age=86400" always;
         try_files $uri =404;
     }
 
     # —— 前端：改了要立刻生效 ——
     location /static/ {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "no-cache" always;
         try_files $uri =404;
+    }
+
+    # —— index.html 显式 no-cache（否则浏览器会启发式缓存）——
+    location = /index.html {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+        add_header Cache-Control "no-cache" always;
     }
 
     location / {

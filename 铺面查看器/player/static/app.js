@@ -5,6 +5,14 @@
 
   const $ = (sel) => document.querySelector(sel);
 
+  /** 建一个元素：el("span", "lv", "9.1") — 统一走 textContent，不碰 innerHTML */
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = String(text);
+    return node;
+  }
+
   /**
    * 前端版本 = 自己那个 script 标签上的 ?v=。
    * 后面用来自检「浏览器是不是还捧着一份旧页面」。
@@ -253,6 +261,19 @@
   // 相邻两批同押挨得比这个还近，就算「密」，改用双色交替
   const GLOW_DENSE_GAP = 0.35;
 
+  // 顺序数字的「换气」判定：
+  //   间隔 ≥ 最近几个间隔中位数的 PHRASE_BREAK_MULT 倍（明显比周围稀疏），
+  //   且至少 PHRASE_BREAK_FLOOR 拍（避免在一串 16 分音里乱切）。
+  // 之所以用相对值而不是固定拍数：全库 4099 份谱面的统计里，句首占比
+  // 固定 2 拍 = 6.8%（一句话能长到 100+ 音），固定 1.5 拍 = 11.2%（一半的句子只有 1 个音），
+  // 都不如「比周围明显稀疏」贴合实际谱面。
+  const PHRASE_BREAK_MULT = 2.0;
+  const PHRASE_BREAK_FLOOR = 0.75;
+  const PHRASE_LOOKBACK = 8;
+  // 一句话最多数到几：纯粹是兜底，避免连续不断的长段把数字堆到几十上百。
+  // 正常情况都由上面的「换气」自然断句，只有真的没空档的段落才会数到这个数。
+  const PHRASE_MAX = 16;
+
   function store(key, value) {
     try {
       if (value === undefined) return localStorage.getItem(key);
@@ -394,21 +415,26 @@
     notes.sort((a, b) => a.t - b.t);
 
     // marker 顺序数字：同一秒内按出现先后编号；同一时刻一起出现的（和弦）共用同一个数字
-    let bucket = -1;
+    // 顺序数字按「换气」切句：遇到明显比周围长的空档就从 1 重新数。
+    // （以前按整秒切，经常一句中间突然重新从 1 开始，很反直觉；改后整句连号。）
     let seq = 0;
     let lastT = null;
-    let group = 0;                            // 全局批次号（seq 每秒会重置，不能拿它当键）
+    let group = 0;                            // 全局批次号（seq 只在一句内递增，不能拿它当键）
+    const recent = [];                        // 最近几个间隔（拍），用来判断「明显变稀疏」
     for (const n of notes) {
-      const b = Math.floor(n.t);
-      if (b !== bucket) {
-        bucket = b;
-        seq = 0;
-        lastT = null;
-      }
       if (lastT === null || n.t - lastT > 1e-4) {
+        const gapBeats = lastT === null ? 0 : ((n.t - lastT) * map.bpmAt(lastT)) / 60;
+        if (recent.length) {
+          const sorted = [...recent].sort((a, b) => a - b);
+          const med = sorted[sorted.length >> 1];
+          if (gapBeats >= Math.max(PHRASE_BREAK_MULT * med, PHRASE_BREAK_FLOOR)) seq = 0;
+        }
+        if (seq >= PHRASE_MAX) seq = 0;     // 数满了也重新数，数字不让它变大
         seq++;
         group++;
         lastT = n.t;
+        if (recent.length >= PHRASE_LOOKBACK) recent.shift();
+        recent.push(gapBeats);
       }
       n.seq = seq;
       n.group = group;
@@ -509,9 +535,10 @@
       btn.className = "pad";
       btn.dataset.index = String(i);
       btn.setAttribute("aria-label", `pad ${i}`);
-      btn.innerHTML =
-        `<span class="idx">${i}</span>` +
-        `<span class="hold-fx" aria-hidden="true"><span class="hold-pie"></span><span class="hold-count"></span></span>`;
+      const fx = el("span", "hold-fx");
+      fx.setAttribute("aria-hidden", "true");
+      fx.append(el("span", "hold-pie"), el("span", "hold-count"));
+      btn.append(el("span", "idx", i), fx);
       frag.appendChild(btn);
       state.padEls.push(btn);
     }
@@ -737,14 +764,18 @@
       markerCfg.effects = data.effects || [];
       markerCfg.loaded = true;
 
-      els.markerSelect.innerHTML = '<option value="">无（仅面板灯）</option>';
+      const noMarker = el("option", null, "无（仅面板灯）");
+      noMarker.value = "";
+      els.markerSelect.replaceChildren(noMarker);
       for (const m of markerCfg.entries) {
         const opt = document.createElement("option");
         opt.value = m.id;
         opt.textContent = `#${m.id.slice(0, 2)} ${m.name}（${m.frames} 帧）`;
         els.markerSelect.appendChild(opt);
       }
-      els.effectSelect.innerHTML = '<option value="">无</option>';
+      const noEffect = el("option", null, "无");
+      noEffect.value = "";
+      els.effectSelect.replaceChildren(noEffect);
       for (const e of markerCfg.effects) {
         const opt = document.createElement("option");
         opt.value = e.id;
@@ -814,7 +845,7 @@
 
   function renderAnchorStrip() {
     const strip = els.anchorStrip;
-    strip.innerHTML = "";
+    strip.replaceChildren();
     const entry = markerCfg.entry;
     if (!entry) {
       const span = document.createElement("span");
@@ -963,10 +994,13 @@
 
   function drawOrderNumber(note, rect) {
     if (!rect || !els.showNumbers || !els.showNumbers.checked) return;
-    const size = Math.max(16, rect.w * 0.58);   // 参考视频里数字几乎占满格子
+    const text = String(note.seq || 0);
+    // 参考视频里数字几乎占满格子；但按「换气」分句之后一句可能很长，
+    // 两位数、三位数要缩一点，不然会被格子裁掉。
+    const FIT = { 1: 0.58, 2: 0.40, 3: 0.31 };
+    const size = Math.max(11, rect.w * (FIT[text.length] || 0.25));
     const x = rect.x + rect.w / 2;
     const y = rect.y + rect.h / 2;
-    const text = String(note.seq || 0);
     // 同一批（一起按）的 marker 数字：可以整体关掉（同押光晕开关）
     const chord = (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
     ctx.save();
@@ -1408,7 +1442,7 @@
 
   function renderList() {
     const ul = els.songList;
-    ul.innerHTML = "";
+    ul.replaceChildren();
     const songs = visibleSongs();
     els.listCount.textContent = `${songs.length} / ${state.songs.length} 首`;
     if (!songs.length) {
@@ -1428,16 +1462,22 @@
       btn.className = "song-item" + (state.song && state.song.id === s.id ? " active" : "");
       const coverSrc = s.cover ? coverUrl(s) : "";
       const thumbSrc = s.cover ? thumbUrl(s) : "";
-      btn.innerHTML =
-        `<span class="cv${coverSrc ? "" : " ph"}">` +
-        (coverSrc
-          ? `<img data-src="${thumbSrc}" data-full="${coverSrc}" alt="" loading="lazy" decoding="async" />`
-          : "") +
-        `</span>` +
-        `<span class="tx"><span class="st"></span>` +
-        `<span class="sm"><span class="ver"></span><span class="ar"></span></span>` +
-        `<span class="lvset"></span>` +
-        `</span>`;
+      // 骨架也用 DOM 搭：路径虽然已经过 encodeURIComponent，但统一不拼 HTML 更省心
+      const cv = el("span", "cv" + (coverSrc ? "" : " ph"));
+      if (coverSrc) {
+        const im = el("img");
+        im.dataset.src = thumbSrc;
+        im.dataset.full = coverSrc;
+        im.alt = "";
+        im.loading = "lazy";
+        im.decoding = "async";
+        cv.appendChild(im);
+      }
+      const sm = el("span", "sm");
+      sm.append(el("span", "ver"), el("span", "ar"));
+      const tx = el("span", "tx");
+      tx.append(el("span", "st"), sm, el("span", "lvset"));
+      btn.append(cv, tx);
       const img = btn.querySelector(".cv img");
       if (img) {
         img.addEventListener("error", () => {
@@ -1490,13 +1530,15 @@
     }
 
     // difficulties
-    els.diffRow.innerHTML = "";
+    els.diffRow.replaceChildren();
     song.charts.forEach((c, i) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "diff-btn " + diffClass(c.code);
       b.dataset.file = c.file;
-      b.innerHTML = `${c.code}<span class="lv">${c.level}</span>`;
+      // 用 DOM + textContent，不拼 innerHTML：code / level 来自 .mcz 文件名，
+      // 万一哪天解析规则放宽、有脏数据溜进来，这里也不会变成注入点。
+      b.append(document.createTextNode(c.code), el("span", "lv", c.level));
       b.addEventListener("click", () => loadChart(c.file));
       els.diffRow.appendChild(b);
     });
@@ -2512,7 +2554,7 @@
 
   /** 把配色对填进下拉框（不提供自定义取色：对比不够的两种颜色等于没区分） */
   function buildGlowPairOptions() {
-    els.chordGlowPair.innerHTML = "";
+    els.chordGlowPair.replaceChildren();
     GLOW_PAIRS.forEach((p, i) => {
       const opt = document.createElement("option");
       opt.value = String(i);

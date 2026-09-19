@@ -93,7 +93,7 @@ class Stats:
 
 def expected_paths(songs: list[dict], marker_files: list[str], se_files: list[str]) -> set[str]:
     """这次构建应该存在的所有文件（相对 out 的 posix 路径）。"""
-    want = {"index.html", "static/app.js", "static/sfx.js", "static/style.css",
+    want = {"index.html", "robots.txt", "static/app.js", "static/sfx.js", "static/style.css",
             "data/library.json", "data/markers.json"}
     want |= {"markers/" + rel for rel in marker_files}
     want |= {"media/se/" + name for name in se_files}
@@ -281,6 +281,14 @@ def main() -> int:
         if copy_fresh(src, dest, args.force):
             stats.added(src.stat().st_size)
 
+    # robots.txt：曲库 / marker 素材没必要被搜索引擎收录（既费流量也是版权暴露面）
+    write_atomic(out / "robots.txt", (
+        "User-agent: *\n"
+        "Disallow: /media/\n"
+        "Disallow: /data/\n"
+        "Disallow: /markers/\n"
+    ).encode("utf-8"))
+
     # 2) 曲库索引（复用 player/library.py 的解析逻辑）
     print("扫描曲库…")
     songs = [s for s in (library.scan_song(p) for p in sorted(config.LIBRARY.rglob("*.mcz"))) if s]
@@ -290,7 +298,6 @@ def main() -> int:
     index = {
         "version": config.INDEX_VERSION,
         "generated": int(time.time()),
-        "library": str(config.LIBRARY),
         "versions": sorted({s["version"] for s in songs}),
         "songs": songs,
     }

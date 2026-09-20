@@ -804,7 +804,8 @@ button:focus-visible,
   position: relative;
   z-index: 6;              /* 面板 canvas 是 z-index:2，控件要压在它上面 */
   min-width: 0;
-  overflow-x: hidden;
+  /* 必须 visible：加载进度是浮在控制条上方的浮层（pop），裁掉就看不见了 */
+  overflow: visible;
   padding: 12px 28px 18px;
   border-top: 1px solid var(--line);
   background: rgba(17, 21, 30, 0.72);
@@ -820,10 +821,24 @@ button:focus-visible,
 
 /* —— 音源加载进度（换歌 / 缓冲） —— */
 .load-row {
+  /* 浮层：挂在控制条上方，**不占布局**。
+     早先是放在流里的，出现/消失会把下面的东西顶来顶去，整页高度一直变。 */
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  z-index: 45;             /* 要压过手机上那个选项浮层（40） */
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
+  width: min(520px, calc(100vw - 32px));
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(10, 13, 20, 0.94);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  pointer-events: none;    /* 纯提示，别挡住面板 / 物量条的点击 */
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.06em;
@@ -920,6 +935,12 @@ button:focus-visible,
 
 .play-btn:hover {
   filter: brightness(1.06);
+}
+
+/* 音源没加载完：按钮禁用（还在转圈的 .is-loading 环照常显示） */
+.play-btn:disabled {
+  cursor: progress;
+  opacity: 0.55;   /* 用透明度而不是去色：外圈那个「加载中」的环要保持琥珀色 */
 }
 
 .time-block {
@@ -1155,7 +1176,7 @@ input[type="range"] {
   .transport { padding: 8px 12px max(10px, env(safe-area-inset-bottom)); }
   .transport { overflow: visible; }   /* 浮层要能伸到控件上方，别被 overflow 裁掉 */
   .transport-top { gap: 8px; }
-  .load-row { margin-top: 8px; font-size: 9px; }
+  .load-row { font-size: 9px; padding: 6px 12px; }
   .load-pct { min-width: 40px; }
   .icon-btn, .play-btn { height: 44px; min-width: 44px; }
   .play-btn { width: 58px; }

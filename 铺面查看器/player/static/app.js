@@ -1630,7 +1630,6 @@
       } else {
         // 同一首歌换难度：音源没变，不用重下，进度条按现有的来
         audioLoad.pending = false;
-        audioLoad.wantPlay = false;
         updateLoadMeter();
       }
       if (els.audio.dataset.src !== src) {
@@ -1667,7 +1666,6 @@
       console.error(err);
       els.captionLeft.textContent = "LOAD FAILED";
       audioLoad.pending = false;
-      audioLoad.wantPlay = false;
       updateLoadMeter();
       toast(`铺面加载失败：${err.message}`, true);
     }
@@ -1843,7 +1841,6 @@
     fetchTotal: 0,      // 字节；0 = 服务器没给 Content-Length
     fetchDone: 0,
     buffering: false,   // <audio> 正在等数据（播放中途卡住也会置上）
-    wantPlay: false,    // 加载途中点了播放：数据够了自己会起播，这里只用于提示
     visible: false,
     hideTimer: 0,
     lastLabel: "",
@@ -1884,10 +1881,7 @@
     if (audioLoad.pending && !playbackLoaded()) return true;
     // 播放中卡住 / 点了播放还在等数据才算「缓冲中」。
     // 没在播的时候即使标志是脏的也不显示，免得转圈停不下来。
-    if (audioLoad.buffering && (state.playing || audioLoad.wantPlay || !els.audio.paused)) {
-      return true;
-    }
-    return audioLoad.wantPlay && !state.playing;          // 点了播放，还在等数据
+    return audioLoad.buffering && (state.playing || !els.audio.paused);
   }
 
   function setLoadVisible(on) {
@@ -1895,6 +1889,10 @@
     audioLoad.visible = on;
     els.loadRow.hidden = !on;
     els.btnPlay.classList.toggle("is-loading", on);
+    // 音源没就绪时播放按钮直接禁用：以前允许点，点完排队到数据到齐自动播，
+    // 但那时候谱面状态可能还没落好，听起来就是「提前响了、不对拍」。
+    els.btnPlay.disabled = on;
+    els.btnPlay.title = on ? "音源加载中…" : "播放/暂停 (Space)";
   }
 
   function renderLoadMeter() {
@@ -1902,8 +1900,7 @@
     const ratio = busy ? loadRatio() : 1;   // 收尾那一帧直接推到 100%
 
     let label = "音频加载";
-    if (audioLoad.wantPlay && !state.playing) label = "加载完自动播放";
-    else if (audioLoad.decoding) label = "音源解码";
+    if (audioLoad.decoding) label = "音源解码";
     else if (audioLoad.pending) label = audioLoad.pendingLabel;
     else if (!audioLoad.fetching && audioLoad.buffering) label = "缓冲中";
     else if (!audioLoad.fetching) label = "音频缓冲";
@@ -1987,7 +1984,6 @@
   function resetLoadMeter() {
     resetFetchProgress();
     audioLoad.buffering = false;
-    audioLoad.wantPlay = false;
   }
 
   /**
@@ -2028,7 +2024,6 @@
     const el = els.audio;
     const refresh = () => {
       updateLoadMeter();
-      maybeAutoPlay();      // 加载途中点过播放的话，数据够了在这里起播
     };
     el.addEventListener("loadedmetadata", () => {
       // 慢网下谱面可能已经先显示出来了（当时只按谱面长度估的时长），元数据一到就修正
@@ -2057,7 +2052,6 @@
     });
     el.addEventListener("playing", () => {
       audioLoad.buffering = false;
-      audioLoad.wantPlay = false;
       refresh();
     });
     // 「缓冲中」只在**真的要出声**的时候才算数。
@@ -2080,7 +2074,6 @@
     });
     el.addEventListener("error", () => {
       audioLoad.buffering = false;
-      audioLoad.wantPlay = false;
       refresh();
     });
   }
@@ -2132,7 +2125,6 @@
       backend.mode = "webaudio";
       console.info(`[audio] 解码完成 ${buf.duration.toFixed(1)}s，改用 WebAudio 播放`);
       flushPendingSeek();   // ?t= 深链接：buffer 一好就把位置落下去
-      maybeAutoPlay();      // 用户在下载途中点过播放的话，这里用上更好的后端起播
     } catch (err) {
       console.warn("[audio] 解码失败，继续用 <audio>", err);
     } finally {
@@ -2297,8 +2289,7 @@
     if (backend.mode === "webaudio" && backend.buf) {
       try {
         await startBufferAt(backend.anchorPos);
-        state.playing = true;
-        audioLoad.wantPlay = false;   // 已经出声了，排队的这次请求就算用掉了
+        state.playing = true;   // 已经出声了，排队的这次请求就算用掉了
         els.playIcon.textContent = "❚❚";
         els.btnPlay.setAttribute("aria-label", "暂停");
         sfxReset();
@@ -2308,11 +2299,10 @@
       return;
     }
     if (!playbackLoaded()) {
-      // 音源还没到齐（慢网换歌就是这个状态）。这里不能直接把 play() 丢给 <audio>：
-      // 换歌时 loadChart 会给它换 src + load()，排队中的 play() 会被打断、而且不报错，
-      // 用户看到的就是「点了播放没反应」。所以自己记下这次点击，等数据够了再起播。
-      audioLoad.wantPlay = true;
-      updateLoadMeter();
+      // 音源还没到齐（慢网换歌就是这个状态）：直接拒绝，不排队。
+      // 排队的版本会在数据刚到、谱面状态还没落好时就起播，听起来就是「提前响了、不对拍」。
+      // 按钮此时是 disabled 的，这里兜住键盘（空格）这类入口。
+      toast("音源还在加载，等进度条走完再播");
       return;
     }
     startElementPlay();
@@ -2334,17 +2324,7 @@
     }
   }
 
-  /** 用户在加载途中点过播放：数据一到就自动起播 */
-  function maybeAutoPlay() {
-    if (!audioLoad.wantPlay || state.playing) return;
-    if (!playbackLoaded()) return;
-    // 先清标记再起播：万一又失败，不要在这里反复重试
-    audioLoad.wantPlay = false;
-    play();
-  }
-
   function pause() {
-    audioLoad.wantPlay = false;
     if (backend.mode === "webaudio") {
       backend.anchorPos = audioNow();       // 先记下位置再停
       stopBufferSource();
@@ -2987,7 +2967,6 @@
         fetchDone: audioLoad.fetchDone,
         fetchTotal: audioLoad.fetchTotal,
         buffering: audioLoad.buffering,
-        wantPlay: audioLoad.wantPlay,
         mode: backend.mode,
         hasBuffer: !!backend.buf,
         ratio: loadRatio(),
@@ -3005,7 +2984,7 @@
           if (url.play) play();
           // 不自动播就把界面摆成暂停态。别直接 pause()：音源还在下的时候
           // 用户可能已经点过播放，那是个排队中的请求，不能被这里取消。
-          else if (!state.playing && !audioLoad.wantPlay) pause();
+          else if (!state.playing) pause();
         });
       };
       if (state.songs.length) ready();

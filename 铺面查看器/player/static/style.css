@@ -1086,7 +1086,10 @@ input[type="range"] {
 
   #app {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    /* 窄屏只有 .stage 一个在流里的子元素（侧栏是 fixed，不占格）。
+       以前写成 auto + 1fr 两行，stage 落在 auto 行、第二行空着，
+       于是整块内容缩在顶部、下面留一大片黑（iPad 竖屏特别明显）。 */
+    grid-template-rows: minmax(0, 1fr);
     height: 100vh;
     height: 100dvh;      /* iOS：按当前可视高度，工具栏弹出/收起都不会把页面顶出屏幕 */
     min-height: 0;

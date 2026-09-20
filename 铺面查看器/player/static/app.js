@@ -955,7 +955,9 @@
       : 0;
     const availW = Math.max(120, stage.clientWidth - padH);
     const availH = Math.max(120, stage.clientHeight - padV - capH - bezelPad - 2);
-    const size = Math.min(availW, availH, isNarrow() ? 430 : 460);
+    // 上限只是别让面板在超大屏上无限膨胀；窄屏（手机/平板竖屏）给得宽松些，
+    // iPad 竖屏可用高有 700+，卡在 430 会白白浪费高度（面板是正方形的，宽也会一起长大）。
+    const size = Math.min(availW, availH, isNarrow() ? 720 : 560);
     els.panel.style.width = size + "px";
   }
 

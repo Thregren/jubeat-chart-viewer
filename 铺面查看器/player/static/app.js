@@ -673,6 +673,13 @@
         if (!playSe(accent ? "don" : "ka", t, gain, out) && SFX.soundTaiko) {
           SFX.soundTaiko(audioCtx, t, gain, accent, out);
         }
+      } else if (kind === "billy") {
+        // 「比利·海灵顿」：一组两个音，重音拍用「啊？！」，其他拍用「啊？」（和太鼓 don/ka 一个套路）
+        const name = accent ? "billy-accent" : "billy-normal";
+        if (!playSe(name, t, gain, out)) {
+          // 素材没放（或还没解码完）时别整个哑掉，先用一声音高不同的点击垫着
+          blip(accent ? 1180 : 880, gain, "square", t, out);
+        }
       }
     } catch (_) {
       /* ignore */
@@ -2609,6 +2616,7 @@
           if (v === "clap") seProbe("clap");
           else if (v === "nyan") seProbe("nyan");
           else if (v === "taiko") { seProbe("don"); seProbe("ka"); }
+          else if (v === "billy") { seProbe("billy-accent"); seProbe("billy-normal"); }
         } catch (_) {
           /* ignore */
         }

@@ -218,7 +218,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 | 状态与工具 | `state`（notes / padRects / combo / duration / chartCache）、`beatToFloat`、`buildTimeMap`（拍号 → 秒，支持变速） |
 | `parseNotes` | 谱面 JSON → note 列表：算每条 note 的秒数、hold 区间、`maxSec`、顺序编号 `seq`、同押分组 `group`/`groupSize`、光晕用色 `glowSlot` |
 | 面板 | 16 个 pad 的 DOM；命中 / arm / hold 三种状态；hold 的扇形填充 + 倒计时 |
-| 打点音 | WebAudio 合成的四种音色（点击 / 拍手 / 喵 / 太鼓咚·咔），按 note 的精确时间提前排程；往 `se/` 里放同名音频就用真素材（见[构建](#构建)） |
+| 按键音效 | WebAudio 合成的四种音色（点击 / 拍手 / 喵 / 太鼓咚·咔）+ 素材组「比利·海灵顿」，按 note 的精确时间提前排程；往 `se/` 里放同名音频就用真素材（见[构建](#构建)） |
 | marker 动画 | 从 sprite sheet 取帧画到 canvas；PERFECT 帧对齐拍点；hold 到 PERFECT 即止 |
 | 顺序数字 / 光晕 | 同押那一批数字加霓虹光晕 + 两圈外扩波纹；密集处相邻两批双色交替 |
 | 物量条 | 每 2 秒一根柱子的 note 密度图，**本身就是进度条**（按住拖动跳转） |
@@ -361,8 +361,10 @@ tap 命中后仍然会播 marker 的收尾帧 / 判定特效。
 
 ### 打点音
 
-四种音色全程用 WebAudio 实时合成（`static/sfx.js`，不依赖任何素材）：
-点击 / 拍手 / 猫娘 nyan / 太鼓（咚·咔）。音量 0–200%。
+默认几种音色全程用 WebAudio 实时合成（`static/sfx.js`，不依赖任何素材）：
+点击 / 拍手 / 猫娘 nyan / 太鼓（咚·咔）。另外 **「比利·海灵顿」** 是一组两个素材
+（重音拍 / 其他拍，和太鼓 don·ka 一个套路），素材放在 `se/` 里就会用到，
+没放则回落到一声音高不同的点击。音量 0–200%。
 
 它是**提前排程**的：渲染帧率再抖，响铃时刻也只跟音频时钟走（见[播放后端](#播放后端)）。
 想换成真素材见[构建](#构建)。
@@ -509,6 +511,8 @@ python3 tools/build_site.py --thumb-size 128   # 缩略图边长（默认 96）
   | `nyan.ogg` | 猫娘 nyan（比如 Miku 的「喵」） |
   | `don.ogg` | 太鼓「咚」（小节重音拍） |
   | `ka.ogg` | 太鼓「咔」（其他拍） |
+  | `billy-accent.ogg` | 「比利·海灵顿」重音拍（小节第一拍） |
+  | `billy-normal.ogg` | 「比利·海灵顿」其他拍 |
 
   支持 `.ogg / .oga / .mp3 / .wav / .m4a / .flac`，同名的优先 ogg；**没放的单独回落到合成音**
   （只放 `don`/`ka` 也行）。放好之后重跑一次构建。`se/` 被 `.gitignore` 排除——

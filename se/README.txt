@@ -9,6 +9,11 @@
     don.ogg     太鼓「咚」（重音拍）
     ka.ogg      太鼓「咔」（其他拍）
 
+前端「按键音效」下拉里还有一项「比利·海灵顿」，也是一组两个音：
+
+    billy-accent.ogg   重音拍（小节第一拍）
+    billy-normal.ogg   其他拍
+
 支持 .ogg / .oga / .mp3 / .wav / .m4a / .flac，随便挑一种就行（同名的优先 ogg）。
 没放的会单独回落到合成音，也就是说你只放 don/ka 也可以。
 

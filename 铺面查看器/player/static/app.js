@@ -622,7 +622,9 @@
     (async () => {
       for (const ext of SE_EXT) {
         try {
-          const res = await fetch(`media/se/${name}.${ext}`, { cache: "force-cache" });
+          // 带上前端版本号：素材改了但文件名不变（比如裁掉开头那段静音），
+          // 不带版本号会一直吃浏览器 / CDN 里那份 7 天缓存的旧文件。
+          const res = await fetch(`media/se/${name}.${ext}?v=${FRONT_VERSION}`, { cache: "force-cache" });
           if (!res.ok) continue;
           seCache.set(name, await audioCtx.decodeAudioData(await res.arrayBuffer()));
           return;

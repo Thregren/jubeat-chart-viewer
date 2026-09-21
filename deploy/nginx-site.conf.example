@@ -100,7 +100,11 @@ server {
     # —— 前端：改了要立刻生效 ——
     location /static/ {
         include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
-        add_header Cache-Control "no-cache" always;
+        # 浏览器缓存 12h、边缘只留 5 分钟：
+        # 如果 CDN 的缓存键忽略 query string（?v= 失效，见 deploy/README.md 第 4 节），
+        # 短边缘 TTL 就是兜底——发版后最多 5 分钟自动生效，不用手动 purge。
+        # CDN 正常把 query 纳入缓存键的话，可以只写 no-cache，让 ?v= 去控制。
+        add_header Cache-Control "public, max-age=43200, s-maxage=300" always;
         try_files $uri =404;
     }
 

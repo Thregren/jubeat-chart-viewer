@@ -128,3 +128,33 @@ Rules → Cache Rules → Create rule
   CDN 在这里的真正收益是「音源/封面这些大文件缓存住 + 源站带宽和并发压力下降」
 - 想彻底挡住「直连源站绕过 CDN」，要在腾讯云安全组里只放行 Cloudflare 的 IP 段
   （v4 + v6 都要），否则别人仍可绕过 CDN 拿源站 IP 直接拉音频
+
+### 4. CF 的缓存键如果忽略 query string，`?v=` 就整条失效（踩过）
+
+现象：发版后传了新 `app.js`、`index.html` 里的 `?v=` 也改了，但页面上还是旧行为。
+
+实测（用真实浏览器，命令行 curl 会被 CF 重置握手）：
+
+| 请求 | cf-cache-status | age | 内容 |
+|---|---|---|---|
+| `/static/app.js?v=0.5.20` | HIT | 623 | 旧 |
+| `/static/app.js?v=<随机>` | HIT | 623 | 同上（哈希一致） |
+| `/static/app.js`（无 query） | HIT | 623 | 同上 |
+
+三种 URL 返回同一份缓存、同一个 age → **CF 的缓存键里没有 query string**，
+所以 `index.html` 换 `?v=` 也拿不到新文件，只能等边缘 TTL 过期或手动 purge。
+（多半是加了「Cache Everything」类规则时顺手勾了忽略 query string。）
+
+两种解法，任选：
+
+- **推荐**：Cache Rules → 对应规则 → Cache Key → **Query String 设为 Include**。
+  之后 `?v=` 立刻生效，`/static/` 的 `Cache-Control` 写成 `no-cache` 就行。
+- **不动 CF**：把边缘 TTL 设短（本站现在是 `public, max-age=43200, s-maxage=300`，
+  浏览器 12h、边缘 5 分钟），发版后最多 5 分钟自动生效。
+
+另外两点：
+
+- **CF 的 Purge 只清边缘**，浏览器自己那份（上面的 `max-age=43200`）还在。
+  验证发版有没有生效，要用无痕窗口 / 新 profile，或者 `fetch(url, {cache:"no-store"})`。
+- 即使边缘 TTL 改成 5 分钟，**已经在缓存里的旧条目仍会按它当初的 TTL 活着**，
+  所以改配置那次还得手动 purge 一次。

@@ -114,6 +114,10 @@
     padRects: [],
   };
 
+  // 早期版本的默认按键动画是 02_shutter；现在默认改成 #04（Shutter + frame）。
+  // 老浏览器里存的如果还是这个旧默认值，就跟着换新的；自己挑过别的则保留。
+  const LEGACY_DEFAULT_MARKER = "02_shutter";
+
   const markerCfg = {
     fps: 30,
     entries: [], // 所有可选 marker
@@ -838,13 +842,19 @@
         els.effectSelect.value = savedEffect;
       }
       selectEffect(els.effectSelect.value);
-      selectMarker(
-        savedMarker && markerCfg.entries.some((m) => m.id === savedMarker)
-          ? savedMarker
-          : markerCfg.entries.find((m) => /shutter$/.test(m.id))
-            ? markerCfg.entries.find((m) => /shutter$/.test(m.id)).id
-            : markerCfg.entries[0]?.id || ""
-      );
+      // 默认按键动画：#04（Shutter + frame，带框那个）。
+      // 老版本存的默认是 02_shutter，这种情况跟着换成新默认；
+      // 自己挑过别的（比如 flower / kalesy）就保留自己的选择。
+      const pickMarker = () => {
+        const entries = markerCfg.entries;
+        return (entries.find((m) => m.id.startsWith("04_"))
+          || entries.find((m) => /shutter$/.test(m.id))
+          || entries[0])?.id || "";
+      };
+      const keepSaved = savedMarker
+        && savedMarker !== LEGACY_DEFAULT_MARKER
+        && markerCfg.entries.some((m) => m.id === savedMarker);
+      selectMarker(keepSaved ? savedMarker : pickMarker());
     } catch (err) {
       console.warn("marker manifest 加载失败", err);
       toast("按键动画素材加载失败，已退化为面板灯模式", true);

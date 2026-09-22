@@ -103,10 +103,10 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
         │  tools/build_site.py   展开 + 生成索引；增量（按 mtime 跳过已是最新的），--prune 清理删掉的曲
         ▼
 site/                           ← 唯一的「运行时数据」，约 2.9 GB
-├── index.html                    前端页面（10 KB）
+├── index.html                    前端页面（13 KB）
 ├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（10 KB，node 可测）
-├── static/app.js                 前端逻辑（113 KB，无构建步骤）
-├── static/style.css              样式（28 KB）
+├── static/app.js                 前端逻辑（114 KB，无构建步骤）
+├── static/style.css              样式（29 KB）
 ├── static/sfx.js                 打点音合成（7 KB）
 ├── data/library.json             曲库索引（428 KB，gzip 后约 63 KB）
 ├── data/markers.json             marker 清单（12 套 + 1 种判定特效）
@@ -215,7 +215,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ## 前端
 
 前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 五个文件就是全部，
-合计约 176 KB，gzip 后约 56 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
+合计约 173 KB，gzip 后约 55 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
 （谱面解析、顺序数字、同押分组、难度匹配），所以能用 node 直接跑单测
 （`node --test tools/test_core.mjs`）；`core.js` + `app.js` 合计约 3200 行，按职责分区：
 
@@ -668,7 +668,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 | 带宽 | 一首歌 ≈ 2 MB，听一遍 ≈ 2 MB；索引 gzip 后 63 KB，只拉一次 |
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
 | 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
-| 首屏 | 只拉 `index.html` + 前端（合计约 176 KB）+ 索引（约 63 KB）和当前可见行的缩略图 |
+| 首屏 | 只拉 `index.html` + 前端（合计约 173 KB）+ 索引（约 63 KB）和当前可见行的缩略图 |
 | 重复下载 | WebAudio 路径同一首歌只 fetch 一次并解码；切难度复用 AudioBuffer，解码失败才回落 `<audio>` |
 
 ## 已知限制

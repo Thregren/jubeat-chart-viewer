@@ -112,11 +112,19 @@
     // —— marker / timing ——
     baseOffset: 0, // 谱面 beat 0 对应的音频时间（秒）
     padRects: [],
+    holdCountEls: [],
+    activeNotes: [],
+    noteCursor: 0,
+    lastTimeText: "",
   };
 
   // 早期版本的默认按键动画是 02_shutter；现在默认改成 #04（Shutter + frame）。
   // 老浏览器里存的如果还是这个旧默认值，就跟着换新的；自己挑过别的则保留。
   const LEGACY_DEFAULT_MARKER = "02_shutter";
+
+  // 默认动画速度改为 0.8×，接近动画会比 1.0× 慢一点、更容易看清。
+  // 这是新默认值；用户之后在「动画速度」里手动改过的选择仍会继续记住。
+  const DEFAULT_MARKER_SPEED = 0.8;
 
   const markerCfg = {
     fps: 30,
@@ -124,7 +132,7 @@
     effects: [],
     entry: null, // 当前 marker
     effect: null, // 当前判定特效
-    speed: 1,
+    speed: DEFAULT_MARKER_SPEED,
     anchors: {}, // id -> 手动指定的 PERFECT 帧
     images: new Map(),
     loaded: false,
@@ -191,11 +199,36 @@
     return DIFF_CLASS[String(code || "").toUpperCase()] || "";
   }
 
+  // 上千首曲子会反复查 chartOf / hasHold / 搜索字段；这些派生值每首只算一次。
+  const songMetaCache = new WeakMap();
+
+  function songMeta(song) {
+    let meta = songMetaCache.get(song);
+    if (meta) return meta;
+    const charts = {};
+    let bsc = null;
+    let hasHold = false;
+    for (const c of song.charts || []) {
+      if (!charts[c.code]) charts[c.code] = c;
+      // 保持 chartOf(song, "BSC") 的旧行为：BSC / BAS 里按列表顺序取第一个。
+      if (!bsc && (c.code === "BSC" || c.code === "BAS")) bsc = c;
+      if ((c.holds || 0) > 0) hasHold = true;
+    }
+    meta = {
+      charts,
+      bsc,
+      hasHold,
+      searchFields: [song.title, song.artist, song.filename, song.version]
+        .filter(Boolean).map((value) => String(value).toLowerCase()),
+    };
+    songMetaCache.set(song, meta);
+    return meta;
+  }
+
   /** 取某个难度的谱面（BAS 归到 BSC） */
   function chartOf(song, code) {
-    const want = code === "BSC" ? ["BSC", "BAS"] : [code];
-    for (const c of song.charts) if (want.includes(c.code)) return c;
-    return null;
+    const meta = songMeta(song);
+    return code === "BSC" ? meta.bsc : (meta.charts[code] || null);
   }
 
   // —— 数据布局 ——
@@ -549,7 +582,12 @@
   const CHART_TAIL = 1.2;
 
   function computeDuration(parsed) {
-    const audioDur = Number.isFinite(els.audio.duration) ? els.audio.duration : null;
+    const decodedDur = backend.buf && backend.url === audioUrl(state.song)
+      ? backend.buf.duration
+      : null;
+    const audioDur = Number.isFinite(decodedDur)
+      ? decodedDur
+      : (Number.isFinite(els.audio.duration) ? els.audio.duration : null);
     let dur = ((parsed && parsed.maxSec) || 0) + CHART_TAIL;
     if (audioDur) dur = Math.min(dur, audioDur);
     return Math.max(dur, 1);
@@ -577,9 +615,11 @@
       const fx = el("span", "hold-fx");
       fx.setAttribute("aria-hidden", "true");
       fx.append(el("span", "hold-pie"), el("span", "hold-count"));
+      const count = fx.querySelector(".hold-count");
       btn.append(el("span", "idx", i), fx);
       frag.appendChild(btn);
       state.padEls.push(btn);
+      state.holdCountEls.push(count);
     }
     els.panel.appendChild(frag);
   }
@@ -835,7 +875,7 @@
       const savedEffect = store(STORAGE.effect);
       const savedSpeed = store(STORAGE.speed);
       if (savedSpeed) {
-        markerCfg.speed = Number(savedSpeed) || 1;
+        markerCfg.speed = Number(savedSpeed) || DEFAULT_MARKER_SPEED;
         els.markerSpeed.value = String(markerCfg.speed);
       }
       if (savedEffect && markerCfg.effects.some((e) => e.id === savedEffect)) {
@@ -967,7 +1007,14 @@
     const padV = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
     const padH = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
     const caption = stage.querySelector(".panel-caption");
-    const capH = caption ? caption.getBoundingClientRect().height : 0;
+    // caption 自带 margin-top: 8px，getBoundingClientRect() 不包含 margin；
+    // 少扣这一段会让面板 + 外框 + 说明文字比 stage 高一截，上下各被裁掉几像素。
+    const captionStyle = caption ? getComputedStyle(caption) : null;
+    const capH = caption
+      ? caption.getBoundingClientRect().height
+        + (parseFloat(captionStyle.marginTop) || 0)
+        + (parseFloat(captionStyle.marginBottom) || 0)
+      : 0;
     const bezel = els.panel.parentElement;
     const bezelPad = bezel
       ? Math.max(0, bezel.getBoundingClientRect().height - els.panel.getBoundingClientRect().height)
@@ -1248,6 +1295,9 @@
     rect: null,
     dpr: 1,
     placeholder: false,   // true = 音源还没就绪，只画外框和提示，不画柱子和播放头
+    // 背景 / 网格 / 柱子只在谱面或尺寸变化时画一次；每帧只合成这张缓存 + 播放头。
+    base: null,
+    baseReady: false,
   };
 
   function buildDensity() {
@@ -1255,6 +1305,7 @@
     density.dur = dur;
     density.counts = [];
     density.max = 0;
+    density.baseReady = false;
     if (!dur || !state.notes.length) {
       layoutDensity();
       return;
@@ -1282,18 +1333,23 @@
     cv.height = Math.max(1, Math.round(h * dpr));
     density.dpr = dpr;
     density.rect = { w: box.width, h };
+    density.base = density.base || document.createElement("canvas");
+    density.base.width = cv.width;
+    density.base.height = cv.height;
+    density.baseReady = false;
     drawDensity();
   }
 
-  function drawDensity(posSec = null) {
-    const cv = els.densityCanvas;
-    if (!cv || !density.rect) return;
-    const ctx2 = cv.getContext("2d");
-    if (!ctx2) return;
+  function drawDensityBase() {
+    const base = density.base;
+    if (!base || !density.rect) return false;
+    const ctx2 = base.getContext("2d");
+    if (!ctx2) return false;
     const { w, h } = density.rect;
     const dpr = density.dpr;
+    ctx2.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2.clearRect(0, 0, base.width, base.height);
     ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx2.clearRect(0, 0, w, h);
 
     // 背景与网格（每 30 秒一条竖线）
     ctx2.fillStyle = "#0a0d14";
@@ -1306,7 +1362,8 @@
           ? "音源加载中 · 就绪后显示物量"                                   // 谱面有了，但还播不了
           : "物量显示：加载谱面后显示每个时段的 note 数，可直接拖动跳转",
         8, h / 2 + 4);
-      return;
+      density.baseReady = true;
+      return true;
     }
     const dur = density.dur || 1;
     const barW = w / density.counts.length;
@@ -1314,15 +1371,15 @@
     const plot = h - 16;      // 底部留 12px 给时间刻度，柱子别压到刻度上
     ctx2.strokeStyle = "rgba(255,255,255,0.06)";
     ctx2.lineWidth = 1;
-    for (let s = 30; s < dur; s += 30) {
-      const x = Math.round((s / dur) * w) + 0.5;
+    for (let sec = 30; sec < dur; sec += 30) {
+      const x = Math.round((sec / dur) * w) + 0.5;
       ctx2.beginPath();
       ctx2.moveTo(x, top);
       ctx2.lineTo(x, top + plot);
       ctx2.stroke();
       ctx2.fillStyle = "#5b6478";
       ctx2.font = "9px monospace";
-      ctx2.fillText(fmtTime(s).slice(0, 5), x + 3, h - 2);
+      ctx2.fillText(fmtTime(sec).slice(0, 5), x + 3, h - 2);
     }
     // 柱子：越高越黄，峰值用白色
     for (let i = 0; i < density.counts.length; i++) {
@@ -1334,7 +1391,26 @@
       ctx2.fillStyle = ratio > 0.86 ? "#f2f7ff" : ratio > 0.55 ? "#ffb020" : "#7a8499";
       ctx2.fillRect(x, top + plot - bh, Math.max(1, barW - 1), bh);
     }
-    // 播放头
+    density.baseReady = true;
+    return true;
+  }
+
+  function drawDensity(posSec = null) {
+    const cv = els.densityCanvas;
+    if (!cv || !density.rect) return;
+    const ctx2 = cv.getContext("2d");
+    if (!ctx2) return;
+    if (!density.baseReady && !drawDensityBase()) return;
+
+    const { w, h } = density.rect;
+    const dpr = density.dpr;
+    ctx2.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2.drawImage(density.base, 0, 0);
+    if (!density.counts.length || density.placeholder) return;
+
+    // 播放头是唯一每帧变化的内容
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const dur = density.dur || 1;
     const now = posSec == null ? currentMediaTime() : posSec;
     const px = Math.max(0, Math.min(w, (now / dur) * w));
     ctx2.fillStyle = "#3ddc97";
@@ -1435,7 +1511,7 @@
   /** 按搜索框 + 机台版本筛选（纯前端，不请求服务器） */
   /** 是否有长押：索引里每个难度都记了 holds 数（曲名带 [2] 的通常就是长押版） */
   function hasHold(song) {
-    return song.charts.some((c) => (c.holds || 0) > 0);
+    return songMeta(song).hasHold;
   }
 
   function visibleSongs() {
@@ -1447,10 +1523,7 @@
       if (holdMode === "hold" && !hasHold(s)) return false;
       if (holdMode === "nohold" && hasHold(s)) return false;
       if (!q) return true;
-      return s.title.toLowerCase().includes(q)
-        || (s.artist || "").toLowerCase().includes(q)
-        || s.filename.toLowerCase().includes(q)
-        || s.version.toLowerCase().includes(q);
+      return songMeta(s).searchFields.some((field) => field.includes(q));
     });
     return sortSongs(list, els.sortSelect.value);
   }
@@ -1479,6 +1552,7 @@
   }
 
   // 列表里上千首曲子，封面按需加载：进入可视范围附近才真的去请求
+  const songButtonById = new Map();
   let coverObserver = null;
   function observerForCovers() {
     if (coverObserver || !("IntersectionObserver" in window)) return coverObserver;
@@ -1496,8 +1570,16 @@
     return coverObserver;
   }
 
+  function updateActiveSongRow() {
+    const activeId = state.song ? state.song.id : "";
+    for (const [id, btn] of songButtonById) {
+      btn.classList.toggle("active", id === activeId);
+    }
+  }
+
   function renderList() {
     const ul = els.songList;
+    songButtonById.clear();
     ul.replaceChildren();
     const songs = visibleSongs();
     els.listCount.textContent = `${songs.length} / ${state.songs.length} 首`;
@@ -1562,7 +1644,9 @@
         chip.textContent = c.level;
         lvset.appendChild(chip);
       }
+      btn.dataset.songId = s.id;
       btn.addEventListener("click", () => selectSong(s));
+      songButtonById.set(s.id, btn);
       li.appendChild(btn);
       frag.appendChild(li);
     }
@@ -1571,7 +1655,7 @@
 
   async function selectSong(song, preferredCode = null) {
     state.song = song;
-    renderList();
+    updateActiveSongRow();
     if (isNarrow()) setSidebarOpen(false);   // 手机上选完曲就把抽屉收起来
     els.npTitle.textContent = song.title;
     els.npArtist.textContent = song.artist || "—";
@@ -1608,7 +1692,11 @@
   async function loadChart(file) {
     if (!state.song) return;
     const key = `${state.song.id}::${file}`;
-    stopForLoad();
+    const src = audioUrl(state.song);
+    // 同首歌切难度时保留已经下载/解码好的音源；只有换歌才重置后端。
+    const keepAudio = backend.url === src
+      && (!!backend.buf || els.audio.dataset.src === src);
+    stopForLoad(keepAudio);
     els.captionLeft.textContent = "LOADING CHART…";
     // 换歌的第一段等待：谱面 json + 音源首包。这时候进度条先出来，别让界面看起来是死的。
     audioLoad.pending = true;
@@ -1629,6 +1717,8 @@
 
       const parsed = parseNotes(chart);
       state.notes = parsed.notes;
+      state.activeNotes = [];
+      state.noteCursor = 0;
       state.bpmEvents = parsed.timeEvents;
       state._parsed = parsed;
       // .mc 里 type-1 note 的 offset（ms）= beat 0 相对音频起点的时间
@@ -1642,23 +1732,13 @@
         btn.classList.toggle("active", btn.dataset.file === file);
       }
 
-      // audio
-      const src = audioUrl(state.song);
+      // audio：WebAudio 路径只需要 fetch 一次；只有它失败时才回落 <audio>。
       if (backend.url !== src) {
-        prepareBuffer(src);        // 整首下来解码成 AudioBuffer（失败就用 <audio> 直出）
+        prepareBuffer(src);        // 整首下来解码成 AudioBuffer（失败就自动用 <audio> 直出）
       } else {
         // 同一首歌换难度：音源没变，不用重下，进度条按现有的来
         audioLoad.pending = false;
         updateLoadMeter();
-      }
-      if (els.audio.dataset.src !== src) {
-        audioLoad.pendingLabel = "音频加载";
-        audioLoad.pending = !audioLoad.fetching;
-        updateLoadMeter();
-        els.audio.src = src;
-        els.audio.dataset.src = src;
-        els.audio.currentTime = 0;
-        els.audio.load();          // 元数据到了自己修正时长（见 bindLoadEvents）
       }
 
       state.duration = computeDuration(parsed);
@@ -1696,11 +1776,12 @@
     state.holdFrom.fill(-1);
     state.armed.fill(false);
     if (ctx) ctx.clearRect(0, 0, canvasW, canvasH);
-    for (const pad of state.padEls) {
+    for (let i = 0; i < state.padEls.length; i++) {
+      const pad = state.padEls[i];
       pad.classList.remove("hit", "hold", "armed");
       pad.style.removeProperty("--hp");
-      const count = pad.querySelector(".hold-count");
-      if (count) count.textContent = "";
+      const count = state.holdCountEls[i];
+      if (count && count.textContent) count.textContent = "";
     }
     els.panelGlow.classList.remove("on");
   }
@@ -1715,10 +1796,15 @@
   }
 
   /** 切歌/切难度：先停播、进度归零、清掉上一首的状态，再去加载新谱面 */
-  function stopForLoad() {
+  function stopForLoad(keepAudio = false) {
     stopBufferSource();
-    backend.buf = null;
-    backend.mode = "element";
+    if (!keepAudio) {
+      backend.buf = null;
+      backend.mode = "element";
+      backend.url = "";
+    } else if (backend.buf) {
+      backend.mode = "webaudio";
+    }
     backend.anchorPos = 0;
     pendingSeek = null;      // 上一首没落下去的跳转作废
     resetLoadMeter();
@@ -1777,6 +1863,19 @@
     state.combo = passed;
     state.maxCombo = passed;
     state.comboShown = -1;
+
+    // notes 已按 t 排序：跳转后游标放在第一颗未来 note，
+    // activeNotes 只保留当前还闪 / 还长押的，advanceNotes() 不用每帧扫完整谱面。
+    let lo = 0;
+    let hi = state.notes.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (state.notes[mid].t <= chartT) lo = mid + 1;
+      else hi = mid;
+    }
+    state.noteCursor = lo;
+    state.activeNotes = state.notes.filter((n) =>
+      n.t <= chartT && (n.state === "flashing" || n.state === "holding"));
   }
 
   // —— transport ——
@@ -1952,6 +2051,7 @@
         densityTimer = 0;
         if (!loadBusy()) return;          // 这期间已经加载好了，不用切
         density.placeholder = true;
+        density.baseReady = false;
         drawDensity(currentMediaTime());
       }, DENSITY_PLACEHOLDER_DELAY);
       return;
@@ -1960,6 +2060,7 @@
     densityTimer = 0;
     if (!density.placeholder) return;
     density.placeholder = false;
+    density.baseReady = false;
     drawDensity(currentMediaTime());
   }
 
@@ -2097,6 +2198,19 @@
     });
   }
 
+  /** WebAudio 路径失败或 ?media=1 时才启动 <audio>，避免同一首音源同时下载两份。 */
+  function loadElementSource(url) {
+    if (backend.url !== url) return;
+    audioLoad.pendingLabel = "音频加载";
+    audioLoad.pending = true;
+    updateLoadMeter();
+    els.audio.preload = "metadata";
+    els.audio.src = url;
+    els.audio.dataset.src = url;
+    els.audio.currentTime = 0;
+    els.audio.load();
+  }
+
   /** 音源是不是已经到齐、可以立刻出声了 */
   function playbackLoaded() {
     if (backend.mode === "webaudio") return !!backend.buf;
@@ -2112,8 +2226,8 @@
     resetFetchProgress();
     if (FORCE_MEDIA) {
       // ?media=1：故意的直出模式，进度交给 <audio> 自己报
-      updateLoadMeter();
-      return;
+      loadElementSource(url);
+      return false;
     }
     audioLoad.pending = false;
     audioLoad.fetching = true;
@@ -2143,9 +2257,20 @@
       }
       backend.mode = "webaudio";
       console.info(`[audio] 解码完成 ${buf.duration.toFixed(1)}s，改用 WebAudio 播放`);
+      if (state._parsed) {
+        const dur = computeDuration(state._parsed);
+        if (Math.abs(dur - (state.duration || 0)) > 0.01) {
+          state.duration = dur;
+          els.statTime.textContent = fmtTime(dur);
+          els.timeTotal.textContent = fmtTime(dur);
+          buildDensity();
+        }
+      }
       flushPendingSeek();   // ?t= 深链接：buffer 一好就把位置落下去
+      return true;
     } catch (err) {
       console.warn("[audio] 解码失败，继续用 <audio>", err);
+      if (backend.url === url) loadElementSource(url);
     } finally {
       // 换过歌就别动进度条了，那是新一首的状态
       if (backend.url === url) {
@@ -2154,6 +2279,7 @@
         updateLoadMeter();
       }
     }
+    return false;
   }
 
   /** 从音频秒 pos 起播（webaudio 模式）；打点音和音乐挂在同一条输出上 */
@@ -2248,7 +2374,10 @@
   /** 不做任何外推的原始谱面时间：排打点音用它，宁可差半帧也不要提前响 */
   function rawMediaTime() {
     const off = (Number(els.offset.value) || 0) / 1000;
-    return (els.audio.currentTime || 0) + off - (state.baseOffset || 0);
+    const pos = backend.mode === "webaudio"
+      ? (state.playing ? audioNow() : backend.anchorPos)
+      : (els.audio.currentTime || 0);
+    return pos + off - (state.baseOffset || 0);
   }
 
   // 换歌时不阻塞界面，音源可能还没就绪。这时要跳转（?t= 深链接）先记下来，
@@ -2297,7 +2426,8 @@
     audioClock.fresh = 0;          // 跳转后先老老实实用原始值，等音频真的推进了再外推
     sfxReset();
     rebuildVisualState(renderMediaTime());
-    els.timeNow.textContent = fmtTime(s);
+    state.lastTimeText = fmtTime(s);
+    els.timeNow.textContent = state.lastTimeText;
   }
 
   async function play() {
@@ -2432,23 +2562,14 @@
   const ARM = 0.12; // pre-arm window
 
   function advanceNotes(chartT) {
-    for (const n of state.notes) {
-      if (n.state === "done" || n.state === "flashing" || n.state === "holding") {
-        if (n.state === "flashing" && chartT > n.flashEnd) n.state = "done";
-        if (n.state === "holding" && n.endT != null && chartT >= n.endT) {
-          n.state = "flashing";
-          n.flashEnd = n.endT + FLASH;
-          state.hitUntil[n.index] = n.flashEnd;
-          if (state.holdUntil[n.index] > 0 && chartT > n.endT) {
-            state.holdUntil[n.index] = -1;
-          }
-        }
-        continue;
-      }
-      // pending
-      if (chartT < n.t) continue;
-      n.state = "flashing";
+    // notes 在 parseNotes() 里已经按 t 排好：游标之后都是未来 note。
+    // 同时只维护一张很小的 activeNotes 表（flash/hold 会跨几帧），不再每帧遍历整首谱面。
+    while (state.noteCursor < state.notes.length) {
+      const n = state.notes[state.noteCursor];
+      if (n.t > chartT) break;
+      state.noteCursor++;
       if (n.kind === "tap") {
+        n.state = "flashing";
         n.flashEnd = n.t + FLASH;
         state.hitUntil[n.index] = Math.max(state.hitUntil[n.index] || -1, n.flashEnd);
         bumpCombo();
@@ -2463,6 +2584,24 @@
         bumpCombo();
         // hold 的头拍同样要有打点音，同样交给排程器
         pulseGlow();
+      }
+      state.activeNotes.push(n);
+    }
+
+    for (let i = state.activeNotes.length - 1; i >= 0; i--) {
+      const n = state.activeNotes[i];
+      if (n.state === "flashing" && chartT > n.flashEnd) {
+        n.state = "done";
+        state.activeNotes.splice(i, 1);
+      } else if (n.state === "holding" && n.endT != null && chartT >= n.endT) {
+        n.state = "flashing";
+        n.flashEnd = n.endT + FLASH;
+        state.hitUntil[n.index] = n.flashEnd;
+        if (state.holdUntil[n.index] > 0 && chartT > n.endT) {
+          state.holdUntil[n.index] = -1;
+        }
+      } else if (n.state === "done") {
+        state.activeNotes.splice(i, 1);
       }
     }
   }
@@ -2492,9 +2631,14 @@
         + ` out=${masterPeak()}`;
     }
 
-    // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳
-    els.timeNow.textContent = fmtTime(mediaT + (state.baseOffset || 0)
+    // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳；
+    // 百分秒没变化时不要反复提交 textContent。
+    const timeText = fmtTime(mediaT + (state.baseOffset || 0)
       - (Number(els.offset.value) || 0) / 1000);
+    if (state.lastTimeText !== timeText) {
+      state.lastTimeText = timeText;
+      els.timeNow.textContent = timeText;
+    }
 
     if (state.notes.length) {
       // 拖动预览时只按位置重建状态（不推进连击、不闪灯），松手 seek 后自然会重建
@@ -2538,14 +2682,16 @@
       if (pad.classList.contains("armed") !== armed) pad.classList.toggle("armed", armed);
 
       // hold：扇形从空填到满 + 居中倒计时
-      const count = pad.querySelector(".hold-count");
+      const count = state.holdCountEls[i];
       if (hold) {
         const span = holdEnd - holdStart;
         const p = span > 0 ? (mediaT - holdStart) / span : 1;
-        pad.style.setProperty("--hp", Math.min(1, Math.max(0, p)).toFixed(4));
+        const hp = Math.min(1, Math.max(0, p)).toFixed(4);
+        if (pad.style.getPropertyValue("--hp") !== hp) pad.style.setProperty("--hp", hp);
         if (count) {
           const remain = Math.max(0, holdEnd - mediaT);
-          count.textContent = remain >= 10 ? String(Math.ceil(remain)) : remain.toFixed(1);
+          const text = remain >= 10 ? String(Math.ceil(remain)) : remain.toFixed(1);
+          if (count.textContent !== text) count.textContent = text;
         }
       } else {
         if (pad.style.getPropertyValue("--hp")) pad.style.removeProperty("--hp");
@@ -2688,12 +2834,21 @@
       }
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
       // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
-      const savedSettingsVersion = store(STORAGE.settingsVersion);
-      const useNewDefaults = savedSettingsVersion !== "2";
-      store(STORAGE.settingsVersion, "2");
-      if (!useNewDefaults) {
+      // 设置版本 4：marker 默认动画速度改为 0.8×。
+      // 版本 2 的「总连击 / 顺序数字」默认值只在 <2 时吃一次新默认；
+      // 动画速度只在 <4 时吃一次新默认，之后继续尊重用户的选择。
+      const savedSettingsVersion = Number(store(STORAGE.settingsVersion)) || 0;
+      const useComboDefaults = savedSettingsVersion < 2;
+      const useMarkerSpeedDefaults = savedSettingsVersion < 4;
+      store(STORAGE.settingsVersion, "4");
+      if (!useComboDefaults) {
         if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
+      }
+      if (useMarkerSpeedDefaults) {
+        markerCfg.speed = DEFAULT_MARKER_SPEED;
+        els.markerSpeed.value = String(DEFAULT_MARKER_SPEED);
+        store(STORAGE.speed, DEFAULT_MARKER_SPEED);
       }
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       if (saved.phraseMult != null) els.phraseMult.value = saved.phraseMult;
@@ -2900,6 +3055,10 @@
     if (window.ResizeObserver && els.panel) {
       const ro = new ResizeObserver(() => layoutCanvas());
       ro.observe(els.panel);
+      // 同时 observe 所在区块：歌曲信息 / 断点布局改变中间行时也要重新量一次，
+      // 不能只盯着面板自身，否则会留下一个偏大或偏小的旧尺寸。
+      const panelStage = els.panel.closest(".panel-stage");
+      if (panelStage) ro.observe(panelStage);
     }
     if (window.ResizeObserver && els.densityWrap) {
       const ro2 = new ResizeObserver(() => layoutDensity());

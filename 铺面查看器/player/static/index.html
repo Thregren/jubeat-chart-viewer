@@ -6,7 +6,7 @@
   <title>jubeat 铺面确认</title>
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 style.css / app.js / sfx.js 记得把 ?v= 一起改掉
        （三个都要改，漏一个那个文件就会吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.5.20" />
+  <link rel="stylesheet" href="static/style.css?v=0.5.24" />
 </head>
 <body>
   <div id="app">
@@ -162,8 +162,8 @@
             <label class="ctl">动画速度
               <select id="markerSpeed" aria-label="按键动画播放速度">
                 <option value="0.6">0.6×</option>
-                <option value="0.8">0.8×</option>
-                <option value="1" selected>1.0×</option>
+                <option value="0.8" selected>0.8×</option>
+                <option value="1">1.0×</option>
                 <option value="1.25">1.25×</option>
                 <option value="1.5">1.5×</option>
                 <option value="2">2.0×</option>
@@ -244,8 +244,8 @@
   </div>
 
   <div id="toast" class="toast" hidden></div>
-  <audio id="audio" preload="metadata"></audio>
-  <script src="static/sfx.js?v=0.5.20"></script>
-  <script src="static/app.js?v=0.5.20"></script>
+  <audio id="audio" preload="none"></audio>
+  <script src="static/sfx.js?v=0.5.24"></script>
+  <script src="static/app.js?v=0.5.24"></script>
 </body>
 </html>

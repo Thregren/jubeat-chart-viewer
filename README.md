@@ -11,6 +11,8 @@
 
 线上实例：<https://ub.thregren.world>
 
+当前版本：**v0.5.3** · [Release notes](docs/release-v0.5.3.md)
+
 ---
 
 ## 目录
@@ -101,8 +103,8 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
         ▼
 site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ├── index.html                    前端页面（10 KB）
-├── static/app.js                 前端逻辑（107 KB，无构建步骤）
-├── static/style.css              样式（26 KB）
+├── static/app.js                 前端逻辑（120 KB，无构建步骤）
+├── static/style.css              样式（28 KB）
 ├── static/sfx.js                 打点音合成（7 KB）
 ├── data/library.json             曲库索引（910 KB，gzip 后约 111 KB）
 ├── data/markers.json             marker 清单（12 套 + 1 种判定特效）
@@ -211,7 +213,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ## 前端
 
 前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 四个文件就是全部，
-合计约 153 KB，gzip 后更小）。`app.js` 约 2900 行，按职责分区：
+合计约 167 KB，gzip 后约 54 KB）。`app.js` 约 3200 行，按职责分区：
 
 | 区域 | 干什么 |
 |---|---|
@@ -278,7 +280,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 - **偏移**：±500 ms，正数表示画面整体推迟，用来做「我听到的和看到的差多少」的视听校准
 - **循环**：一首放完自动回到 0 再播
 
-> 这三项在**折叠的选项区**里（手机上折叠时完全不占高度）。
+> 这三项在**选项区**里；桌面和手机都做成控制条上方的浮层，展开时也不会挤压铺面高度。
 
 ### marker 动画怎么和判定对齐
 
@@ -294,7 +296,7 @@ lead = (anchor + 1) / fps                        # 接近动画时长
 
 - `PERFECT 帧`：就是 anchor，默认由 sheet 亮度曲线自动检测（上升段第一个达到峰值 92% 的帧），
   界面上可拖帧条改，`M` 键换素材，`,/.` 微调 ±1 帧
-- `marker 速度`：整体倍率（相当于下落式音游的 HS）
+- `marker 速度`：整体倍率（相当于下落式音游的 HS）；默认 `0.8×`，让接近动画稍微慢一点、更容易看清
 - 每套素材可以有自己的基准帧率（manifest 里的 `fps`）：**Flower Slow** 是 46 帧的
   「展开速度 50%」素材，按 60fps 播才和常规 marker 等速
 
@@ -566,13 +568,15 @@ nginx 上要保证的四件事：
 铺面查看器/player/static/index.html   →  <站点根>/index.html
 铺面查看器/player/static/app.js       →  <站点根>/static/app.js
 铺面查看器/player/static/style.css    →  <站点根>/static/style.css
+铺面查看器/player/static/sfx.js       →  <站点根>/static/sfx.js
 ```
 
 **改完必须同时改 `index.html` 里的 `?v=` 版本号**：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.5.4" />
-<script src="static/app.js?v=0.5.4"></script>
+<link rel="stylesheet" href="static/style.css?v=0.5.24" />
+<script src="static/sfx.js?v=0.5.24"></script>
+<script src="static/app.js?v=0.5.24"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -596,9 +600,9 @@ Release 里放的是**不带曲库**的包（每个约 100 MB；GitHub 单个附
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.5.0-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.5.0-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.5.0-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.5.3-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.5.3-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.5.3-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
 `site/`（会被记住）。macOS 上没做签名，第一次要右键「打开」，或者
@@ -643,11 +647,11 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 5. 打 tag 并发 release（附件就是 `electron/dist/` 里那几个 zip / AppImage，**不带曲库**）：
 
    ```bash
-   git tag vX.Y.Z && git push origin vX.Y.Z
+   git tag vX.Y.Z && git push origin master vX.Y.Z
    gh release create vX.Y.Z --title "vX.Y.Z · 一句话" --notes-file docs/release-vX.Y.Z.md \
        electron/dist/*
    ```
-6. 服务器同步：只传 `index.html` + `static/app.js` + `static/style.css`
+6. 服务器同步：只传 `index.html` + `static/app.js` + `static/style.css` + `static/sfx.js`
 
 ## 性能与体积
 
@@ -657,8 +661,8 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 | 带宽 | 一首歌 ≈ 2 MB，听一遍 ≈ 2 MB；索引 gzip 后 111 KB，只拉一次 |
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
 | 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
-| 首屏 | 只拉 `index.html` + 前端（约 153 KB）+ 索引（约 111 KB）和当前可见行的缩略图 |
-| 重复下载 | 同一首歌只在换歌时下一次；解码成 AudioBuffer 走的是 `cache: "force-cache"`，切难度不会重下 |
+| 首屏 | 只拉 `index.html` + 前端（合计约 167 KB）+ 索引（约 111 KB）和当前可见行的缩略图 |
+| 重复下载 | WebAudio 路径同一首歌只 fetch 一次并解码；切难度复用 AudioBuffer，解码失败才回落 `<audio>` |
 
 ## 已知限制
 

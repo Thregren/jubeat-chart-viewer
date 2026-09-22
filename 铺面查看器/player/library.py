@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import threading
+import time
 import zipfile
 from pathlib import Path
 
@@ -28,6 +29,41 @@ def parse_chart_name(filename: str) -> tuple[str, str, float] | None:
     except ValueError:
         level = 0.0
     return code, m.group(2), level
+
+
+def published_index(songs: list[dict]) -> dict:
+    """公网 `data/library.json` 的形状：只留前端真正读的字段。
+
+    scan_song() 的完整索引还带 path / filename / audio / size /
+    charts.file / charts.levelNum / charts.label —— 加起来约占 library.json 的 40%：
+    前端要么根本不读（path / audio / size），要么能现算（label = code Lv level、
+    levelNum = Number(level)）。charts.file 只在开发服务器内部按 .mcz 成员名读谱面用，
+    不下发。static 站和开发服务器都走这同一个形状。
+    """
+    return {
+        "version": INDEX_VERSION,
+        "generated": int(time.time()),
+        "versions": sorted({s["version"] for s in songs}),
+        "songs": [
+            {
+                "id": s["id"],
+                "title": s["title"],
+                "artist": s.get("artist") or "",
+                "version": s["version"],
+                "cover": s.get("cover") or "",
+                "charts": [
+                    {
+                        "code": c["code"],
+                        "level": c["level"],
+                        "notes": c.get("notes") or 0,
+                        "holds": c.get("holds") or 0,
+                    }
+                    for c in s["charts"]
+                ],
+            }
+            for s in songs
+        ],
+    }
 
 
 def scan_song(mcz_path: Path) -> dict | None:

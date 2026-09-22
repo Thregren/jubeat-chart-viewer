@@ -93,6 +93,9 @@ button, input, select {
 }
 
 .brand-text h1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   font-size: 16px;
   font-weight: 650;
@@ -106,6 +109,40 @@ button, input, select {
   color: var(--muted);
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+/* 开源仓库入口：贴在标题右边，做小一号，别跟标题抢视觉重量 */
+.brand-gh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--cabinet-2);
+  color: var(--muted);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.brand-gh:hover,
+.brand-gh:focus-visible {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.brand-gh svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
+.brand-text .brand-credit {
+  margin-top: 4px;
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: none;
 }
 
 .search-block {

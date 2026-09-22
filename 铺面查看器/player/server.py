@@ -26,7 +26,7 @@ import config
 import markers
 import media
 import thumbs
-from library import Library
+from library import Library, published_index
 
 JSON_CT = "application/json; charset=utf-8"
 
@@ -155,11 +155,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _data_library(self) -> None:
         LIB.load()
-        return self._json({
-            "version": config.INDEX_VERSION,
-            "versions": LIB.versions,
-            "songs": LIB.songs,   # 搜索/筛选在前端做，这里只发一次全量
-        })
+        # 和 static 站同一个形状：只发前端要读的字段（见 library.published_index）
+        return self._json(published_index(LIB.songs))
 
     def _media_chart(self, rel: str) -> None:
         """data/charts/<曲目>/<难度>.json"""

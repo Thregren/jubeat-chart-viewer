@@ -11,7 +11,8 @@
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.5.3** · [Release notes](docs/release-v0.5.3.md)
+当前版本：**v0.5.4** · [Release notes](docs/release-v0.5.4.md) ·
+许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
 
@@ -33,7 +34,7 @@
 - [发布流程（维护者）](#发布流程维护者)
 - [性能与体积](#性能与体积)
 - [已知限制](#已知限制)
-- [版权](#版权)
+- [版权与许可](#版权与许可)
 
 ---
 
@@ -103,10 +104,11 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
         ▼
 site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ├── index.html                    前端页面（10 KB）
-├── static/app.js                 前端逻辑（120 KB，无构建步骤）
+├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（10 KB，node 可测）
+├── static/app.js                 前端逻辑（113 KB，无构建步骤）
 ├── static/style.css              样式（28 KB）
 ├── static/sfx.js                 打点音合成（7 KB）
-├── data/library.json             曲库索引（910 KB，gzip 后约 111 KB）
+├── data/library.json             曲库索引（428 KB，gzip 后约 63 KB）
 ├── data/markers.json             marker 清单（12 套 + 1 种判定特效）
 ├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 4103 个）
 ├── media/audio/<曲目>.ogg        音源（2.4 GB）
@@ -196,7 +198,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 │   ├── thumbs.py              封面缩略图（Pillow，缺失时退化）
 │   ├── markers.py             marker 清单
 │   ├── config.py              路径与环境变量
-│   └── static/                前端（index.html / app.js / sfx.js / style.css）
+│   └── static/                前端（index.html / core.js / app.js / sfx.js / style.css）
 ├── marker/jubeat_marker_frames/  marker 素材 + manifest.json + 拆帧工具
 ├── docs/                      README 截图、桌面版说明、各版本的 release notes
 ├── music/                     曲库（.gitignore）
@@ -212,13 +214,15 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 
 ## 前端
 
-前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 四个文件就是全部，
-合计约 167 KB，gzip 后约 54 KB）。`app.js` 约 3200 行，按职责分区：
+前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 五个文件就是全部，
+合计约 176 KB，gzip 后约 56 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
+（谱面解析、顺序数字、同押分组、难度匹配），所以能用 node 直接跑单测
+（`node --test tools/test_core.mjs`）；`core.js` + `app.js` 合计约 3200 行，按职责分区：
 
 | 区域 | 干什么 |
 |---|---|
 | 状态与工具 | `state`（notes / padRects / combo / duration / chartCache）、`beatToFloat`、`buildTimeMap`（拍号 → 秒，支持变速） |
-| `parseNotes` | 谱面 JSON → note 列表：算每条 note 的秒数、hold 区间、`maxSec`、顺序编号 `seq`、同押分组 `group`/`groupSize`、光晕用色 `glowSlot` |
+| `parseNotes`（`core.js`） | 谱面 JSON → note 列表：算每条 note 的秒数、hold 区间、`maxSec`、顺序编号 `seq`、同押分组 `group`/`groupSize`、光晕用色 `glowSlot` |
 | 面板 | 16 个 pad 的 DOM；命中 / arm / hold 三种状态；hold 的扇形填充 + 倒计时 |
 | 按键音效 | WebAudio 合成的四种音色（点击 / 拍手 / 喵 / 太鼓咚·咔）+ 素材组「比利·海灵顿」，按 note 的精确时间提前排程；往 `se/` 里放同名音频就用真素材（见[构建](#构建)） |
 | marker 动画 | 从 sprite sheet 取帧画到 canvas；PERFECT 帧对齐拍点；hold 到 PERFECT 即止 |
@@ -562,10 +566,11 @@ nginx 上要保证的四件事：
 
 ### 只更新前端（不动曲库）
 
-改完前端只要传这三个文件到站点目录即可，曲库一个字都不用重传：
+改完前端只要传这几个文件到站点目录即可，曲库一个字都不用重传：
 
 ```
 铺面查看器/player/static/index.html   →  <站点根>/index.html
+铺面查看器/player/static/core.js      →  <站点根>/static/core.js
 铺面查看器/player/static/app.js       →  <站点根>/static/app.js
 铺面查看器/player/static/style.css    →  <站点根>/static/style.css
 铺面查看器/player/static/sfx.js       →  <站点根>/static/sfx.js
@@ -574,9 +579,10 @@ nginx 上要保证的四件事：
 **改完必须同时改 `index.html` 里的 `?v=` 版本号**：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.5.24" />
-<script src="static/sfx.js?v=0.5.24"></script>
-<script src="static/app.js?v=0.5.24"></script>
+<link rel="stylesheet" href="static/style.css?v=0.5.4" />
+<script src="static/sfx.js?v=0.5.4"></script>
+<script src="static/core.js?v=0.5.4"></script>
+<script src="static/app.js?v=0.5.4"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -611,6 +617,7 @@ Release 里放的是**不带曲库**的包（每个约 100 MB；GitHub 单个附
 ## 自测与调试
 
 ```bash
+node --test tools/test_core.mjs        # 前端纯逻辑（core.js）单测：谱面解析 / 顺序数字 / 同押光晕 / 难度匹配，不用开浏览器
 python3 tools/smoke_test.py --build    # 静态 + 开发两种模式，32 项（首页/索引/谱面/音源 Range/封面/缩略图/缓存/gzip/404）
 python3 tools/php_smoke_test.py        # PHP 入口，21 项（各种 Range、416、gzip、ETag/304、HEAD、目录穿越）
 
@@ -651,17 +658,17 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
    gh release create vX.Y.Z --title "vX.Y.Z · 一句话" --notes-file docs/release-vX.Y.Z.md \
        electron/dist/*
    ```
-6. 服务器同步：只传 `index.html` + `static/app.js` + `static/style.css` + `static/sfx.js`
+6. 服务器同步：只传 `index.html` + `static/core.js` + `static/app.js` + `static/style.css` + `static/sfx.js`
 
 ## 性能与体积
 
 | 项 | 做法 |
 |---|---|
 | 体积 | 2.9 GB 里 2.4 GB 是音源（Ogg 已压过，压不动）；封面原图按需加载，列表只用 96px 缩略图（11 MB） |
-| 带宽 | 一首歌 ≈ 2 MB，听一遍 ≈ 2 MB；索引 gzip 后 111 KB，只拉一次 |
+| 带宽 | 一首歌 ≈ 2 MB，听一遍 ≈ 2 MB；索引 gzip 后 63 KB，只拉一次 |
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
 | 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
-| 首屏 | 只拉 `index.html` + 前端（合计约 167 KB）+ 索引（约 111 KB）和当前可见行的缩略图 |
+| 首屏 | 只拉 `index.html` + 前端（合计约 176 KB）+ 索引（约 63 KB）和当前可见行的缩略图 |
 | 重复下载 | WebAudio 路径同一首歌只 fetch 一次并解码；切难度复用 AudioBuffer，解码失败才回落 `<audio>` |
 
 ## 已知限制
@@ -672,14 +679,19 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 - **5 个封面在源包里就是坏的 PNG**（HEKIREKI、こどなの階段、となりのトトロ feat_sayurina、マスターピース、女々しくて），
   列表里退化成 ♪ 占位，没有别的影响
 - **同押「密集」只看时间间隔**（相邻两批 ≤ 0.35 s），不看你个人手感；阈值写在 `GLOW_DENSE_GAP`
-- 前端没有构建步骤，所以**没有类型检查 / 压缩**，改 `app.js` 要自己保证语法（`node --check` 能挡一部分）
+- 前端没有构建步骤，所以**没有类型检查 / 压缩**，改 `app.js` / `core.js` 要自己保证语法
+  （`node --check` 能挡一部分；纯逻辑尽量往 `core.js` 放，有单测兜着）
 
-## 版权
+## 版权与许可
 
-- 代码：个人项目，未附 License，仅供学习参考
+- **代码：[MIT](LICENSE) © 2026 Thregren** —— 可以自由使用、修改、再分发，保留版权声明即可
+- **素材不在 MIT 范围内**：`marker/` 里的 marker 图案 / banner / 官方 marker 一览，
+  以及界面截图里的曲目封面（`docs/screenshot.jpg`），版权归各权利人，
+  明细与出处见 [THIRD-PARTY.md](THIRD-PARTY.md)
 - **曲库来源**：[Swan416ya/Jubeat2Malody-GUI](https://github.com/Swan416ya/Jubeat2Malody-GUI/tree/mcz-releases)
   整理并打包的 jubeat `.mcz`（Malody 谱面格式）；本项目只做浏览与回放，曲库本身不入库
 - **曲目、封面、jubeat 的名称与 marker 图案版权归 KONAMI Digital Entertainment 及各原作者**。
   `marker/` 里的素材来自社区公开配布（yuisin、Amy、jujube 项目等），仅供个人核对谱面 / 制作谱面视频使用，
   请勿商用或再分发；`music/` 与构建产物（`site/`、`dist-php/`、`electron/dist/`）都不入库，
   公网部署建议加 Basic Auth 或 IP 白名单
+- **本项目与 KONAMI 无任何关联**，未获授权或认可；权利人若提出异议，会立即删除对应素材

@@ -93,7 +93,7 @@ class Stats:
 
 def expected_paths(songs: list[dict], marker_files: list[str], se_files: list[str]) -> set[str]:
     """这次构建应该存在的所有文件（相对 out 的 posix 路径）。"""
-    want = {"index.html", "robots.txt", "static/app.js", "static/sfx.js", "static/style.css",
+    want = {"index.html", "robots.txt", "static/core.js", "static/app.js", "static/sfx.js", "static/style.css",
             "data/library.json", "data/markers.json"}
     want |= {"markers/" + rel for rel in marker_files}
     want |= {"media/se/" + name for name in se_files}
@@ -273,7 +273,7 @@ def main() -> int:
     # 1) 前端文件
     stats = Stats()
     static_dir = PLAYER_DIR / "static"
-    for name in ("index.html", "style.css", "app.js", "sfx.js"):
+    for name in ("index.html", "style.css", "core.js", "app.js", "sfx.js"):
         src = static_dir / name
         if not src.is_file():
             continue
@@ -295,12 +295,9 @@ def main() -> int:
     if args.limit:
         songs = songs[: args.limit]
     songs.sort(key=lambda s: (s["title"].lower(), s["version"]))
-    index = {
-        "version": config.INDEX_VERSION,
-        "generated": int(time.time()),
-        "versions": sorted({s["version"] for s in songs}),
-        "songs": songs,
-    }
+    # 公开的 library.json 只留前端要读的字段（见 library.published_index）：
+    # 完整索引里的 path / filename / charts.file 等约占 40%，都是浪费
+    index = library.published_index(songs)
     write_atomic(out / "data" / "library.json",
                  json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     stats.songs = len(songs)

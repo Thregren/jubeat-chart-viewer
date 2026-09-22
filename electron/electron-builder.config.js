@@ -13,7 +13,12 @@ const bundleSite = process.env.NO_SITE !== "1";
 const noWine = process.env.NO_WINE === "1";
 const siteDir = path.resolve(__dirname, "..", "site");
 
-const extraResources = [{ from: "../docs/README-electron.txt", to: "README-electron.txt" }];
+// 打包就是把代码发出去，许可 / 素材说明跟着走（MIT 要求随副本附带版权与许可声明）
+const extraResources = [
+  { from: "../docs/README-electron.txt", to: "README-electron.txt" },
+  { from: "../LICENSE", to: "LICENSE" },
+  { from: "../THIRD-PARTY.md", to: "THIRD-PARTY.md" },
+];
 if (bundleSite) {
   if (!fs.existsSync(path.join(siteDir, "index.html"))) {
     throw new Error("BUNDLE_SITE=1 但找不到 ../site：先跑 python3 tools/build_site.py");

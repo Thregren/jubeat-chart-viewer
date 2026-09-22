@@ -5,6 +5,9 @@
 
   const $ = (sel) => document.querySelector(sel);
 
+  // 纯逻辑（谱面解析 / 顺序数字 / 难度匹配）在 core.js：node 可测，这里只薄封装
+  const Core = window.JubeatCore || {};
+
   /** 建一个元素：el("span", "lv", "9.1") — 统一走 textContent，不碰 innerHTML */
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -218,7 +221,7 @@
       charts,
       bsc,
       hasHold,
-      searchFields: [song.title, song.artist, song.filename, song.version]
+      searchFields: [song.title, song.artist, song.version]
         .filter(Boolean).map((value) => String(value).toLowerCase()),
     };
     songMetaCache.set(song, meta);
@@ -301,21 +304,6 @@
     { name: "橙 / 青绿", main: "#ff8a3d", alt: "#2dd4bf" },
   ];
 
-  // 相邻两批同押挨得比这个还近，就算「密」，改用双色交替
-  const GLOW_DENSE_GAP = 0.35;
-
-  // 顺序数字的「换气」判定默认值（选项区里可以改，见 numberNotes）：
-  //   空档 ≥ 最近几个空档中位数的 PHRASE_BREAK_MULT 倍，且至少 PHRASE_BREAK_FLOOR 拍。
-  // 参数是在全库 4099 份谱面上扫出来的：1.25×/0.5 拍时约 8.7% 的音会显示两位数；
-  // 2.0×/0.75 拍（第一版）有 16% 是两位数。倍数越小断句越勤。
-  const PHRASE_BREAK_MULT = 1.25;
-  const PHRASE_BREAK_FLOOR = 0.5;
-  const PHRASE_LOOKBACK = 8;
-  // 一句话最多数到几：兜底。正常情况都由上面的「换气」自然断句，只有真的没空档的
-  // 连续长段才会数到这里。取 9 = 数字保证是个位（密集谱面里光靠调断句阈值降不下来：
-  // 间隔是量化的 0.5/0.75 拍，倍数 1.05~1.25 触发的是同一批断点，两位数占比都卡在 13%）。
-  const PHRASE_MAX = 9;
-
   function store(key, value) {
     try {
       if (value === undefined) return localStorage.getItem(key);
@@ -327,150 +315,26 @@
     return null;
   }
 
-  // —— utils ——
-  function beatToFloat(beat) {
-    if (Array.isArray(beat)) {
-      const [a, b, c] = beat;
-      const den = c || 1;
-      return a + (b || 0) / den;
-    }
-    return Number(beat) || 0;
-  }
+  // —— utils（纯逻辑在 core.js，node 可测） ——
+  const beatToFloat = Core.beatToFloat;
+  const buildTimeMap = Core.buildTimeMap;
 
-  function buildTimeMap(events) {
-    // events: [{beat, bpm}] sorted by beat; returns f(beatFloat) -> seconds
-    const evs = events
-      .map((e) => ({ beat: beatToFloat(e.beat), bpm: Number(e.bpm) || 120 }))
-      .sort((a, b) => a.beat - b.beat);
-    if (!evs.length) evs.push({ beat: 0, bpm: 120 });
-    if (evs[0].beat > 0) evs.unshift({ beat: 0, bpm: evs[0].bpm });
-
-    // precompute segment starts
-    const segs = [];
-    let t = 0;
-    for (let i = 0; i < evs.length; i++) {
-      const cur = evs[i];
-      if (i > 0) {
-        const prev = evs[i - 1];
-        t += ((cur.beat - prev.beat) * 60) / prev.bpm;
-      }
-      const endBeat = i + 1 < evs.length ? evs[i + 1].beat : Infinity;
-      segs.push({ startBeat: cur.beat, endBeat, startSec: t, bpm: cur.bpm });
-    }
-
-    function beatToSec(bf) {
-      if (bf <= segs[0].startBeat) {
-        // before first — extrapolate with first bpm (shouldn't happen)
-        const s = segs[0];
-        return s.startSec + ((bf - s.startBeat) * 60) / s.bpm;
-      }
-      // binary search segment
-      let lo = 0;
-      let hi = segs.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (segs[mid].startBeat <= bf) lo = mid;
-        else hi = mid - 1;
-      }
-      const s = segs[lo];
-      return s.startSec + ((bf - s.startBeat) * 60) / s.bpm;
-    }
-
-    function secToBeat(sec) {
-      let lo = 0;
-      let hi = segs.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (segs[mid].startSec <= sec) lo = mid;
-        else hi = mid - 1;
-      }
-      const s = segs[lo];
-      return s.startBeat + ((sec - s.startSec) * s.bpm) / 60;
-    }
-
-    function bpmAt(sec) {
-      let lo = 0;
-      let hi = segs.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (segs[mid].startSec <= sec) lo = mid;
-        else hi = mid - 1;
-      }
-      return segs[lo].bpm;
-    }
-
-    return { beatToSec, secToBeat, bpmAt, segments: segs };
-  }
-
-  /** 顺序数字的三个参数（选项区可改，默认见上面常量） */
+  /** 顺序数字的三个参数（选项区可改，默认见 core.js 的常量） */
   function phraseParams() {
     const num = (el, dflt) => {
       const v = Number(el && el.value);
       return Number.isFinite(v) ? v : dflt;
     };
     return {
-      mult: num(els.phraseMult, PHRASE_BREAK_MULT),
-      floor: num(els.phraseFloor, PHRASE_BREAK_FLOOR),
-      max: num(els.phraseMax, PHRASE_MAX),      // 0 = 不限
+      mult: num(els.phraseMult, Core.PHRASE_BREAK_MULT),
+      floor: num(els.phraseFloor, Core.PHRASE_BREAK_FLOOR),
+      max: num(els.phraseMax, Core.PHRASE_MAX),      // 0 = 不限
     };
   }
 
-  /**
-   * 给音符编「顺序数字」：按换气切句，句内 1、2、3…，同一时刻一起按的共用同一个数字。
-   *
-   * 换气判定：某个空档 ≥ 最近 8 个空档中位数的 mult 倍（说明这一段明显变稀疏了）、
-   * 且至少 floor 拍（免得在一串 16 分音里乱切）→ 新的一句，数字从 1 重来。
-   * 再数到 max 也重来（兜底，避免连续长段把数字堆到几十）。
-   *
-   * 单独抽成函数是因为这三个参数在选项区可以改，改完要立刻重编一遍。
-   */
+  /** 顺序数字 / 同押分组 / 光晕用色：实现在 core.js（node 可测） */
   function numberNotes(notes, bpmAt) {
-    const { mult, floor, max } = phraseParams();
-    let seq = 0;
-    let lastT = null;
-    let group = 0;                            // 全局批次号（seq 只在一句内递增，不能拿它当键）
-    const recent = [];                        // 最近几个空档（拍），用来判断「比周围稀疏」
-    for (const n of notes) {
-      if (lastT === null || n.t - lastT > 1e-4) {
-        const gapBeats = lastT === null ? 0 : ((n.t - lastT) * bpmAt(lastT)) / 60;
-        if (recent.length) {
-          const sorted = [...recent].sort((a, b) => a - b);
-          const med = sorted[sorted.length >> 1];
-          if (gapBeats >= Math.max(mult * med, floor)) seq = 0;
-        }
-        if (max > 0 && seq >= max) seq = 0;
-        seq++;
-        group++;
-        lastT = n.t;
-        if (recent.length >= PHRASE_LOOKBACK) recent.shift();
-        recent.push(gapBeats);
-      }
-      n.seq = seq;
-      n.group = group;
-    }
-    // 同一批（共用同一个数字）有几个 note：≥2 就是要一起按的，数字上会加光晕
-    const groupSize = new Map();
-    for (const n of notes) groupSize.set(n.group, (groupSize.get(n.group) || 0) + 1);
-    for (const n of notes) n.groupSize = groupSize.get(n.group) || 1;
-
-    // 同押光晕用主色还是副色：按「这一批同押密不密」预先算好，逐帧再算没必要。
-    // 密的地方相邻两批交替上色（0 = 主色，1 = 副色），稀疏的地方一律主色。
-    const chords = [];
-    for (const n of notes) {
-      if (!chords.length || chords[chords.length - 1].group !== n.group) {
-        chords.push({ group: n.group, t: n.t, size: n.groupSize });
-      }
-    }
-    const chordGroups = chords.filter((c) => c.size >= 2);
-    const glowSlot = new Map();
-    chordGroups.forEach((c, i) => {
-      const prev = chordGroups[i - 1];
-      const next = chordGroups[i + 1];
-      const dense = (prev && c.t - prev.t <= GLOW_DENSE_GAP)
-        || (next && next.t - c.t <= GLOW_DENSE_GAP);
-      glowSlot.set(c.group, dense ? i % 2 : 0);
-    });
-    for (const n of notes) n.glowSlot = glowSlot.get(n.group) || 0;
+    Core.numberNotes(notes, bpmAt, phraseParams());
   }
 
   /** 改了顺序数字的参数之后重编一遍当前谱面（下一帧就会用新数字重画） */
@@ -479,81 +343,9 @@
     numberNotes(state.notes, state._parsed.bpmAt);
   }
 
+  /** .mc 谱面 JSON → note 列表：实现在 core.js（node 可测） */
   function parseNotes(chart) {
-    const timeEvents = (chart.time || []).map((e) => ({
-      beat: e.beat,
-      bpm: e.bpm,
-    }));
-    const map = buildTimeMap(timeEvents);
-    const beatToSec = map.beatToSec;
-    const notes = [];
-    let type1 = null;
-    let nTap = 0;
-    let nHold = 0;
-    let maxSec = 0;
-    let maxHold = 0;
-
-    for (const raw of chart.note || []) {
-      const type = raw.type ?? 0;
-      if (type === 1) {
-        type1 = type1 || { offset: raw.offset || 0, sound: raw.sound, vol: raw.vol ?? 100 };
-        continue;
-      }
-      if (raw.index == null) continue;
-      const t = beatToSec(beatToFloat(raw.beat));
-      const startBeat = beatToFloat(raw.beat);
-      let endT = null;
-      let endBeat = null;
-      if (raw.endbeat != null) {
-        endBeat = beatToFloat(raw.endbeat);
-        endT = beatToSec(endBeat);
-        nHold++;
-      } else {
-        nTap++;
-      }
-      maxSec = Math.max(maxSec, t, endT || 0);
-      if (endT != null) maxHold = Math.max(maxHold, endT - t);
-      const head = raw.index | 0;
-      const tip = raw.endindex == null ? null : raw.endindex | 0;
-      notes.push({
-        t,
-        beat: startBeat,
-        endBeat,
-        endT,
-        index: head,
-        // ⚠️ .mc 里的 endindex 是长押「尾巴尖朝哪边」的方向（jubeatools 的 tail_tip），
-        // 不是另一个 pad，更不是第二条 note。以前把它当第二个格子点亮，
-        // 于是每个长押都凭空多出一个亮着的键（密集长押的曲子看着像多了几十个 note）。
-        // 现在只用来画方向箭头，键位一律只用 index。
-        tailTip: tip,
-        kind: endT != null ? "hold" : "tap",
-        state: "pending", // pending | flashing | holding | done
-        flashEnd: 0,
-      });
-    }
-    notes.sort((a, b) => a.t - b.t);
-
-    numberNotes(notes, map.bpmAt);
-
-    const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
-    const baseBpm = bpms.length ? bpms[0] : 0;
-    const multi = timeEvents.length > 1;
-
-    return {
-      notes,
-      beatToSec,
-      secToBeat: map.secToBeat,
-      bpmAt: map.bpmAt,
-      timeEvents,
-      baseBpm,
-      multiBpm: multi,
-      maxSec,
-      maxHold,
-      type1,
-      nTap,
-      nHold,
-      nTotal: nTap + nHold,
-    };
+    return Core.parseNotes(chart, phraseParams());
   }
 
   function fmtTime(sec) {
@@ -1532,7 +1324,10 @@
   function sortSongs(list, mode) {
     const num = (song, code, key) => {
       const c = chartOf(song, code);
-      return c && typeof c[key] === "number" ? c[key] : -1;
+      if (!c) return -1;
+      // levelNum 不在索引里（省体积），排序时由 level 现算
+      if (key === "levelNum") return Number(c.level) || -1;
+      return typeof c[key] === "number" ? c[key] : -1;
     };
     const byTitle = (a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase(), "ja");
     const byVersion = (a, b) => versionRank(a.version) - versionRank(b.version) || byTitle(a, b);
@@ -1675,23 +1470,30 @@
       const b = document.createElement("button");
       b.type = "button";
       b.className = "diff-btn " + diffClass(c.code);
-      b.dataset.file = c.file;
+      b.dataset.code = c.code;
       // 用 DOM + textContent，不拼 innerHTML：code / level 来自 .mcz 文件名，
       // 万一哪天解析规则放宽、有脏数据溜进来，这里也不会变成注入点。
       b.append(document.createTextNode(c.code), el("span", "lv", c.level));
-      b.addEventListener("click", () => loadChart(c.file));
+      b.addEventListener("click", () => loadChart(c.code));
       els.diffRow.appendChild(b);
     });
 
     // pick difficulty
     let pick = song.charts.find((c) => preferredCode && c.code === preferredCode);
     if (!pick) pick = song.charts.find((c) => c.code === "EXT") || song.charts[song.charts.length - 1];
-    await loadChart(pick.file);
+    await loadChart(pick.code);
   }
 
-  async function loadChart(file) {
+  /** 按难度代号找谱面（BAS/ADV/EXT…）；兼容旧深链接里直接传 file 的写法 */
+  function pickChart(charts, code) {
+    return Core.pickChart(charts, code);
+  }
+
+  async function loadChart(code) {
     if (!state.song) return;
-    const key = `${state.song.id}::${file}`;
+    const picked = pickChart(state.song.charts, code);
+    const chart = picked || { code: "EXT" };
+    const key = `${state.song.id}::${chart.code}`;
     const src = audioUrl(state.song);
     // 同首歌切难度时保留已经下载/解码好的音源；只有换歌才重置后端。
     const keepAudio = backend.url === src
@@ -1705,17 +1507,19 @@
     try {
       let payload = state.chartCache.get(key);
       if (!payload) {
-        const chart = state.song.charts.find((c) => c.file === file) || { code: "EXT" };
         const res = await fetch(chartPath(state.song, chart));
         if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
         payload = { chart: await res.json(), chartMeta: chart };
         state.chartCache.set(key, payload);
       }
-      const chart = payload.chart;
+      // 注意别叫 chart：上面已经有一个同名的难度元信息对象（`chart`），
+      // 这里再声明一次会在 try 块内把它遮住，于是块内更早的
+      // chartPath(state.song, chart) 直接踩 TDZ → 每次冷加载都 ReferenceError。
+      const chartJson = payload.chart;
       state.chartMeta = payload.chartMeta;
-      state.chart = chart;
+      state.chart = chartJson;
 
-      const parsed = parseNotes(chart);
+      const parsed = parseNotes(chartJson);
       state.notes = parsed.notes;
       state.activeNotes = [];
       state.noteCursor = 0;
@@ -1729,7 +1533,7 @@
 
       // highlight diff button
       for (const btn of els.diffRow.querySelectorAll(".diff-btn")) {
-        btn.classList.toggle("active", btn.dataset.file === file);
+        btn.classList.toggle("active", btn.dataset.code === chartJson.code);
       }
 
       // audio：WebAudio 路径只需要 fetch 一次；只有它失败时才回落 <audio>。
@@ -1755,7 +1559,8 @@
 
       clearPads();
       resetCombo();
-      els.captionLeft.textContent = `${payload.chartMeta?.label || file} · ${parsed.nTotal} notes`;
+      const meta = payload.chartMeta || chart;
+      els.captionLeft.textContent = `${meta.code} Lv${meta.level} · ${parsed.nTotal} notes`;
       layoutCanvas();
       buildDensity();
       const urlT = urlState().t;
@@ -3027,7 +2832,7 @@
       } else if (["1", "2", "3", "4"].includes(e.key) && state.song) {
         const idx = Number(e.key) - 1;
         const c = state.song.charts[idx];
-        if (c) loadChart(c.file);
+        if (c) loadChart(c.code);
       } else if (e.key === "m" || e.key === "M") {
         if (markerCfg.entries.length) {
           const cur = markerCfg.entries.findIndex((m) => m.id === markerCfg.entry?.id);

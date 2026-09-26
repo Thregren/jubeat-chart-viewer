@@ -174,6 +174,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 .
 ├── tools/
 │   ├── build_site.py          构建：music/*.mcz → site/（增量 + prune + 多线程）
+│   ├── pack_desktop.sh        打桌面版轻量包（Release 附件），绕开 exFAT / iCloud 两个坑
 │   ├── build_php_package.py   构建：site/ → dist-php/jubeat-site-php.zip（含曲库的 PHP 整包）
 │   ├── pack_zip.py            打 zip 的公共实现（非 ASCII 文件名带 UTF-8 标记）
 │   ├── serve.py               本地预览静态站点（Range + keep-alive）
@@ -556,13 +557,28 @@ python3 tools/build_php_package.py --no-zip    # 只准备目录，不压缩
 
 ### 桌面版打包
 
+Release 附件（轻量包，每个约 100 MB）用脚本打：
+
 ```bash
-cd electron && npm install
-NO_SITE=1 npm run dist        # 「不带曲库」的轻量包（每个约 100 MB）—— Release 用的就是这个
-                              #   注意：轻量包不含 site/ 也不含前端，只是同版本的桌面壳
+tools/pack_desktop.sh          # 打完自动收回 electron/dist
+```
+
+脚本会把源码同步到一个**本地盘工作目录**（默认 `/Users/Shared/jubeat-dist-build`）再打包 —— 直接在仓库里跑 `cd electron && NO_SITE=1 npm run dist` 有两个坑：
+
+- 仓库在外置 **exFAT** 盘上时，electron-builder 读 asar 会因偏移溢出失败
+  （`RangeError: The value of "offset" is out of range`）
+- `~/Documents` 在 iCloud 管理下，依赖文件可能被「抽水」（`dataless`）——
+  读它们会一直阻塞，表现为 electron-builder **静默卡死、0% CPU**。
+  脚本会先检查一次并在发现抽水文件时提示 `brctl download`
+
+想手工跑的话：
+
+```bash
 npm run dist                  # 默认把 site/ 打进包里（每个平台约 2.9 GB）
 NO_WINE=1 npm run dist:win    # 没有 wine 的机器上打 Windows 包（跳过 exe 图标/版本信息）
 ```
+
+注意：轻量包**不含 site/ 也不含前端**，只是同版本的桌面壳（首次启动自己选 site 目录）。
 
 ## 部署
 
@@ -675,7 +691,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 3. 提版本号：
    - `electron/package.json` 的 `version`（release 附件名用它）
    - `铺面查看器/player/static/index.html` 里的 `?v=`（缓存键，必须和上一版不同）
-4. 构建桌面版轻量包：`cd electron && NO_SITE=1 npm run dist`
+4. 构建桌面版轻量包：`tools/pack_desktop.sh`（产物自动收回 `electron/dist`）
 5. 打 tag 并发 release（附件就是 `electron/dist/` 里那几个 zip / AppImage，**不带曲库**）：
 
    ```bash

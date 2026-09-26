@@ -11,7 +11,7 @@
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.5.4** · [Release notes](docs/release-v0.5.4.md) ·
+当前版本：**v0.6.0** · [Release notes](docs/release-v0.6.0.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -559,6 +559,7 @@ python3 tools/build_php_package.py --no-zip    # 只准备目录，不压缩
 ```bash
 cd electron && npm install
 NO_SITE=1 npm run dist        # 「不带曲库」的轻量包（每个约 100 MB）—— Release 用的就是这个
+                              #   注意：轻量包不含 site/ 也不含前端，只是同版本的桌面壳
 npm run dist                  # 默认把 site/ 打进包里（每个平台约 2.9 GB）
 NO_WINE=1 npm run dist:win    # 没有 wine 的机器上打 Windows 包（跳过 exe 图标/版本信息）
 ```
@@ -601,10 +602,12 @@ nginx 上要保证的四件事：
 **改完必须同时改 `index.html` 里的 `?v=` 版本号**：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.5.4" />
-<script src="static/sfx.js?v=0.5.4"></script>
-<script src="static/core.js?v=0.5.4"></script>
-<script src="static/app.js?v=0.5.4"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.0" />
+<link rel="stylesheet" href="static/record.css?v=0.6.0" />
+<script src="static/sfx.js?v=0.6.0"></script>
+<script src="static/core.js?v=0.6.0"></script>
+<script src="static/record.js?v=0.6.0"></script>
+<script src="static/app.js?v=0.6.0"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -680,7 +683,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
    gh release create vX.Y.Z --title "vX.Y.Z · 一句话" --notes-file docs/release-vX.Y.Z.md \
        electron/dist/*
    ```
-6. 服务器同步：只传 `index.html` + `static/core.js` + `static/app.js` + `static/style.css` + `static/sfx.js`
+6. 服务器同步：只传 `index.html` + `static/core.js` + `static/app.js` + `static/style.css` + `static/sfx.js`（要用录制模式再加 `static/record.js` + `static/record.css`）
 
 ## 性能与体积
 

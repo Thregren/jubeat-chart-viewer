@@ -1,7 +1,7 @@
 {
   "name": "jubeat-viewer",
   "productName": "jubeatViewer",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "description": "jubeat 谱面（铺面）确认播放器 —— 本地静态站点 + Electron 外壳",
   "author": "Thregren",
   "license": "MIT",

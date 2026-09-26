@@ -35,7 +35,7 @@ player/
   thumbs.py     封面缩略图：Pillow → macOS sips → 直接用原图
   markers.py    marker 清单（manifest + 目录 fallback，按 mtime 失效）
   config.py     路径与环境变量
-  static/       前端（原生 JS + Canvas，无构建步骤）
+  static/       前端（原生 JS + Canvas，无构建步骤；record.js / record.css = 录制模式 ?rec=1）
 ```
 
 ## 说明

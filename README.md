@@ -105,9 +105,11 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
 site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ├── index.html                    前端页面（13 KB）
 ├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（10 KB，node 可测）
-├── static/app.js                 前端逻辑（114 KB，无构建步骤）
+├── static/app.js                 前端逻辑（115 KB，无构建步骤）
 ├── static/style.css              样式（29 KB）
 ├── static/sfx.js                 打点音合成（7 KB）
+├── static/record.js              录制模式 `?rec=1`：预设 + 卡片 + `__rec` 接口（9.5 KB）
+├── static/record.css             录制模式版面：整页只剩一张卡片（3 KB）
 ├── data/library.json             曲库索引（428 KB，gzip 后约 63 KB）
 ├── data/markers.json             marker 清单（12 套 + 1 种判定特效）
 ├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 4103 个）
@@ -198,7 +200,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 │   ├── thumbs.py              封面缩略图（Pillow，缺失时退化）
 │   ├── markers.py             marker 清单
 │   ├── config.py              路径与环境变量
-│   └── static/                前端（index.html / core.js / app.js / sfx.js / style.css）
+│   └── static/                前端（index.html / core.js / app.js / sfx.js / style.css / record.js / record.css）
 ├── marker/jubeat_marker_frames/  marker 素材 + manifest.json + 拆帧工具
 ├── docs/                      README 截图、桌面版说明、各版本的 release notes
 ├── music/                     曲库（.gitignore）
@@ -214,8 +216,8 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 
 ## 前端
 
-前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 五个文件就是全部，
-合计约 173 KB，gzip 后约 55 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
+前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 七个文件就是全部，
+合计约 187 KB，gzip 后约 62 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
 （谱面解析、顺序数字、同押分组、难度匹配），所以能用 node 直接跑单测
 （`node --test tools/test_core.mjs`）；`core.js` + `app.js` 合计约 3200 行，按职责分区：
 
@@ -431,6 +433,24 @@ https://ub.thregren.world/?song=jubeat-festo%2F1116.mcz&t=54.91&paused=1
 
 `tools/screenshot.js` 就是用这个抓 README 顶部那张图的。
 
+### 录制模式（`?rec=1`）
+
+给页面加 `?rec=1` 会切进「录制模式」：把**歌曲信息 + 4×4 面板**收进一张固定像素的卡片
+（默认 1080×1256，可用 `?rw=` / `?rh=` 改），其余界面（曲库、控制条、物量条、抽屉）全部不参与渲染，
+同时在 `window.__rec` 上暴露一组接口，方便自己写逐帧录制脚本：
+
+| 接口 | 作用 |
+|---|---|
+| `await __rec.ready()` | 等谱面 / marker / 字体 / 封面就绪，返回 `info()` |
+| `__rec.info()` | 本段录制需要的信息：曲目、时长、打点音列表（含「咚 / 咔」判定）、截图区域、信息栏数值 |
+| `await __rec.renderAt(t)` | 把画面定格到谱面时间 t，**画完一帧才返回** |
+| `__rec.freeze()` | 停掉 rAF 循环，画面只由 `renderAt()` 驱动（每帧少等一个 vsync） |
+| `__rec.debug()` | 自检：画面到底停在哪一刻 |
+
+画面完全由时间决定（`renderAt(t)` 内部是 `setFrameTime(t)` + `seekTo(t)`，不依赖音频时钟），
+所以**录 60fps 并不需要真的跑 60fps**。另外 `?marker=` `?speed=` `?effect=` 可以在进入时覆盖
+marker 与动画速度，录制预设会写进 localStorage，保证每段画面参数一致。
+
 ### 手机 / 窄屏
 
 按 900 px 断点切换布局，目标是「一屏里 4×4 面板尽量大」：
@@ -574,6 +594,8 @@ nginx 上要保证的四件事：
 铺面查看器/player/static/app.js       →  <站点根>/static/app.js
 铺面查看器/player/static/style.css    →  <站点根>/static/style.css
 铺面查看器/player/static/sfx.js       →  <站点根>/static/sfx.js
+铺面查看器/player/static/record.js    →  <站点根>/static/record.js
+铺面查看器/player/static/record.css   →  <站点根>/static/record.css
 ```
 
 **改完必须同时改 `index.html` 里的 `?v=` 版本号**：

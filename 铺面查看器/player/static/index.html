@@ -6,7 +6,8 @@
   <title>jubeat 铺面确认</title>
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 style.css / app.js / sfx.js 记得把 ?v= 一起改掉
        （三个都要改，漏一个那个文件就会吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.5.4" />
+  <link rel="stylesheet" href="static/style.css?v=0.5.5" />
+  <link rel="stylesheet" href="static/record.css?v=0.5.5" />
 </head>
 <body>
   <div id="app">
@@ -261,8 +262,10 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.5.4"></script>
-  <script src="static/core.js?v=0.5.4"></script>
-  <script src="static/app.js?v=0.5.4"></script>
+  <script src="static/sfx.js?v=0.5.5"></script>
+  <script src="static/core.js?v=0.5.5"></script>
+  <!-- 录制模式（?rec=1）：必须在 app.js 之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
+  <script src="static/record.js?v=0.5.5"></script>
+  <script src="static/app.js?v=0.5.5"></script>
 </body>
 </html>

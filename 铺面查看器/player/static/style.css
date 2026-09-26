@@ -817,7 +817,9 @@ button:focus-visible,
   position: relative;
   z-index: 1;
   font-family: var(--mono);
-  font-size: clamp(12px, 1.5vw, 17px);
+  /* 以前是 clamp(12px, 1.5vw, 17px)：小屏还行，桌面上面板一大就显得太小、
+     录像里几乎看不清。跟着面板尺寸放大一档。 */
+  font-size: clamp(14px, 2.2vw, 30px);
   font-weight: 700;
   line-height: 1;
   color: #f2f7ff;

@@ -1,0 +1,151 @@
+/* 录制模式（?rec=1）—— 把界面收成一张固定像素的「卡片」：
+   歌曲信息 + 4×4 面板 + 底部说明，其余元素（曲库、控制条、物量条、
+   加载进度、窄屏抽屉）全部不参与录制。
+
+   逐帧录制时由 tools/rec 按 #recCard 的包围盒截图，所以这里所有尺寸
+   都写成固定 px，不跟窗口大小走 —— 换台机器录出来的构图必须一样。 */
+
+html.rec, html.rec body {
+  overflow: hidden;
+  background: var(--void);
+}
+
+/* 整页只剩卡片：侧边栏 / 控制条 / 抽屉栏都不进来 */
+html.rec #app { display: none !important; }
+
+#recCard {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 57px 16px;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+/* —— 歌曲信息 —— */
+#recCard .now-playing {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 296px;
+  gap: 22px;
+  align-items: center;
+  padding: 0 0 20px;
+}
+
+#recCard .cover-wrap {
+  width: 92px;
+  height: 92px;
+  border-radius: 10px;
+  align-self: center;
+}
+
+#recCard .np-main {
+  gap: 7px;
+  justify-content: center;
+}
+
+#recCard .np-kicker {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+#recCard .np-main h2 {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+#recCard .np-artist {
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+#recCard .diff-row {
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+#recCard .diff-btn {
+  padding: 9px 20px;
+  font-size: 19px;
+  border-radius: 999px;
+}
+
+#recCard .np-side {
+  justify-content: center;
+}
+
+#recCard .stat-row {
+  gap: 10px 14px;
+}
+
+#recCard .stat label {
+  font-size: 12px;
+}
+
+#recCard .stat value {
+  font-size: 27px;
+  font-weight: 700;
+}
+
+/* —— 面板 —— */
+#recCard .panel-stage {
+  display: block;
+  padding: 0;
+}
+
+#recCard .panel-bezel {
+  padding: 14px;
+  border-radius: 22px;
+}
+
+#recCard .panel-inner {
+  width: 938px !important;
+  height: 938px !important;
+  gap: 9px;
+  padding: 11px;
+  border-radius: 16px;
+}
+
+#recCard .marker-canvas {
+  border-radius: 16px;
+}
+
+#recCard .panel-glow {
+  border-radius: 26px;
+}
+
+#recCard .pad .idx {
+  right: 8px;
+  bottom: 6px;
+  font-size: 12px;
+}
+
+/* 长押倒计时：录像里格子有 222px，中间那个深色圆盘直径约 120px，
+   默认的 17px 数字在里面像只蚂蚁（录出来的视频上根本看不清剩余几秒）。
+   这里按录制卡片的固定尺寸写死 —— 最多 3 个字符（"99" / "9.9"），放得下。 */
+#recCard .hold-count {
+  font-size: 42px;
+  letter-spacing: -0.02em;
+}
+
+#recCard .panel-caption {
+  width: 966px !important;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+/* 逐帧截图时页面时钟是「定格」的，CSS 过渡 / 动画跟的是真实时间，
+   留着它们只会让某一帧捕捉到过度中的中间状态。判定态本身就够显眼，
+   这里全部关掉，保证每一帧都只由 chart 时间决定。 */
+#recCard .pad,
+#recCard .pad::after,
+#recCard .panel-glow,
+#recCard .diff-btn {
+  transition: none !important;
+  animation: none !important;
+}

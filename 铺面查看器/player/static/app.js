@@ -1532,12 +1532,21 @@
       state.holdFrom.fill(-1);
 
       // highlight diff button
+      // 注意：谱面 JSON 顶层只有 meta / time / note / extra，**没有 code**
+      // （code 来自 .mcz 文件名，记在曲库条目的 charts[] 里）。
+      // 之前拿 chartJson.code 去比，永远是 undefined，三个难度按钮哪个都不亮。
+      const activeCode = (payload.chartMeta || chart || {}).code || "";
       for (const btn of els.diffRow.querySelectorAll(".diff-btn")) {
-        btn.classList.toggle("active", btn.dataset.code === chartJson.code);
+        btn.classList.toggle("active", !!activeCode && btn.dataset.code === activeCode);
       }
 
       // audio：WebAudio 路径只需要 fetch 一次；只有它失败时才回落 <audio>。
-      if (backend.url !== src) {
+      // 录制模式下不加载音源：画面时间由 setFrameTime() 给定，音源只在最后合流时
+      // 由录制脚本从本地 .mcz 里解出来，页面完全不必碰它（也就不存在并发取音源的冲突）。
+      if (window.__recActive) {
+        audioLoad.pending = false;
+        updateLoadMeter();
+      } else if (backend.url !== src) {
         prepareBuffer(src);        // 整首下来解码成 AudioBuffer（失败就自动用 <audio> 直出）
       } else {
         // 同一首歌换难度：音源没变，不用重下，进度条按现有的来
@@ -2157,6 +2166,10 @@
     return audioClock.base + dt * rate;
   }
 
+  // 录制模式（?rec=1）：由外部指定的画面时间。设上之后 renderMediaTime() 直接返回它，
+  // 画面完全由录制脚本控制、不看音频时钟 —— 因此页面根本不需要去加载音源。
+  let forcedMediaTime = null;
+
   function currentMediaTime() {
     // 拖动进度条时用指针位置做预览（此时音频没动，也不该动）
     if (state.scrubbing && state.scrubSec >= 0) return state.scrubSec;
@@ -2173,6 +2186,9 @@
    * 打点音不受影响 —— 它和音乐在同一条输出里，本来就是按音乐位置排的。
    */
   function renderMediaTime() {
+    // 录制模式：时间由录制脚本直接给定（__player.setFrameTime），
+    // 画面只由这个数决定，和音频时钟、音源有没有加载完全无关。
+    if (forcedMediaTime != null) return Math.max(0, forcedMediaTime);
     return Math.max(0, currentMediaTime() - outputLatency());
   }
 
@@ -2411,46 +2427,14 @@
     }
   }
 
-  function updateFrame(now) {
-    state.raf = requestAnimationFrame(updateFrame);
-    const mediaT = renderMediaTime();   // 画面比音频位置提前一个输出延迟，和耳朵对齐
-    state.lastFrameT = now;
-
-    // ?debug=1：把时间轴的关键值写进 DOM，方便从外部核对（排查对拍问题用）
-    if (DEBUG_TIMELINE) {
-      if (!dbgEl) {
-        dbgEl = document.createElement("div");
-        dbgEl.style.cssText = "position:fixed;left:8px;bottom:4px;z-index:99;font:11px monospace;"
-          + "color:#9fe8c8;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:4px;pointer-events:none";
-        document.body.appendChild(dbgEl);
-      }
-      const raw = backend.mode === "webaudio"
-        ? (state.playing ? audioNow() : backend.anchorPos)
-        : (els.audio.currentTime || 0);
-      const mode = backend.mode === "webaudio" ? "wa" : "el";
-      dbgEl.textContent = `chart=${mediaT.toFixed(3)} audio=${raw.toFixed(3)}`
-        + ` base=${(state.baseOffset || 0).toFixed(3)} off=${Number(els.offset.value) || 0}`
-        + ` dur=${(state.duration || 0).toFixed(2)} scrub=${state.scrubbing ? state.scrubSec.toFixed(2) : "-"}`
-        + ` ${els.audio.paused ? "paused" : "playing"} rs=${els.audio.readyState}`
-        + ` mode=${mode} ctx=${audioCtx ? audioCtx.state : "-"} playing=${state.playing ? 1 : 0}`
-        + ` out=${masterPeak()}`;
-    }
-
-    // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳；
-    // 百分秒没变化时不要反复提交 textContent。
-    const timeText = fmtTime(mediaT + (state.baseOffset || 0)
-      - (Number(els.offset.value) || 0) / 1000);
-    if (state.lastTimeText !== timeText) {
-      state.lastTimeText = timeText;
-      els.timeNow.textContent = timeText;
-    }
-
-    if (state.notes.length) {
-      // 拖动预览时只按位置重建状态（不推进连击、不闪灯），松手 seek 后自然会重建
-      if (state.scrubbing) rebuildVisualState(mediaT);
-      else advanceNotes(mediaT);
-    }
-
+  /**
+   * 把「某一时刻」的画面画出来：面板灯 / 长押扇形 / marker / 连击 / 物量条。
+   *
+   * 从 updateFrame 里抽出来是为了逐帧录制（?rec=1）：录制时时间由外部给，
+   * 直接同步画一帧就行 —— 不用等 rAF，也不用真的按实时播放。
+   * updateFrame 自己走的是同一份代码，所以「录下来的」和「看到的」不会走偏。
+   */
+  function paintFrame(mediaT) {
     // arm upcoming (pending within ARM window)
     const markerMode = !!markerCfg.entry;
     state.armed.fill(false);
@@ -2509,6 +2493,50 @@
     drawMarkers(mediaT);
     updateComboDisplay();
     if (!state.scrubbing) drawDensity(mediaT);
+  }
+
+  function updateFrame(now) {
+    state.raf = requestAnimationFrame(updateFrame);
+    const mediaT = renderMediaTime();   // 画面比音频位置提前一个输出延迟，和耳朵对齐
+    state.lastFrameT = now;
+
+    // ?debug=1：把时间轴的关键值写进 DOM，方便从外部核对（排查对拍问题用）
+    if (DEBUG_TIMELINE) {
+      if (!dbgEl) {
+        dbgEl = document.createElement("div");
+        dbgEl.style.cssText = "position:fixed;left:8px;bottom:4px;z-index:99;font:11px monospace;"
+          + "color:#9fe8c8;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:4px;pointer-events:none";
+        document.body.appendChild(dbgEl);
+      }
+      const raw = backend.mode === "webaudio"
+        ? (state.playing ? audioNow() : backend.anchorPos)
+        : (els.audio.currentTime || 0);
+      const mode = backend.mode === "webaudio" ? "wa" : "el";
+      dbgEl.textContent = `chart=${mediaT.toFixed(3)} audio=${raw.toFixed(3)}`
+        + ` base=${(state.baseOffset || 0).toFixed(3)} off=${Number(els.offset.value) || 0}`
+        + ` dur=${(state.duration || 0).toFixed(2)} scrub=${state.scrubbing ? state.scrubSec.toFixed(2) : "-"}`
+        + ` ${els.audio.paused ? "paused" : "playing"} rs=${els.audio.readyState}`
+        + ` mode=${mode} ctx=${audioCtx ? audioCtx.state : "-"} playing=${state.playing ? 1 : 0}`
+        + ` out=${masterPeak()}`;
+    }
+
+    // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳；
+    // 百分秒没变化时不要反复提交 textContent。
+    const timeText = fmtTime(mediaT + (state.baseOffset || 0)
+      - (Number(els.offset.value) || 0) / 1000);
+    if (state.lastTimeText !== timeText) {
+      state.lastTimeText = timeText;
+      els.timeNow.textContent = timeText;
+    }
+
+    if (state.notes.length) {
+      // 拖动预览时只按位置重建状态（不推进连击、不闪灯），松手 seek 后自然会重建
+      if (state.scrubbing) rebuildVisualState(mediaT);
+      else advanceNotes(mediaT);
+    }
+
+    // 面板灯 / 长押 / marker / 连击 / 物量条全在这一步（和逐帧录制共用）
+    paintFrame(mediaT);
 
     // 截掉尾部空白之后，音频不会自然 ended，所以在这里按谱面长度收尾
     if (state.playing && (els.audio.ended || mediaT >= (state.duration || 0))) {
@@ -2934,6 +2962,12 @@
       setAnchor,
       layoutCanvas,
       drawMarkers,
+      paintFrame,          // 逐帧录制用：按给定时刻同步画一帧
+      rebuildVisualState,  // 逐帧录制用：按给定时刻重建连击 / 闪灯 / 长押状态
+      // 逐帧录制用：把画面时间钉在某一刻（null = 交还给音频时钟）
+      setFrameTime: (t) => {
+        forcedMediaTime = t == null || !isFinite(Number(t)) ? null : Number(t);
+      },
       loadLibrary,
       // 音效调试 / 自测用：可以用 OfflineAudioContext 直接渲染这几个合成音
       sfx: SFX,

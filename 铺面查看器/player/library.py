@@ -175,7 +175,13 @@ class Library:
 
     def _scan(self) -> list[dict]:
         print(f"[index] scanning {self.root} …", file=sys.stderr)
-        paths = sorted(self.root.rglob("*.mcz")) if self.root.is_dir() else []
+        # 跳过 ._xxx.mcz —— 外置盘（exFAT）上 macOS 会给每个文件写一个
+        # `._同名` 的元数据边车文件，它也以 .mcz 结尾，混进索引里就是一堆打不开的条目。
+        paths = (
+            sorted(p for p in self.root.rglob("*.mcz") if not p.name.startswith("._"))
+            if self.root.is_dir()
+            else []
+        )
         songs: list[dict] = []
         if paths:
             # 每个 zip 都要开关一次，多线程扫能明显加快首次启动

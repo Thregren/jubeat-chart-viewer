@@ -35,6 +35,11 @@ html, body {
   font-size: 14px;
   line-height: 1.45;
   overflow: hidden;
+  /* 手机端锁死页面缩放：pan-x pan-y 只保留滚动，掐掉 pinch-zoom 和双击缩放。
+     iOS Safari 并不理会 viewport 里的 user-scalable=no，所以这里再压一层；
+     双指手势另外由 app.js 的 gesturestart / 多指 touchmove 兜底。 */
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;   /* 横屏 / 窄屏时别自动放大字号 */
 }
 
 button, input, select {
@@ -981,6 +986,22 @@ button:focus-visible,
 }
 
 .icon-btn:hover { border-color: var(--muted); }
+
+/* A–B 段落循环：没打点=普通按键，只打了 A=琥珀框，A、B 都有=绿框常亮 */
+.ab-btn {
+  font: 700 12px var(--mono);
+  letter-spacing: 0.04em;
+  padding: 0 10px;
+}
+.ab-btn.armed {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.ab-btn.on {
+  border-color: var(--ok);
+  color: var(--ok);
+  background: rgba(61, 220, 151, 0.14);
+}
 
 .play-btn {
   width: 52px;

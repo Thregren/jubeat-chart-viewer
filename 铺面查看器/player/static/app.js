@@ -57,6 +57,11 @@
     metroVolumeLabel: $("#metroVolumeLabel"),
     showCombo: $("#showCombo"),
     showNumbers: $("#showNumbers"),
+    numScale: $("#numScale"),
+    numScaleLabel: $("#numScaleLabel"),
+    numAlpha: $("#numAlpha"),
+    numAlphaLabel: $("#numAlphaLabel"),
+    numCorner: $("#numCorner"),
     showChordGlow: $("#showChordGlow"),
     phraseMult: $("#phraseMult"),
     phraseFloor: $("#phraseFloor"),
@@ -75,6 +80,7 @@
     playIcon: $("#playIcon"),
     btnRestart: $("#btnRestart"),
     btnStop: $("#btnStop"),
+    btnAB: $("#btnAB"),
     timeNow: $("#timeNow"),
     timeTotal: $("#timeTotal"),
     rate: $("#rate"),
@@ -141,6 +147,19 @@
     loaded: false,
   };
 
+  // 音符序号（marker 上的顺序数字）的外观：字号倍率 / 透明度 / 位置。
+  // 默认和以前完全一样：满字号、不透明、居中。
+  const NUM_SCALE_MIN = 0.5;
+  const NUM_SCALE_MAX = 2;
+  const numCfg = { scale: 1, alpha: 1, corner: false };
+  // localStorage 里可能存着乱七八糟的值（手改过、或老版本留下的），一律夹到合法区间
+  const clampNumScale = (v) => Math.min(NUM_SCALE_MAX, Math.max(NUM_SCALE_MIN, Number(v) || 1));
+  const clampNumAlpha = (v) => Math.min(1, Math.max(0.1, Number(v) || 1));
+
+  // A–B 段落循环：同一个键（A）连按两次分别打 A / B 两个点，之后就在这一段里循环。
+  // 时间是「谱面时间」（和进度条 / 时间显示同一套坐标），null = 还没打点。
+  const abLoop = { a: null, b: null };
+
   const STORAGE = {
     marker: "jubeat.marker",
     effect: "jubeat.effect",
@@ -150,6 +169,9 @@
     metroVolume: "jubeat.metroVolume",
     showCombo: "jubeat.showCombo",
     showNumbers: "jubeat.showNumbers",
+    numScale: "jubeat.numScale",
+    numAlpha: "jubeat.numAlpha",
+    numCorner: "jubeat.numCorner",
     showChordGlow: "jubeat.showChordGlow",
     phraseMult: "jubeat.phraseMult",
     phraseFloor: "jubeat.phraseFloor",
@@ -893,15 +915,28 @@
     // 参考视频里数字几乎占满格子；但按「换气」分句之后一句可能很长，
     // 两位数、三位数要缩一点，不然会被格子裁掉。
     const FIT = { 1: 0.58, 2: 0.40, 3: 0.31 };
-    const size = Math.max(11, rect.w * (FIT[text.length] || 0.25));
-    const x = rect.x + rect.w / 2;
-    const y = rect.y + rect.h / 2;
+    // 放右下角时改用更小的一档基数（角落标签，别糊住谱面），字号滑杆再乘上去。
+    const FIT_CORNER = { 1: 0.34, 2: 0.26, 3: 0.20 };
+    const corner = numCfg.corner;
+    const fit = (corner ? FIT_CORNER : FIT)[text.length] || (corner ? 0.16 : 0.25);
+    const size = Math.max(corner ? 9 : 11, rect.w * fit * numCfg.scale);
+    // 同押光晕 / 波纹按「居中时的大小」算：切到右下角后数字变小了，
+    // 底色高亮不该跟着缩水（字号滑杆照常影响它）。
+    const glowSize = Math.max(11, rect.w * (FIT[text.length] || 0.25) * numCfg.scale);
+    // 光晕 / 波纹永远以格子中心为圆心（它是「同押高亮」，不属于数字本身）
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    // 数字本身：默认居中；切到右下角后贴住格子的右下内边距
+    const pad = Math.max(3, rect.w * 0.09);
+    const x = corner ? rect.x + rect.w - pad : cx;
+    const y = corner ? rect.y + rect.h - pad : cy;
     // 同一批（一起按）的 marker 数字：可以整体关掉（同押光晕开关）
     const chord = (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
     ctx.save();
+    ctx.globalAlpha = numCfg.alpha;   // 「序号透明度」：整层（光晕 + 数字）一起淡
     ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    ctx.textAlign = corner ? "right" : "center";
+    ctx.textBaseline = corner ? "bottom" : "middle";
     // 光晕 / 数字一律裁剪在这格 marker 的范围内：光晕不许溢出到相邻格子
     const inset = Math.max(1, rect.w * 0.02);
     roundRectPath(ctx,
@@ -921,28 +956,28 @@
       const glow = Math.pow(0.5 - 0.5 * Math.cos(phase * Math.PI * 2), 0.75); // 峰更尖，落得更快
 
       // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0
-      const haloR = size * (0.72 + 0.12 * glow);
-      const grad = ctx.createRadialGradient(x, y, size * 0.1, x, y, haloR);
+      const haloR = glowSize * (0.72 + 0.12 * glow);
+      const grad = ctx.createRadialGradient(cx, cy, glowSize * 0.1, cx, cy, haloR);
       grad.addColorStop(0, `rgba(${rgb}, ${0.34 + 0.5 * glow})`);
       grad.addColorStop(0.45, `rgba(${rgb}, ${0.16 + 0.3 * glow})`);
       grad.addColorStop(1, `rgba(${rgb}, 0)`);
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(x, y, haloR, 0, Math.PI * 2);
+      ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
       ctx.fill();
 
       // 2) 两圈外扩光环（相位差半圈，看起来是连续往外推的波纹）
       ctx.lineCap = "round";
       for (const offset of [0, 0.5]) {
         const p = (phase + offset) % 1;
-        ctx.globalAlpha = Math.pow(1 - p, 1.5) * 0.85;
+        ctx.globalAlpha = numCfg.alpha * Math.pow(1 - p, 1.5) * 0.85;
         ctx.strokeStyle = `rgb(${rgb})`;
         ctx.lineWidth = Math.max(2.5, size * 0.1);
         ctx.beginPath();
-        ctx.arc(x, y, size * (0.46 + 0.38 * p), 0, Math.PI * 2);
+        ctx.arc(cx, cy, glowSize * (0.46 + 0.38 * p), 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = numCfg.alpha;   // 别把「序号透明度」冲掉
 
       // 3) 数字的霓虹描边：外面一层散光、里面一层实色
       ctx.lineJoin = "round";
@@ -952,12 +987,12 @@
       ctx.strokeStyle = `rgba(${rgb}, ${0.5 + 0.5 * glow})`;
       ctx.strokeText(text, x, y);
       ctx.shadowBlur = size * 0.35 * stroke;
-      ctx.globalAlpha = 0.35 + 0.65 * stroke;
+      ctx.globalAlpha = numCfg.alpha * (0.35 + 0.65 * stroke);
       ctx.lineWidth = Math.max(3, size * 0.2);
       ctx.strokeStyle = `rgb(${rgb})`;
       ctx.strokeText(text, x, y);
       ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = numCfg.alpha;
     }
 
     ctx.lineWidth = Math.max(2, size * 0.14);
@@ -1205,6 +1240,15 @@
     const dur = density.dur || 1;
     const now = posSec == null ? currentMediaTime() : posSec;
     const px = Math.max(0, Math.min(w, (now / dur) * w));
+    // A–B 段落循环的打点：中间淡淡的循环区间 + 两条琥珀色竖线
+    if (abLoop.a != null) {
+      const ax = Math.max(0, Math.min(w, (abLoop.a / dur) * w));
+      const bx = abLoop.b != null ? Math.max(0, Math.min(w, (abLoop.b / dur) * w)) : ax;
+      ctx2.fillStyle = "rgba(255, 176, 32, 0.20)";
+      ctx2.fillRect(Math.min(ax, bx), 0, Math.abs(bx - ax), h);
+      ctx2.fillStyle = "#ffb020";
+      for (const mx of abLoop.b != null ? [ax, bx] : [ax]) ctx2.fillRect(mx - 1, 0, 2, h);
+    }
     ctx2.fillStyle = "#3ddc97";
     ctx2.fillRect(px - 1, 0, 2, h);
     ctx2.beginPath();
@@ -1245,6 +1289,85 @@
     const i = Math.min(density.counts.length - 1, Math.max(0, Math.floor(sec / density.bucket)));
     const from = i * density.bucket;
     return `${fmtTime(from)}–${fmtTime(from + density.bucket)} ${density.counts[i]} note`;
+  }
+
+  // —— A–B 段落循环 ——
+  // 同一个键（键盘 A / 播放条上的 A-B 按钮）连按两次：第一次打 A 点，第二次打 B 点
+  // 并开始循环，第三次清掉恢复正常播放。已经有打点时拖动进度条也会清空（见物量条的 pointerdown）。
+
+  /** 打点：没打过 → 打 A；只有 A → 打 B 并开始循环；A、B 都有 → 清空 */
+  function tapAB() {
+    if (!state.song) {
+      toast("先从左侧选择一首曲目");
+      return;
+    }
+    if (abLoop.a == null) {
+      abLoop.a = currentMediaTime();
+      abLoop.b = null;
+      toast(`A 点：${fmtTime(abLoop.a)}　再按一次打 B 点`);
+    } else if (abLoop.b == null) {
+      const t = currentMediaTime();
+      if (t <= abLoop.a) {
+        // 手抖点到 A 前面：两个点对调，别做出一个空区间
+        abLoop.b = abLoop.a;
+        abLoop.a = t;
+      } else {
+        abLoop.b = t;
+      }
+      toast(`循环 ${fmtTime(abLoop.a)} – ${fmtTime(abLoop.b)}　再按一次清除`);
+    } else {
+      clearAB("已清除打点，恢复整首播放");
+      return;
+    }
+    updateABButton();
+    drawDensity();
+  }
+
+  /** 清掉 A–B 打点（本来就没打点就什么都不做） */
+  function clearAB(message) {
+    if (abLoop.a == null && abLoop.b == null) return;
+    abLoop.a = null;
+    abLoop.b = null;
+    updateABButton();
+    drawDensity();
+    if (message) toast(message);
+  }
+
+  /** 按钮上的高亮 / 提示跟着打点状态走 */
+  function updateABButton() {
+    const b = els.btnAB;
+    if (!b) return;
+    const armed = abLoop.a != null && abLoop.b == null;
+    const looping = abLoop.a != null && abLoop.b != null;
+    b.classList.toggle("armed", armed);
+    b.classList.toggle("on", looping);
+    b.title = abLoop.a == null
+      ? "A–B 循环：按 A 键或点这里打 A 点"
+      : armed
+        ? `A = ${fmtTime(abLoop.a)}　再按一次打 B 点`
+        : `循环 ${fmtTime(abLoop.a)} – ${fmtTime(abLoop.b)}　再按一次清除`;
+  }
+
+  /**
+   * 手机端锁死页面缩放。
+   * viewport 里的 user-scalable=no 在 iOS Safari 上基本没用，所以再补几层：
+   *   - 拦掉 Safari 的 gesturestart / gesturechange / gestureend（双指缩放）
+   *   - 多指 touchmove 一律 preventDefault（其它浏览器的手势缩放）
+   *   - 双击缩放（dblclick）和桌面端 ctrl + 滚轮缩放也吞掉
+   * 单指手势完全不碰，所以曲库列表照常能滑。
+   */
+  function lockZoom() {
+    const stop = (e) => e.preventDefault();
+    for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+      document.addEventListener(type, stop, { passive: false });
+    }
+    document.addEventListener("dblclick", stop, { passive: false });
+    document.addEventListener("touchmove", (e) => {
+      if (e.touches && e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener("wheel", (e) => {
+      if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
   }
 
   /** 收起 / 展开选项区（播放控制永远保留） */
@@ -1499,6 +1622,7 @@
     const keepAudio = backend.url === src
       && (!!backend.buf || els.audio.dataset.src === src);
     stopForLoad(keepAudio);
+    clearAB(null);   // 换歌 / 换难度：上一首的 A–B 打在旧谱面上，直接清掉
     els.captionLeft.textContent = "LOADING CHART…";
     // 换歌的第一段等待：谱面 json + 音源首包。这时候进度条先出来，别让界面看起来是死的。
     audioLoad.pending = true;
@@ -2538,8 +2662,11 @@
     // 面板灯 / 长押 / marker / 连击 / 物量条全在这一步（和逐帧录制共用）
     paintFrame(mediaT);
 
-    // 截掉尾部空白之后，音频不会自然 ended，所以在这里按谱面长度收尾
-    if (state.playing && (els.audio.ended || mediaT >= (state.duration || 0))) {
+    // A–B 段落循环：播放头一越过 B 就跳回 A（优先于整首循环和收尾）
+    if (state.playing && abLoop.b != null && mediaT >= abLoop.b) {
+      seekTo(abLoop.a);
+    } else if (state.playing && (els.audio.ended || mediaT >= (state.duration || 0))) {
+      // 截掉尾部空白之后，音频不会自然 ended，所以在这里按谱面长度收尾
       if (els.autoLoop.checked && state.song) {
         seekTo(0);
         play();
@@ -2626,6 +2753,23 @@
       els.showNumbers.addEventListener("change", () => {
         store(STORAGE.showNumbers, els.showNumbers.checked ? "1" : "0");
       });
+      // 序号外观：字号 / 透明度两个滑杆 + 「放右下角」开关。
+      // 画布每帧重画，滑杆动一下下一帧就生效，不用手动刷新。
+      els.numScale.addEventListener("input", () => {
+        numCfg.scale = clampNumScale((Number(els.numScale.value) || 100) / 100);
+        els.numScaleLabel.textContent = els.numScale.value + "%";
+      });
+      els.numScale.addEventListener("change", () => store(STORAGE.numScale, els.numScale.value));
+      els.numAlpha.addEventListener("input", () => {
+        numCfg.alpha = clampNumAlpha((Number(els.numAlpha.value) || 100) / 100);
+        els.numAlphaLabel.textContent = els.numAlpha.value + "%";
+      });
+      els.numAlpha.addEventListener("change", () => store(STORAGE.numAlpha, els.numAlpha.value));
+      els.numCorner.addEventListener("change", () => {
+        numCfg.corner = els.numCorner.checked;
+        store(STORAGE.numCorner, els.numCorner.checked ? "1" : "0");
+      });
+      if (els.btnAB) els.btnAB.addEventListener("click", tapAB);
       els.showChordGlow.addEventListener("change", () => {
         store(STORAGE.showChordGlow, els.showChordGlow.checked ? "1" : "0");
       });
@@ -2651,6 +2795,9 @@
         metroVolume: store(STORAGE.metroVolume),
         showCombo: store(STORAGE.showCombo),
         showNumbers: store(STORAGE.showNumbers),
+        numScale: store(STORAGE.numScale),
+        numAlpha: store(STORAGE.numAlpha),
+        numCorner: store(STORAGE.numCorner),
         showChordGlow: store(STORAGE.showChordGlow),
         phraseMult: store(STORAGE.phraseMult),
         phraseFloor: store(STORAGE.phraseFloor),
@@ -2684,6 +2831,21 @@
         store(STORAGE.speed, DEFAULT_MARKER_SPEED);
       }
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
+      // 序号外观：字号 / 透明度 / 位置（默认 100% / 100% / 居中）
+      if (saved.numScale != null) {
+        els.numScale.value = saved.numScale;
+        numCfg.scale = clampNumScale((Number(saved.numScale) || 100) / 100);
+        els.numScaleLabel.textContent = els.numScale.value + "%";
+      }
+      if (saved.numAlpha != null) {
+        els.numAlpha.value = saved.numAlpha;
+        numCfg.alpha = clampNumAlpha((Number(saved.numAlpha) || 100) / 100);
+        els.numAlphaLabel.textContent = els.numAlpha.value + "%";
+      }
+      if (saved.numCorner != null) {
+        els.numCorner.checked = saved.numCorner === "1";
+        numCfg.corner = els.numCorner.checked;
+      }
       if (saved.phraseMult != null) els.phraseMult.value = saved.phraseMult;
       if (saved.phraseFloor != null) els.phraseFloor.value = saved.phraseFloor;
       if (saved.phraseMax != null) els.phraseMax.value = saved.phraseMax;
@@ -2691,6 +2853,7 @@
         els.chordGlowPair.value = saved.chordGlowPair;
       }
       updateGlowChips();
+      updateABButton();
       if (saved.sort) els.sortSelect.value = saved.sort;
       if (saved.holdFilter != null) els.holdFilter.value = saved.holdFilter;
       // 窄屏默认收起选项，给面板留空间
@@ -2735,6 +2898,8 @@
     let resumeAfterScrub = false;
     els.densityCanvas.addEventListener("pointerdown", (ev) => {
       if (!state.notes.length || density.placeholder) return;   // 音源没就绪时不给拖
+      // 已经有 A–B 打点时，拖动进度条 = 清空所有打点（用户明确要的行为）
+      clearAB(null);
       state.scrubbing = true;
       resumeAfterScrub = state.playing;
       if (state.playing) pause();
@@ -2818,7 +2983,10 @@
     bindLoadEvents();     // 音源加载进度：<audio> 的缓冲状态都在这里收
 
     els.audio.addEventListener("ended", () => {
-      if (els.autoLoop.checked && state.song) {
+      if (abLoop.b != null && state.song) {
+        seekTo(abLoop.a);          // 打着 A–B 点：回到 A 继续循环
+        play();
+      } else if (els.autoLoop.checked && state.song) {
         seekTo(0);
         play();
       } else {
@@ -2851,6 +3019,8 @@
         togglePlay();
       } else if (e.key === "r" || e.key === "R") {
         restart();
+      } else if (e.key === "a" || e.key === "A") {
+        tapAB();                       // A–B 段落循环打点
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         seekTo(currentMediaTime() - 5);
@@ -2937,6 +3107,7 @@
     buildGlowPairOptions();
     buildPanel();
     bindEvents();
+    lockZoom();            // 手机上锁死页面缩放
     checkFrontVersion();
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) checkFrontVersion();
@@ -2952,6 +3123,10 @@
     window.__player = {
       state,
       markerCfg,
+      numCfg,              // 序号外观（字号 / 透明度 / 位置）
+      abLoop,              // A–B 段落循环的打点
+      tapAB,               // 打点（等同按 A 键）
+      clearAB,             // 清掉打点
       seekTo,
       play,
       pause,

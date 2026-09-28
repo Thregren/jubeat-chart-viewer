@@ -2,12 +2,15 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- maximum-scale + user-scalable=no：手机上锁死页面缩放（iOS 还会无视它，
+       所以 app.js 里另外拦了双指手势，style.css 里补了 touch-action）。 -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 铺面确认</title>
-  <!-- nginx 给 js/css 挂了 12h 缓存：改完 style.css / app.js / sfx.js 记得把 ?v= 一起改掉
-       （三个都要改，漏一个那个文件就会吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.0" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.0" />
+  <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
+       （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
+  <link rel="stylesheet" href="static/style.css?v=0.6.1" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.1" />
 </head>
 <body>
   <div id="app">
@@ -126,6 +129,8 @@
             <span id="playIcon">▶</span>
           </button>
           <button id="btnStop" class="icon-btn" title="停止" type="button">■</button>
+          <button id="btnAB" class="icon-btn ab-btn" type="button"
+                  title="A–B 循环：按 A 键或点这里打 A 点，再按一次打 B 点，第三次清除">A-B</button>
           <div class="time-block">
             <span id="timeNow">0:00.00</span>
             <span class="time-sep">/</span>
@@ -149,6 +154,7 @@
           <div class="opt-row">
             <label class="ctl">播放速度
               <select id="rate">
+                <option value="0.25">0.25×</option>
                 <option value="0.5">0.5×</option>
                 <option value="0.75">0.75×</option>
                 <option value="1" selected>1.0×</option>
@@ -243,6 +249,23 @@
               </select>
             </label>
           </div>
+          <!-- 音符序号的外观：字号 / 透明度 / 位置（默认居中，可切到右下角） -->
+          <div class="opt-row">
+            <label class="ctl ctl-vol">序号字号
+              <input id="numScale" type="range" min="50" max="200" step="5" value="100"
+                     aria-label="音符序号的字号" />
+              <span class="unit" id="numScaleLabel">100%</span>
+            </label>
+            <label class="ctl ctl-vol">序号透明度
+              <input id="numAlpha" type="range" min="10" max="100" step="5" value="100"
+                     aria-label="音符序号的透明度" />
+              <span class="unit" id="numAlphaLabel">100%</span>
+            </label>
+            <label class="ctl checkbox">
+              <input id="numCorner" type="checkbox" />
+              序号放右下角
+            </label>
+          </div>
           <div class="anchor-wrap">
             <span class="anchor-label" id="anchorLabel">动画帧</span>
             <div class="anchor-strip" id="anchorStrip" role="listbox" aria-label="选择动画对齐帧"></div>
@@ -262,10 +285,10 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.0"></script>
-  <script src="static/core.js?v=0.6.0"></script>
+  <script src="static/sfx.js?v=0.6.1"></script>
+  <script src="static/core.js?v=0.6.1"></script>
   <!-- 录制模式（?rec=1）：必须在 app.js 之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.0"></script>
-  <script src="static/app.js?v=0.6.0"></script>
+  <script src="static/record.js?v=0.6.1"></script>
+  <script src="static/app.js?v=0.6.1"></script>
 </body>
 </html>

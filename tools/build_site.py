@@ -31,6 +31,7 @@ import os
 import shutil
 import sys
 import time
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -48,6 +49,17 @@ from media import read_member, zip_name, write_atomic  # noqa: E402
 
 def stem_of(rel_id: str) -> str:
     return rel_id[:-4] if rel_id.lower().endswith(".mcz") else rel_id
+
+
+def nfc(text: str) -> str:
+    """统一成 NFC（组合字符预先合成）。
+
+    macOS 上传回来的 .mcz 文件名常是 NFD（か + ゙），而索引里的曲名是 NFC。
+    站点内部的路径和 data/library.json 的 id 必须用同一种形式：macOS 的 APFS
+    对规范化不敏感，两种写法都能命中；但 Windows 的 NTFS 是按码点比的，
+    名字不对就整首歌的封面 / 音源 / 谱面全 404。这里统一按 NFC 落盘。
+    """
+    return unicodedata.normalize("NFC", text)
 
 
 def fresh(dest: Path, src_mtime: float, force: bool) -> bool:
@@ -91,14 +103,24 @@ class Stats:
         self.bytes += n
 
 
+def static_files() -> list[Path]:
+    """铺面查看器/player/static/ 下要发布的前端文件。
+
+    走目录而不是写死文件名：以前漏掉过后来新增的 record.css / record.js，
+    index.html 引用了但站点里没有，浏览器直接 404。
+    """
+    return [p for p in sorted((PLAYER_DIR / "static").iterdir())
+            if p.is_file() and not p.name.startswith(".")]
+
+
 def expected_paths(songs: list[dict], marker_files: list[str], se_files: list[str]) -> set[str]:
     """这次构建应该存在的所有文件（相对 out 的 posix 路径）。"""
-    want = {"index.html", "robots.txt", "static/core.js", "static/app.js", "static/sfx.js", "static/style.css",
-            "data/library.json", "data/markers.json"}
+    want = {"robots.txt", "data/library.json", "data/markers.json"}
+    want |= {p.name if p.name == "index.html" else f"static/{p.name}" for p in static_files()}
     want |= {"markers/" + rel for rel in marker_files}
     want |= {"media/se/" + name for name in se_files}
     for s in songs:
-        stem = stem_of(s["id"])
+        stem = nfc(stem_of(s["id"]))
         if s.get("audio"):
             want.add(f"media/audio/{stem}.ogg")
         if s.get("cover"):
@@ -147,7 +169,7 @@ def build_song(song: dict, out: Path, force: bool, stats: Stats) -> None:
     """展开一首歌的音频 / 封面 / 缩略图 / 谱面。"""
     mcz = config.LIBRARY / song["id"]
     mtime = mcz.stat().st_mtime
-    stem = stem_of(song["id"])
+    stem = nfc(stem_of(song["id"]))
 
     # 音源
     if song.get("audio"):
@@ -272,11 +294,8 @@ def main() -> int:
 
     # 1) 前端文件
     stats = Stats()
-    static_dir = PLAYER_DIR / "static"
-    for name in ("index.html", "style.css", "core.js", "app.js", "sfx.js"):
-        src = static_dir / name
-        if not src.is_file():
-            continue
+    for src in static_files():
+        name = src.name
         dest = out / (name if name == "index.html" else f"static/{name}")
         if copy_fresh(src, dest, args.force):
             stats.added(src.stat().st_size)
@@ -298,6 +317,10 @@ def main() -> int:
     # 公开的 library.json 只留前端要读的字段（见 library.published_index）：
     # 完整索引里的 path / filename / charts.file 等约占 40%，都是浪费
     index = library.published_index(songs)
+    # 前端是拿 id 拼资源路径的（media/audio/<id>.ogg 等），所以 id 也要跟着
+    # 一起规范化，否则站点里的文件名和索引里的 id 会差一个规范化形式。
+    for s in index["songs"]:
+        s["id"] = nfc(s["id"])
     write_atomic(out / "data" / "library.json",
                  json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     stats.songs = len(songs)

@@ -31,6 +31,10 @@
     effect: query.get("effect") || "",
     showCombo: "1",
     showNumbers: "1",
+    // 序号外观固定成默认值：录制机器上残留的滑杆设置不能影响成片
+    numScale: "100",
+    numAlpha: "100",
+    numCorner: "0",
     showChordGlow: "1",
     metroSound: "",                       // 录制页不出声：音轨由录制脚本离线合成
     collapsed: "1",
@@ -204,6 +208,21 @@
   }
 
   /**
+   * 重新量一次卡片位置 / 画布尺寸，返回最新的 info()。
+   *
+   * 录制脚本在两种情况下会调它：
+   *   1. 刚 ready() 之后 —— 字体 / 封面 / 滚动条可能让卡片再挪一次位；
+   *   2. 截到空白帧时 —— 卡片挪位后旧 clip 就只截到空白了。
+   */
+  async function remeasure() {
+    await raf();
+    window.__player.layoutCanvas();
+    await raf();
+    await raf();
+    return info();
+  }
+
+  /**
    * 停掉播放器的 rAF 循环，之后画面只由 renderAt() 显式驱动。
    * 每帧少等一个 vsync（约 16ms），代价是页面不再自己重画 —— 只在逐帧录制里用。
    */
@@ -245,5 +264,5 @@
    *   freeze()     停掉播放器 rAF 循环（只用于逐帧录制，刷新页面即恢复）
    *   debug()      自检：画面到底停在哪一刻
    */
-  window.__rec = { ready, info, renderAt, freeze, debug };
+  window.__rec = { ready, info, renderAt, remeasure, freeze, debug };
 })();

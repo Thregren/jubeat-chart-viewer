@@ -8,6 +8,7 @@ import re
 import sys
 import threading
 import time
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -17,6 +18,17 @@ from media import read_member, safe_join, write_atomic, zip_name
 DIFF_RE = re.compile(r"_([A-Z]{3})\s*Lv([0-9]+(?:\.[0-9]+)?)", re.I)
 DIFF_ORDER = {"BSC": 0, "BAS": 0, "ADV": 1, "EXT": 2}
 META_READ_BYTES = 8192  # 只读谱面开头一段来取标题/作曲
+
+
+def stem_key(text: str) -> str:
+    """曲目 stem 的比对键。
+
+    macOS 的文件名是 NFD（「バ」=「ハ」+ 浊点），而手写的重录列表、从别处复制的
+    名字多半是 NFC。不归一化的话 /data/charts/jubeat-plus/バレンタイン_キッス/EXT.json
+    会 404，页面拿不到谱面就永远不 ready（2026-09-28 就是这样连挂 4 首）。两边都
+    折成 NFC 再比。
+    """
+    return unicodedata.normalize("NFC", text)
 
 
 def parse_chart_name(filename: str) -> tuple[str, str, float] | None:
@@ -204,7 +216,7 @@ class Library:
         self.songs = songs
         self.by_id = {s["id"]: s for s in songs}
         # 静态站点按 <曲目（去掉 .mcz）> 组织文件，开发服务器也按这个 key 反查
-        self.by_stem = {s["id"][:-4] if s["id"].lower().endswith(".mcz") else s["id"]: s
+        self.by_stem = {stem_key(s["id"][:-4] if s["id"].lower().endswith(".mcz") else s["id"]): s
                         for s in songs}
         self.versions = sorted({s["version"] for s in songs})
 
@@ -226,7 +238,7 @@ class Library:
         return self.by_id.get(song_id)
 
     def by_media_stem(self, stem: str) -> dict | None:
-        return self.by_stem.get(stem)
+        return self.by_stem.get(stem_key(stem))
 
     # —— 文件 ——
     def mcz_path(self, song_id: str) -> Path:

@@ -707,9 +707,12 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.5.3-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.5.3-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.5.3-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.3-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.3-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.3-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+
+上面是当前版本（v0.6.3）的附件名，版本号跟着 tag 走；最新附件以
+[Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
 `site/`（会被记住）。macOS 上没做签名，第一次要右键「打开」，或者

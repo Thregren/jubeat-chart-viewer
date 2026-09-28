@@ -1,0 +1,321 @@
+/**
+ * 前端界面自测：在 Electron 的真渲染进程里把页面跑起来，把关键路径点一遍。
+ *
+ *   cd electron && npx electron ../tools/ui_smoke.js
+ *   cd electron && npx electron ../tools/ui_smoke.js --site /tmp/jv-site   # 换站点目录
+ *
+ * 为什么需要它：`node --test` 只覆盖 core.js 那些纯函数，smoke_test.py 只打 HTTP 接口，
+ * **没有一层能证明「页面真的能画出来、能播、能打点」**。而前端拆分（app.js → 多个文件）
+ * 最容易出的错恰恰是「某个函数搬过去之后名字对不上」—— 这种错语法检查看不出来，
+ * 只有真跑一遍才知道。
+ *
+ * 它自己起站点的本地 HTTP 服务（同一个 electron/site-server.js），并注册在同一个进程里：
+ * 沙箱里网络是按进程隔离的，分开跑会出现 ERR_CONNECTION_REFUSED。
+ *
+ * 检查项分四组：启动与深链接 / 列表与设置 / 播放与拖动 / A–B 打点与录制接口。
+ */
+const { app, BrowserWindow } = require("electron");
+const path = require("node:path");
+
+const REPO = path.resolve(__dirname, "..");
+const siteArg = process.argv.indexOf("--site");
+const SITE = siteArg > 0 ? path.resolve(process.argv[siteArg + 1]) : path.join(REPO, "site");
+const srv = require(path.join(REPO, "electron", "site-server.js"));
+
+const GREEN = "\x1b[32m✓\x1b[0m";
+const RED = "\x1b[31m✗\x1b[0m";
+const problems = [];
+let checks = 0;
+let base = "";                 // 本地站点地址，serve() 起来之后填
+
+function check(name, ok, detail = "") {
+  checks += 1;
+  if (!ok) problems.push(name + (detail ? `（${detail}）` : ""));
+  console.log(`  ${ok ? GREEN : RED} ${name}${detail ? `（${detail}）` : ""}`);
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function waitFor(win, code, timeoutMs = 25000, interval = 200) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await win.webContents.executeJavaScript(code, true).catch(() => null);
+    if (value) return value;
+    if (Date.now() >= deadline) return null;
+    await wait(interval);
+  }
+}
+
+const DEEP_LINK =
+  "?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=74.54&paused=1";
+
+async function runPage(win, errors) {
+  const js = (code) => win.webContents.executeJavaScript(code, true).catch((err) => {
+    // 页面里自己抛的错误（选择器写错、字段没了…）在这里就变成 null，
+    // 让对应的 check 直接红掉 —— 比整段脚本崩掉更容易定位。
+    console.error(`  （页面脚本抛错：${err && err.message}）`);
+    return null;
+  });
+  await win.loadURL(base + DEEP_LINK);
+
+  console.log("\n▸ 启动与深链接");
+  const booted = await waitFor(
+    win,
+    "!!(window.__player && window.__player.state.songs.length > 1000)",
+  );
+  check("前端启动并读到曲库", !!booted);
+  check("core.js 挂上了（window.JubeatCore）",
+    !!(await js("!!(window.JubeatCore && window.JubeatCore.abTap)")),
+    "拆分后 core 仍是独立纯逻辑模块");
+  check("sfx.js 挂上了（window.JubeatSfx）",
+    !!(await js("!!(window.JubeatSfx && typeof window.JubeatSfx.soundTaiko === 'function')")));
+
+  const loaded = await waitFor(win, "(() => {" +
+    "const p = window.__player;" +
+    "const t = document.getElementById('statTime');" +
+    "return !!(p.state.chart && p.state.notes.length && t && t.textContent.trim() !== '—');" +
+    "})()");
+  check("深链接把曲目 / 难度 / 暂停位摆好", !!loaded);
+
+  const info = await js("(() => {" +
+    "const p = window.__player;" +
+    "return {id: p.state.song && p.state.song.id, code: p.state.chartMeta && p.state.chartMeta.code," +
+    " notes: p.state.notes.length, dur: p.state.duration, playing: !!p.state.playing," +
+    " now: document.getElementById('timeNow').textContent};" +
+    "})()");
+  check("选中的是 Windy Fairy", /Windy Fairy/.test(info.id || ""), String(info.id));
+  check("难度是 EXT", info.code === "EXT", String(info.code));
+  check("谱面已解析出 note", info.notes > 100, `${info.notes} 颗`);
+  check("时长合理", info.dur > 60, `${info.dur?.toFixed?.(1)} s`);
+  check("paused=1 时确实是暂停态", info.playing === false);
+
+  // 深链接的 t= 是「等音源就绪再 seek」的，会晚几帧才落到时间显示上
+  const seeked = await waitFor(win,
+    "/^1:1[34]\\./.test(document.getElementById('timeNow').textContent)", 10000);
+  check("深链接的 t=74.54 生效", !!seeked,
+    await js("document.getElementById('timeNow').textContent"));
+
+  console.log("\n▸ 列表与设置");
+  // 列表是分块渲染的（每块 120 行），先等它铺完再数，否则数到的是中途的行数
+  await waitFor(win,
+    "document.querySelectorAll('.song-item').length === window.__player.state.songs.length", 15000);
+  const dom = await js("(() => {" +
+    "const rows = document.querySelectorAll('.song-item');" +
+    "const scripts = [...document.querySelectorAll('script[src*=\"static/\"]')];" +
+    "return {rows: rows.length, pads: window.__player.state.padEls.length," +
+    " diffBtns: document.querySelectorAll('#diffRow .diff-btn').length," +
+    " activeDiff: (document.querySelector('#diffRow .diff-btn.active') || {}).dataset?.code," +
+    " markers: document.getElementById('markerSelect').options.length," +
+    " effects: document.getElementById('effectSelect').options.length," +
+    " scripts: scripts.length," +
+    " noVersion: scripts.filter((s) => !/\\?v=/.test(s.getAttribute('src'))).length," +
+    " sheets: document.styleSheets.length};" +
+    "})()");
+  check("曲库列表渲染了行", dom.rows > 10, `${dom.rows} 行`);
+  check("4×4 面板 16 格都在", dom.pads === 16, String(dom.pads));
+  check("难度按钮数 = 这首的难度数", dom.diffBtns >= 2, `${dom.diffBtns} 个`);
+  check("当前难度按钮高亮正确", dom.activeDiff === "EXT", String(dom.activeDiff));
+  check("marker 下拉有选项", dom.markers > 1, `${dom.markers} 项`);
+  check("特效下拉有选项", dom.effects > 1, `${dom.effects} 项`);
+  check("静态资源都带了 ?v=（缓存键）",
+    dom.scripts >= 4 && dom.noVersion === 0, `${dom.scripts} 个 script / ${dom.noVersion} 个缺版本号`);
+  check("样式表加载成功", dom.sheets >= 2, String(dom.sheets));
+
+  const settings = await js("(() => {" +
+    "const fire = (id, type, value) => { const el = document.getElementById(id);" +
+    "  if (value !== undefined) { if (el.type === 'checkbox') el.checked = value; else el.value = value; }" +
+    "  el.dispatchEvent(new Event(type, {bubbles: true})); };" +
+    "fire('numScale', 'input', 150); fire('numAlpha', 'input', 40); fire('numCorner', 'change', true);" +
+    "fire('showNumbers', 'change', true); fire('showCombo', 'change', true);" +
+    "const cfg = window.__player.numCfg;" +
+    "const r = {scale: cfg.scale, alpha: cfg.alpha, corner: cfg.corner," +
+    " label: document.getElementById('numScaleLabel').textContent};" +
+    "fire('numScale', 'input', 100); fire('numAlpha', 'input', 100); fire('numCorner', 'change', false);" +
+    "return r;" +
+    "})()");
+  check("序号字号滑杆生效", settings.scale === 1.5, String(settings.scale));
+  check("序号透明度滑杆生效", Math.abs(settings.alpha - 0.4) < 1e-6, String(settings.alpha));
+  check("序号右下角开关生效", settings.corner === true);
+  check("滑杆数值回显到标签上", settings.label === "150%", settings.label);
+
+  const filtered = await js("(() => {" +
+    "const before = document.querySelectorAll('.song-item').length;" +
+    "const s = document.getElementById('search'); s.value = 'Windy';" +
+    "s.dispatchEvent(new Event('input', {bubbles: true}));" +
+    "return new Promise((done) => setTimeout(() => {" +
+    "  const after = document.querySelectorAll('.song-item').length;" +
+    "  s.value = ''; s.dispatchEvent(new Event('input', {bubbles: true}));" +
+    "  setTimeout(() => done({before, after," +
+    "    restored: document.querySelectorAll('.song-item').length}), 300);" +
+    "}, 600));" +
+    "})()");
+  check("搜索能过滤列表", filtered.after > 0 && filtered.after < filtered.before,
+    `${filtered.before} → ${filtered.after} 行`);
+  check("清空搜索后列表恢复", filtered.restored === filtered.before,
+    `${filtered.restored} / ${filtered.before}`);
+
+  const switched = await js("(() => {" +
+    "const btn = [...document.querySelectorAll('#diffRow .diff-btn')].find((b) => b.dataset.code !== 'EXT');" +
+    "if (!btn) return null; const code = btn.dataset.code; btn.click();" +
+    "return new Promise((done) => setTimeout(() => {" +
+    "  done({code, now: window.__player.state.chartMeta.code," +
+    "        notes: window.__player.state.notes.length});" +
+    "}, 900));" +
+    "})()");
+  check("切难度真的换了谱面", switched && switched.now === switched.code,
+    switched ? `${switched.code} → ${switched.now}` : "没有第二个难度");
+
+  console.log("\n▸ canvas 与播放");
+  const canvas = await js("(() => {" +
+    "const p = window.__player;" +
+    "p.setFrameTime(74.54); p.paintFrame(74.54);" +
+    "const c = document.getElementById('markerCanvas');" +
+    "const g = c.getContext('2d');" +
+    "let lit = 0; const all = g.getImageData(0, 0, c.width, c.height).data;" +
+    "for (let i = 3; i < all.length; i += 4 * 97) if (all[i] > 0) lit++;" +
+    "const d = document.getElementById('densityCanvas');" +
+    "return {w: c.width, h: c.height, lit, dw: d.width, dh: d.height};" +
+    "})()");
+  check("marker 画布有尺寸", canvas.w > 0 && canvas.h > 0, `${canvas.w}×${canvas.h}`);
+  check("marker 画布真的画了东西", canvas.lit > 20, `${canvas.lit} 个采样点非空`);
+  check("物量条画布有尺寸", canvas.dw > 0 && canvas.dh > 0, `${canvas.dw}×${canvas.dh}`);
+
+  const playback = await js("(async () => {" +
+    "const p = window.__player; p.play();" +
+    "await new Promise((r) => setTimeout(r, 1500));" +
+    "const playing = !!p.state.playing;" +
+    "const load = p.loadState();" +
+    "p.pause();" +
+    "await new Promise((r) => setTimeout(r, 200));" +
+    "return {playing, afterPause: !!p.state.playing, mode: load.mode," +
+    " hasBuffer: load.hasBuffer, ratio: load.ratio};" +
+    "})()");
+  check("能起播", playback.playing === true, `后端 ${playback.mode}`);
+  check("暂停能停住", playback.afterPause === false);
+  check("音源加载进度有值", typeof playback.ratio === "number", String(playback.ratio));
+
+  const seek = await js("(async () => {" +
+    "const p = window.__player; p.seekTo(30);" +
+    "p.setFrameTime(30); p.paintFrame(30);" +
+    "await new Promise((r) => setTimeout(r, 400));" +
+    "const now = document.getElementById('timeNow').textContent;" +
+    "p.setFrameTime(null);" +
+    "return {now, time: p.state.lastTimeText, notes: p.state.notes.length};" +
+    "})()");
+  check("seekTo 把时间挪到位", /^0:29|^0:30|^0:31/.test(seek.now || ""), `${seek.now} / ${seek.time}`);
+
+  console.log("\n▸ A–B 打点");
+  const ab = await js("(() => {" +
+    "const p = window.__player;" +
+    "p.seekTo(20); p.tapAB();" +
+    "const a1 = {a: p.abLoop.a, b: p.abLoop.b, title: document.getElementById('btnAB').title};" +
+    "p.seekTo(26); p.tapAB();" +
+    "const a2 = {a: p.abLoop.a, b: p.abLoop.b, cls: document.getElementById('btnAB').className," +
+    " title: document.getElementById('btnAB').title};" +
+    "p.tapAB();" +
+    "const a3 = {a: p.abLoop.a, b: p.abLoop.b};" +
+    "return {a1, a2, a3};" +
+    "})()");
+  check("第一下打 A 点", ab.a1.a > 19 && ab.a1.b === null, JSON.stringify(ab.a1.a));
+  check("第二下打 B 点并进入循环", ab.a2.a > 19 && ab.a2.b > 25, `${ab.a2.a} – ${ab.a2.b}`);
+  check("循环态按钮高亮（on）", /(^|\s)on(\s|$)/.test(ab.a2.cls || ""), ab.a2.cls);
+  check("悬浮描述里写明快捷键 A",
+    /快捷键 A/.test(ab.a1.title || "") && /快捷键 A/.test(ab.a2.title || ""),
+    ab.a2.title);
+  check("第三下清掉打点", ab.a3.a === null && ab.a3.b === null, JSON.stringify(ab.a3));
+
+  // 拖动进度条要清空打点 —— 用真鼠标事件（合成的 PointerEvent 会让 setPointerCapture 报错）
+  await js("(() => { const p = window.__player; p.seekTo(20); p.tapAB(); p.seekTo(26); p.tapAB(); return true; })()");
+  const rect = await js("(() => { const r = document.getElementById('densityCanvas').getBoundingClientRect();" +
+    "return {x: r.x, y: r.y, w: r.width, h: r.height}; })()");
+  const px = Math.round(rect.x + rect.w * 0.7);
+  const py = Math.round(rect.y + rect.h / 2);
+  win.webContents.sendInputEvent({ type: "mouseDown", x: px, y: py, button: "left", clickCount: 1 });
+  await wait(120);
+  win.webContents.sendInputEvent({ type: "mouseMove", x: px, y: py, button: "left" });
+  win.webContents.sendInputEvent({ type: "mouseUp", x: px, y: py, button: "left", clickCount: 1 });
+  await wait(500);
+  const afterDrag = await js("(() => ({a: window.__player.abLoop.a, b: window.__player.abLoop.b," +
+    " now: document.getElementById('timeNow').textContent}))()");
+  check("拖动进度条清空所有打点", afterDrag.a === null && afterDrag.b === null,
+    JSON.stringify(afterDrag));
+
+  return errors;
+}
+
+async function runRecMode(win) {
+  console.log("\n▸ 录制模式（?rec=1）与 __player 契约");
+  await win.loadURL(base + "?rec=1&" + DEEP_LINK.slice(1));
+  const ready = await waitFor(win, "!!(window.__rec && window.__player && window.__player.state.notes.length)");
+  check("录制页起得来", !!ready);
+  const rec = await js2(win, "(async () => {" +
+    "const info = await window.__rec.ready();" +
+    "await window.__rec.renderAt(30);" +
+    "const dbg = window.__rec.debug();" +
+    "const m = await window.__rec.remeasure();" +
+    "return {clip: info.clip, t: dbg.t, combo: dbg.combo, marker: dbg.marker," +
+    " canvas: dbg.canvas, remeasure: m && m.clip};" +
+    "})()");
+  check("__rec.info() 给出截图区域", rec && rec.clip && rec.clip.width > 100,
+    rec && rec.clip ? `${Math.round(rec.clip.width)}×${Math.round(rec.clip.height)}` : "无");
+  check("renderAt() 把画面钉在给定时刻", /^0:29|^0:30|^0:31/.test(rec && rec.t || ""), rec && rec.t);
+  check("录制页也画出了 marker", /^0:29|^0:30|^0:31/.test(rec && rec.t || "") && !!rec.canvas);
+  check("marker 动画选上了", !!rec.marker, String(rec.marker));
+  check("remeasure() 能重新量卡片", !!rec.remeasure);
+}
+
+function js2(win, code) {
+  return win.webContents.executeJavaScript(code, true);
+}
+
+app.whenReady().then(async () => {
+  const serving = await srv.serve(SITE);
+  base = serving.url;
+  const errors = [];
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    show: false,
+    backgroundColor: "#0b0f1a",
+    // 隐藏窗口默认被节流（rAF 基本停摆），关掉才画得出 marker
+    webPreferences: {
+      backgroundThrottling: false,
+      autoplayPolicy: "no-user-gesture-required",
+    },
+  });
+  win.webContents.on("console-message", (...args) => {
+    // Electron 33 还是 (event, level, message)，更新版本改成事件对象 —— 两种都认
+    const event = args[0];
+    const level = typeof args[1] === "number" ? args[1] : event && event.level;
+    const message = typeof args[2] === "string" ? args[2] : event && event.message;
+    if (level === 3 || level === "error") errors.push(String(message));
+  });
+  win.webContents.on("render-process-gone", (_e, detail) => {
+    errors.push(`渲染进程挂了：${JSON.stringify(detail)}`);
+  });
+  win.webContents.session.setPermissionRequestHandler((_wc, _perm, done) => done(false));
+
+  try {
+    console.log(`站点目录：${SITE}\n前端地址：${base}`);
+    await runPage(win, errors);
+    await runRecMode(win);
+    console.log("\n▸ 控制台");
+    check("页面没有 JS 报错（console error / 未捕获异常）", errors.length === 0,
+      errors.slice(0, 3).join(" ｜ "));
+  } catch (err) {
+    check("自测脚本本身没崩", false, String(err && err.stack || err));
+  } finally {
+    await serving.close().catch(() => {});
+    win.destroy();
+  }
+
+  console.log();
+  if (problems.length) {
+    console.log(`${RED} 界面自测失败 ${problems.length} / ${checks}`);
+    for (const item of problems) console.log(`    · ${item}`);
+    process.exitCode = 1;
+  } else {
+    console.log(`${GREEN} 界面自测全部通过（${checks} 项）`);
+  }
+  app.quit();
+});

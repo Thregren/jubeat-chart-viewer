@@ -76,7 +76,33 @@ def stem_of(rel_id: str) -> str:
     return rel_id[:-4] if rel_id.lower().endswith(".mcz") else rel_id
 
 
-def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[str]) -> None:
+def full_index_audio() -> dict[str, str] | None:
+    """`{曲目 id: 音源成员名}`，取自构建缓存里的**完整**索引。
+
+    公网那份 `data/library.json` 是给前端看的形状，故意不带 `audio` 字段
+    （path / audio / size 加起来约占 40%），所以「这首歌到底该不该有音源」
+    只能回完整索引里查。缓存不在（例如在服务器上核对一份下载下来的站点）就
+    返回 None，此时退化成「这首歌还在索引里，它的 .ogg 就不算孤儿」。
+    """
+    try:
+        import config as config_mod
+
+        raw = json.loads(config_mod.INDEX_CACHE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    songs = raw.get("songs") if isinstance(raw, dict) else None
+    if not isinstance(songs, list):
+        return None
+    out: dict[str, str] = {}
+    for s in songs:
+        if isinstance(s, dict) and s.get("id"):
+            # 缓存里的 id 可能是 NFD（macOS 上扫出来的就是），索引是 NFC
+            out[unicodedata.normalize("NFC", s["id"])] = s.get("audio") or ""
+    return out
+
+
+def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[str],
+               audio_map: dict[str, str] | None = None) -> None:
     stem = stem_of(song["id"])
     if unicodedata.normalize("NFC", stem) != stem:
         r.check(f"NFC：{stem}", False, "路径不是 NFC，Windows 上会 404")
@@ -95,11 +121,16 @@ def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[s
         if not isinstance(data.get("note"), list):
             r.check(f"谱面结构 {rel}", False, "没有 note 数组")
 
-    if song.get("audio"):
+    known_audio = audio_map.get(song["id"]) if audio_map is not None else None
+    rel_audio = f"media/audio/{stem}.ogg"
+    if known_audio:
         rel = f"media/audio/{stem}.ogg"
         want.add(rel)
         size = (out / rel).stat().st_size if (out / rel).is_file() else 0
         r.check(f"音源 {rel}", size > 1024, f"{size}B")
+    elif audio_map is None and (out / rel_audio).is_file():
+        # 没有完整索引可查：只要这首歌还在库索引里，它的音源就不算孤儿文件
+        want.add(rel_audio)
 
     if song.get("cover"):
         ext = os.path.splitext(song["cover"])[1].lower() or ".png"
@@ -181,8 +212,12 @@ def main() -> int:
         print(f"  ! 构建期降级 {len(degraded)} 项（源素材本身有问题，前端有占位）")
 
     # 4) 逐曲
+    audio_map = full_index_audio()
+    if audio_map is None:
+        print("  ! 没有构建缓存（cache/library_index.json）：音源只按「歌还在不在索引里」算，"
+              "不再逐个核对文件大小")
     for song in songs:
-        check_song(out, song, want, r, degraded)
+        check_song(out, song, want, r, degraded, audio_map)
 
     # 5) marker 素材
     markers_path = out / "data" / "markers.json"
@@ -220,6 +255,10 @@ def main() -> int:
                 if not path.is_file():
                     continue
                 rel = path.relative_to(out).as_posix()
+                # media/se/ 是可选打点音素材：构建时「源目录里有什么就传什么」，
+                # 索引里没有它的清单，所以不参与孤儿判断
+                if rel.startswith("media/se/"):
+                    continue
                 if rel not in want:
                     extra += 1
                     if extra <= 10:

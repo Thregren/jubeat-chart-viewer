@@ -11,7 +11,7 @@
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.2** · [Release notes](docs/release-v0.6.2.md) ·
+当前版本：**v0.6.3** · [Release notes](docs/release-v0.6.3.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -105,12 +105,20 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
         │  tools/build_site.py   展开 + 生成索引；增量（按 mtime 跳过已是最新的），--prune 清理删掉的曲
         ▼
 site/                           ← 唯一的「运行时数据」，约 2.9 GB
-├── index.html                    前端页面（13 KB）
-├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（10 KB，node 可测）
-├── static/app.js                 前端逻辑（115 KB，无构建步骤）
+├── index.html                    前端页面（15 KB）
+├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（14 KB，node 可测）
+├── static/app-base.js            前端第 1 层：DOM 句柄 / state / 常量 / 曲库元数据（17 KB）
+├── static/app-audio.js           前端第 2 层：打点音素材 + 输出总线（9.2 KB）
+├── static/app-marker.js          前端第 3 层：marker 动画 / 锚点 / 顺序数字（22 KB）
+├── static/app-density.js         前端第 4 层：物量条 / 拖动定位 / 连击 / A–B 打点（10 KB）
+├── static/app-library.js         前端第 5 层：锁缩放 / 侧栏 / 列表 / 选曲（23 KB）
+├── static/app-player.js          前端第 6 层：播放后端 / 加载进度 / seek（27 KB）
+├── static/app-render.js          前端第 7 层：渲染循环（9.7 KB）
+├── static/app-wiring.js          前端第 8 层：事件绑定 / URL 状态 / 版本自检（21 KB）
+├── static/app.js                 前端第 9 层：启动 `main()` + `window.__player`（4.8 KB）
 ├── static/style.css              样式（29 KB）
 ├── static/sfx.js                 打点音合成（7 KB）
-├── static/record.js              录制模式 `?rec=1`：预设 + 卡片 + `__rec` 接口（9.5 KB）
+├── static/record.js              录制模式 `?rec=1`：预设 + 卡片 + `__rec` 接口（10 KB）
 ├── static/record.css             录制模式版面：整页只剩一张卡片（3 KB）
 ├── data/library.json             曲库索引（428 KB，gzip 后约 63 KB）
 ├── data/markers.json             marker 清单（12 套 + 1 种判定特效）
@@ -189,6 +197,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 │   ├── test_core.mjs          core.js 纯逻辑单测（node --test）
 │   ├── test_range.py          Range / 路径穿越：Python、Node、PHP 三份实现同一张用例表
 │   ├── smoke_test.py          端到端自测（静态 + 开发两种模式，32 项）
+│   ├── ui_smoke.js            界面自测：真 Electron 渲染进程里把页面跑起来（45 项）
 │   └── php_smoke_test.py      PHP 入口自测（21 项：Range / gzip / 304 / 目录穿越）
 ├── .github/workflows/ci.yml   每次 push 跑 tools/check.sh --release
 ├── deploy/
@@ -212,7 +221,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 │   ├── thumbs.py              封面缩略图（Pillow，缺失时退化）
 │   ├── markers.py             marker 清单
 │   ├── config.py              路径与环境变量
-│   └── static/                前端（index.html / core.js / app.js / sfx.js / style.css / record.js / record.css）
+│   └── static/                前端（index.html / 9 层 app-*.js / core.js / sfx.js / style.css / record.js / record.css）
 ├── marker/jubeat_marker_frames/  marker 素材 + manifest.json + 拆帧工具
 ├── docs/                      README 截图、桌面版说明、各版本的 release notes
 ├── music/                     曲库（.gitignore）
@@ -228,10 +237,13 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 
 ## 前端
 
-前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 七个文件就是全部，
-合计约 198 KB，gzip 后约 63 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
+前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 十五个文件就是全部，
+合计约 223 KB，gzip 后约 83 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
 （谱面解析、顺序数字、同押分组、难度匹配），所以能用 node 直接跑单测
-（`node --test tools/test_core.mjs`）；`core.js` + `app.js` 合计约 3200 行，按职责分区：
+（`node --test tools/test_core.mjs`）；其余按职责拆成 **9 层**（`app-base.js` →
+`app-audio.js` → `app-marker.js` → `app-density.js` → `app-library.js` → `app-player.js`
+→ `app-render.js` → `app-wiring.js` → `app.js`），靠 `index.html` 里 `<script>` 的顺序加载、
+共用一个 `window.JubeatApp` 命名空间，`core.js` + 这 9 层合计约 3700 行，按职责分区：
 
 | 区域 | 干什么 |
 |---|---|
@@ -630,24 +642,42 @@ nginx 上要保证的四件事：
 改完前端只要传这几个文件到站点目录即可，曲库一个字都不用重传：
 
 ```
-铺面查看器/player/static/index.html   →  <站点根>/index.html
-铺面查看器/player/static/core.js      →  <站点根>/static/core.js
-铺面查看器/player/static/app.js       →  <站点根>/static/app.js
-铺面查看器/player/static/style.css    →  <站点根>/static/style.css
-铺面查看器/player/static/sfx.js       →  <站点根>/static/sfx.js
-铺面查看器/player/static/record.js    →  <站点根>/static/record.js
-铺面查看器/player/static/record.css   →  <站点根>/static/record.css
+铺面查看器/player/static/index.html     →  <站点根>/index.html
+铺面查看器/player/static/app-base.js    →  <站点根>/static/app-base.js
+铺面查看器/player/static/app-audio.js   →  <站点根>/static/app-audio.js
+铺面查看器/player/static/app-marker.js  →  <站点根>/static/app-marker.js
+铺面查看器/player/static/app-density.js →  <站点根>/static/app-density.js
+铺面查看器/player/static/app-library.js →  <站点根>/static/app-library.js
+铺面查看器/player/static/app-player.js  →  <站点根>/static/app-player.js
+铺面查看器/player/static/app-render.js  →  <站点根>/static/app-render.js
+铺面查看器/player/static/app-wiring.js  →  <站点根>/static/app-wiring.js
+铺面查看器/player/static/app.js         →  <站点根>/static/app.js
+铺面查看器/player/static/core.js        →  <站点根>/static/core.js
+铺面查看器/player/static/style.css      →  <站点根>/static/style.css
+铺面查看器/player/static/sfx.js         →  <站点根>/static/sfx.js
+铺面查看器/player/static/record.js      →  <站点根>/static/record.js
+铺面查看器/player/static/record.css     →  <站点根>/static/record.css
 ```
 
-**改完必须同时改 `index.html` 里的 `?v=` 版本号**：
+**改完必须同时改 `index.html` 里的 `?v=` 版本号**（`python3 tools/set_version.py X.Y.Z`
+一次改完这 14 处，不用手改）：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.2" />
-<link rel="stylesheet" href="static/record.css?v=0.6.2" />
-<script src="static/sfx.js?v=0.6.2"></script>
-<script src="static/core.js?v=0.6.2"></script>
-<script src="static/record.js?v=0.6.2"></script>
-<script src="static/app.js?v=0.6.2"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.3" />
+<link rel="stylesheet" href="static/record.css?v=0.6.3" />
+<script src="static/sfx.js?v=0.6.3"></script>
+<script src="static/core.js?v=0.6.3"></script>
+<script src="static/record.js?v=0.6.3"></script>
+<!-- 下面 9 行的顺序不能改：每一层只依赖比它更早的那几层 -->
+<script src="static/app-base.js?v=0.6.3"></script>
+<script src="static/app-audio.js?v=0.6.3"></script>
+<script src="static/app-marker.js?v=0.6.3"></script>
+<script src="static/app-density.js?v=0.6.3"></script>
+<script src="static/app-library.js?v=0.6.3"></script>
+<script src="static/app-player.js?v=0.6.3"></script>
+<script src="static/app-render.js?v=0.6.3"></script>
+<script src="static/app-wiring.js?v=0.6.3"></script>
+<script src="static/app.js?v=0.6.3"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -696,6 +726,7 @@ tools/check.sh --release    # 发版前：--full + PHP 入口冒烟（本机没 
 node --test tools/test_core.mjs        # 前端纯逻辑（core.js）单测：谱面解析 / 顺序数字 / 同押光晕 / A–B 打点 / 难度匹配
 python3 tools/test_range.py            # Range 解析 + 路径穿越：同一张用例表跑 Python / Node（有 php 连 PHP）三份实现
 python3 tools/smoke_test.py --build    # 静态 + 开发两种模式，32 项（首页/索引/谱面/音源 Range/封面/缩略图/缓存/gzip/404）
+cd electron && npx electron ../tools/ui_smoke.js   # 界面自测 45 项：真渲染进程里跑一遍页面并点关键路径
 python3 tools/php_smoke_test.py        # PHP 入口，21 项（各种 Range、416、gzip、ETag/304、HEAD、目录穿越）
 python3 tools/verify_site.py --strict  # 已有 ./site 的完整性（索引里每一项都要落到磁盘上）
 python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= 与 electron 包版本
@@ -706,7 +737,9 @@ cd electron && npx electron ../tools/screenshot.js \
     ../docs/screenshot.jpg 1280x720
 ```
 
-两个 smoke 脚本都会临时起服务、造 fixture、自己清理，不需要真实曲库（PHP 那个需要机器上有 `php`）。
+这几个脚本都会临时起服务、造 fixture、自己清理，不需要真实曲库（PHP 那个需要机器上有 `php`，
+`ui_smoke.js` 需要本机的 electron）。`ui_smoke.js` 是唯一能证明「页面真的画得出来、播得响、
+打点按得中」的一层：前端的语法检查看不出「函数搬了家、名字对不上」这类错，只有真跑一遍才知道。
 CI（`.github/workflows/ci.yml`）每次 push 跑的就是 `tools/check.sh --release`。
 
 ### 在浏览器里调试
@@ -729,7 +762,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 2. 提版本号 —— 权威值只有仓库根的 `VERSION`，其余位置由脚本铺开：
 
    ```bash
-   python3 tools/set_version.py 0.6.2     # 写 VERSION + index.html 的 ?v= + electron 包版本
+   python3 tools/set_version.py 0.6.3     # 写 VERSION + index.html 的 ?v= + electron 包版本
    ```
 3. 本地验证：`sh tools/check.sh --release`，再 `python3 tools/build_site.py`（曲库有变动时）+ `tools/serve.py` 预览
 4. 构建桌面版轻量包：`sh tools/pack_desktop.sh`（产物自动收回 `electron/dist`）
@@ -749,7 +782,8 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 
    附件必须是 `electron/dist/` 里那几个 zip / AppImage（**不带曲库**的轻量包）。
    `release.py` 会拦住体积超过 400 MB 的包（带曲库的包有 2.7 GB，GitHub 单文件上限是 2 GB）。
-7. 服务器同步：只传 `index.html` + `static/core.js` + `static/app.js` + `static/style.css` + `static/sfx.js`（要用录制模式再加 `static/record.js` + `static/record.css`）
+7. 服务器同步：只传 `index.html` + `static/` 下的前端文件（`app-*.js` 九个 + `core.js` + `sfx.js` + `style.css`；
+   要用录制模式再加 `record.js` + `record.css`）。曲库（`media/` `markers/` `data/`）一个字都不用重传
 
 ## 性能与体积
 
@@ -759,7 +793,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 | 带宽 | 一首歌 ≈ 2 MB，听一遍 ≈ 2 MB；索引 gzip 后 63 KB，只拉一次 |
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
 | 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
-| 首屏 | 只拉 `index.html` + 前端（合计约 173 KB）+ 索引（约 63 KB）和当前可见行的缩略图 |
+| 首屏 | 只拉 `index.html` + 前端（合计约 223 KB，gzip 后约 83 KB）+ 索引（gzip 后约 63 KB）和当前可见行的缩略图 |
 | 重复下载 | WebAudio 路径同一首歌只 fetch 一次并解码；切难度复用 AudioBuffer，解码失败才回落 `<audio>` |
 
 ## 已知限制
@@ -770,8 +804,10 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 - **5 个封面在源包里就是坏的 PNG**（HEKIREKI、こどなの階段、となりのトトロ feat_sayurina、マスターピース、女々しくて），
   列表里退化成 ♪ 占位，没有别的影响
 - **同押「密集」只看时间间隔**（相邻两批 ≤ 0.35 s），不看你个人手感；阈值写在 `GLOW_DENSE_GAP`
-- 前端没有构建步骤，所以**没有类型检查 / 压缩**，改 `app.js` / `core.js` 要自己保证语法
-  （`node --check` 能挡一部分；纯逻辑尽量往 `core.js` 放，有单测兜着）
+- 前端没有构建步骤，所以**没有类型检查 / 压缩**，改 `app-*.js` / `core.js` 要自己保证语法
+  （`node --check` 能挡一部分；纯逻辑尽量往 `core.js` 放，有单测兜着）。九个前端文件靠
+  `index.html` 里 `<script>` 的**顺序**决定装载次序，调顺序会让「更晚那层」的调用落空 ——
+  改完务必跑一次 `tools/ui_smoke.js`
 
 ## 版权与许可
 

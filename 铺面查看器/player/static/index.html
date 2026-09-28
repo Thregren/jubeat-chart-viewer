@@ -9,8 +9,8 @@
   <title>jubeat 铺面确认</title>
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.1" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.1" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.2" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.2" />
 </head>
 <body>
   <div id="app">
@@ -130,7 +130,7 @@
           </button>
           <button id="btnStop" class="icon-btn" title="停止" type="button">■</button>
           <button id="btnAB" class="icon-btn ab-btn" type="button"
-                  title="A–B 循环：按 A 键或点这里打 A 点，再按一次打 B 点，第三次清除">A-B</button>
+                  title="A–B 段落循环（快捷键 A）：按一下打 A 点，再按一下打 B 点，第三次清除">A-B</button>
           <div class="time-block">
             <span id="timeNow">0:00.00</span>
             <span class="time-sep">/</span>
@@ -285,10 +285,10 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.1"></script>
-  <script src="static/core.js?v=0.6.1"></script>
+  <script src="static/sfx.js?v=0.6.2"></script>
+  <script src="static/core.js?v=0.6.2"></script>
   <!-- 录制模式（?rec=1）：必须在 app.js 之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.1"></script>
-  <script src="static/app.js?v=0.6.1"></script>
+  <script src="static/record.js?v=0.6.2"></script>
+  <script src="static/app.js?v=0.6.2"></script>
 </body>
 </html>

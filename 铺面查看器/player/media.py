@@ -5,6 +5,7 @@ import hashlib
 import mimetypes
 import os
 import posixpath
+import re
 import threading
 import zipfile
 from pathlib import Path
@@ -150,25 +151,34 @@ def write_atomic(path: Path, data: bytes) -> None:
                 pass
 
 
+# Range 值的形状：恰好一个短横线，两侧要么是纯数字要么是空。
+# 三份实现（这里 / electron/site-server.js / deploy/php）共用同一套语义，
+# 一致性由 tools/test_range.py 用同一张用例表守着。
+_RANGE_SPEC = re.compile(r"(\d*)-(\d*)")
+
+
 def parse_range(header: str, size: int) -> tuple[int, int] | None:
-    """解析单段 Range，返回闭区间 (start, end)；不支持/非法返回 None。"""
-    if not header or not header.startswith("bytes=") or size <= 0:
+    """解析单段 Range，返回闭区间 (start, end)；不支持/非法返回 None。
+
+    以前这里是 int() 硬转：`bytes=0 - 99` 这种带空格的脏值会被 int() 自己 strip
+    掉而放行，Node / PHP 两份实现都判非法 —— 同一个音频在三种部署下会不会走 206
+    就不一致了。现在统一成严格正则（仍然容忍整个值首尾的空白，那是 RFC 允许的 OWS）。
+    """
+    h = (header or "").strip()
+    m = _RANGE_SPEC.fullmatch(h[6:].strip()) if h.startswith("bytes=") else None
+    if m is None or size <= 0:
         return None
-    spec = header.split("=", 1)[1].strip()
-    if "," in spec or "-" not in spec:
+    start_s, end_s = m.group(1), m.group(2)
+    if start_s == "" and end_s == "":
         return None
-    start_s, end_s = spec.split("-", 1)
-    try:
-        if start_s == "":
-            n = int(end_s)
-            if n <= 0:
-                return None
-            start, end = max(0, size - n), size - 1
-        else:
-            start = int(start_s)
-            end = int(end_s) if end_s else size - 1
-    except ValueError:
-        return None
+    if start_s == "":
+        n = int(end_s)
+        if n <= 0:
+            return None
+        start, end = max(0, size - n), size - 1
+    else:
+        start = int(start_s)
+        end = int(end_s) if end_s else size - 1
     if start < 0 or start >= size:
         return None
     end = min(end, size - 1)

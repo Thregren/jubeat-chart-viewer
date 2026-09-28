@@ -12,12 +12,11 @@ import unicodedata
 import zipfile
 from pathlib import Path
 
-from config import INDEX_CACHE, INDEX_VERSION, LIBRARY
+import config
 from media import read_member, safe_join, write_atomic, zip_name
 
 DIFF_RE = re.compile(r"_([A-Z]{3})\s*Lv([0-9]+(?:\.[0-9]+)?)", re.I)
 DIFF_ORDER = {"BSC": 0, "BAS": 0, "ADV": 1, "EXT": 2}
-META_READ_BYTES = 8192  # 只读谱面开头一段来取标题/作曲
 
 
 def stem_key(text: str) -> str:
@@ -53,7 +52,7 @@ def published_index(songs: list[dict]) -> dict:
     不下发。static 站和开发服务器都走这同一个形状。
     """
     return {
-        "version": INDEX_VERSION,
+        "version": config.INDEX_VERSION,
         "generated": int(time.time()),
         "versions": sorted({s["version"] for s in songs}),
         "songs": [
@@ -64,12 +63,7 @@ def published_index(songs: list[dict]) -> dict:
                 "version": s["version"],
                 "cover": s.get("cover") or "",
                 "charts": [
-                    {
-                        "code": c["code"],
-                        "level": c["level"],
-                        "notes": c.get("notes") or 0,
-                        "holds": c.get("holds") or 0,
-                    }
+                    _published_chart(c)
                     for c in s["charts"]
                 ],
             }
@@ -78,12 +72,47 @@ def published_index(songs: list[dict]) -> dict:
     }
 
 
-def scan_song(mcz_path: Path) -> dict | None:
+def _published_chart(chart: dict) -> dict:
+    """单个难度的公开字段。
+
+    notesKnown=False（谱面读坏、json 解析失败）才下发这个字段：前端据此把物量
+    显示成「未知」而不是骗人的 0。正常情况下不加，省得 1.6 万个难度对象白胖一圈。
+    """
+    out = {
+        "code": chart["code"],
+        "level": chart["level"],
+        "notes": chart.get("notes") or 0,
+        "holds": chart.get("holds") or 0,
+    }
+    if not chart.get("notesKnown", True):
+        out["notesKnown"] = False
+    return out
+
+
+def _song_meta_of(data: dict) -> tuple[str, str]:
+    """从 .mc 的 meta.song 里取曲名 / 作曲。
+
+    以前是拿谱面开头 8 KB 做正则抠 title / artist：一旦某个字段排在第 8 KB 之后
+    （长谱面的 extra / 靠后的 note 数组会把 meta 顶出去），曲名就悄悄退回文件名。
+    现在 note 数本来就要整份 json.loads，meta.song 顺手就有，正则那套可以退休了。
+    """
+    meta = data.get("meta") or {}
+    song = meta.get("song") if isinstance(meta, dict) else None
+    if not isinstance(song, dict):
+        return "", ""
+    title = song.get("title")
+    artist = song.get("artist")
+    return (str(title).strip() if title else "", str(artist).strip() if artist else "")
+
+
+def scan_song(mcz_path: Path, root: Path) -> dict | None:
     """读一个 .mcz 的元信息（不加载完整谱面）。"""
     try:
         with zipfile.ZipFile(mcz_path) as zf:
             names = [zip_name(i) for i in zf.infolist() if not i.is_dir()]
             charts = []
+            title = ""
+            artist = ""
             for name in names:
                 base = os.path.basename(name)
                 if not name.lower().endswith(".mc"):
@@ -100,9 +129,13 @@ def scan_song(mcz_path: Path) -> dict | None:
                     notes = [n for n in (data.get("note") or []) if n.get("index") is not None]
                     entry["notes"] = len(notes)
                     entry["holds"] = sum(1 for n in notes if n.get("endbeat") is not None)
+                    entry["notesKnown"] = True
+                    if not title:
+                        title, artist = _song_meta_of(data)
                 except Exception:
                     entry["notes"] = 0
                     entry["holds"] = 0
+                    entry["notesKnown"] = False
                 charts.append(entry)
             if not charts:
                 return None
@@ -117,26 +150,12 @@ def scan_song(mcz_path: Path) -> dict | None:
             if not covers:
                 covers = [n for n in names if n.lower().endswith((".png", ".jpg", ".jpeg"))]
 
-            title = mcz_path.stem
-            artist = ""
-            try:
-                with zf.open(charts[-1]["file"]) as fh:
-                    head = fh.read(META_READ_BYTES).decode("utf-8", errors="replace")
-                tm = re.search(r'"title"\s*:\s*"((?:\\.|[^"\\])*)"', head)
-                am = re.search(r'"artist"\s*:\s*"((?:\\.|[^"\\])*)"', head)
-                if tm:
-                    title = json.loads(f'"{tm.group(1)}"')
-                if am:
-                    artist = json.loads(f'"{am.group(1)}"')
-            except Exception:
-                pass
-
-            rel = mcz_path.relative_to(LIBRARY).as_posix()
+            rel = mcz_path.relative_to(root).as_posix()
             return {
                 "id": rel,
                 "path": rel,
                 "filename": mcz_path.name,
-                "title": title,
+                "title": title or mcz_path.stem,
                 "artist": artist,
                 "version": mcz_path.parent.name,
                 "audio": audio,
@@ -149,63 +168,111 @@ def scan_song(mcz_path: Path) -> dict | None:
         return None
 
 
+def mcz_paths(root: Path) -> list[Path]:
+    """曲库里的 .mcz 列表。
+
+    跳过 `._xxx.mcz` —— 外置盘（exFAT）上 macOS 会给每个文件写一个 `._同名` 的
+    元数据边车文件，它也以 .mcz 结尾，混进索引里就是一堆打不开的条目。
+    """
+    if not root.is_dir():
+        return []
+    return sorted(p for p in root.rglob("*.mcz") if not p.name.startswith("._"))
+
+
+def fingerprint(paths: list[Path]) -> dict:
+    """索引缓存指纹：条数 + 最新修改时间 + 总字节数。
+
+    老缓存只比「索引结构版本 + 曲库路径」：往 music/ 里丢一首新歌再重启，缓存照样命中，
+    新歌在界面上就是不出现（得手动点「重新读取」）。加上指纹后，增删改任意一首都会失效。
+    这里只 stat，不解压，代价是毫秒级。
+    """
+    count = 0
+    newest = 0
+    total = 0
+    for path in paths:
+        try:
+            st = path.stat()
+        except OSError:
+            continue                     # 扫描期间刚被删掉的：跳过，不算进指纹
+        count += 1
+        total += st.st_size
+        mtime_ms = int(st.st_mtime * 1000)
+        if mtime_ms > newest:
+            newest = mtime_ms
+    return {"count": count, "newest_ms": newest, "bytes": total}
+
+
 class Library:
     """曲库索引 + 查询。索引结果缓存到 cache/library_index.json。"""
 
-    def __init__(self, root: Path = LIBRARY):
-        self.root = root
+    def __init__(self, root: Path | None = None):
+        self._root = Path(root) if root is not None else None
         self.songs: list[dict] = []
         self.by_id: dict[str, dict] = {}
+        self.by_stem: dict[str, dict] = {}
         self.versions: list[str] = []
         self._lock = threading.RLock()
+        # 扫描串行化：第一个请求慢慢扫，后来的请求在锁外等，不会各自再扫一遍
+        self._scan_lock = threading.Lock()
+
+    @property
+    def root(self) -> Path:
+        """曲库目录。惰性解析（config.LIBRARY 要用时才扫盘）。"""
+        if self._root is None:
+            self._root = config.LIBRARY
+        return self._root
 
     # —— 索引 ——
     def load(self, force: bool = False) -> None:
-        with self._lock:
-            if self.songs and not force:
-                return
-            if not force:
-                cached = self._read_cache()
-                if cached is not None:
-                    self._install(cached)
-                    return
-            self._install(self._scan())
+        """确保索引就绪。已就绪就是一次属性读，没有任何锁竞争。
 
-    def _read_cache(self) -> list[dict] | None:
+        注意扫描**不在** self._lock 里：以前整段 rglob + 解压都在锁内，首次索引
+        几十秒里所有走 load() 的请求（含 /api/health）都排队等同一把锁。
+        """
+        if self.songs and not force:
+            return
+        paths = mcz_paths(self.root)
+        if not force:
+            cached = self._read_cache(paths)
+            if cached is not None:
+                self._install(cached)
+                return
+        with self._scan_lock:
+            if self.songs and not force:      # 排队期间别人已经扫好了
+                return
+            self._install(self._scan(paths))
+
+    def _read_cache(self, paths: list[Path]) -> list[dict] | None:
         try:
-            raw = json.loads(INDEX_CACHE.read_text(encoding="utf-8"))
+            raw = json.loads(config.INDEX_CACHE.read_text(encoding="utf-8"))
         except Exception:
             return None
-        if raw.get("version") != INDEX_VERSION:
+        if raw.get("version") != config.INDEX_VERSION:
             return None
         if raw.get("library") != str(self.root):
+            return None
+        if raw.get("fingerprint") != fingerprint(paths):
             return None
         songs = raw.get("songs")
         if not isinstance(songs, list) or not songs:
             return None
         return songs
 
-    def _scan(self) -> list[dict]:
+    def _scan(self, paths: list[Path]) -> list[dict]:
         print(f"[index] scanning {self.root} …", file=sys.stderr)
-        # 跳过 ._xxx.mcz —— 外置盘（exFAT）上 macOS 会给每个文件写一个
-        # `._同名` 的元数据边车文件，它也以 .mcz 结尾，混进索引里就是一堆打不开的条目。
-        paths = (
-            sorted(p for p in self.root.rglob("*.mcz") if not p.name.startswith("._"))
-            if self.root.is_dir()
-            else []
-        )
         songs: list[dict] = []
         if paths:
             # 每个 zip 都要开关一次，多线程扫能明显加快首次启动
             workers = min(16, max(4, (os.cpu_count() or 4) * 2))
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                for meta in pool.map(scan_song, paths, chunksize=8):
+                for meta in pool.map(lambda p: scan_song(p, self.root), paths, chunksize=8):
                     if meta:
                         songs.append(meta)
         songs.sort(key=lambda s: (s["title"].lower(), s["version"]))
         try:
-            write_atomic(INDEX_CACHE, json.dumps(
-                {"version": INDEX_VERSION, "library": str(self.root), "songs": songs},
+            write_atomic(config.INDEX_CACHE, json.dumps(
+                {"version": config.INDEX_VERSION, "library": str(self.root),
+                 "fingerprint": fingerprint(paths), "songs": songs},
                 ensure_ascii=False).encode("utf-8"))
         except OSError as exc:
             print(f"[index] 缓存写入失败: {exc}", file=sys.stderr)
@@ -213,12 +280,17 @@ class Library:
         return songs
 
     def _install(self, songs: list[dict]) -> None:
-        self.songs = songs
-        self.by_id = {s["id"]: s for s in songs}
+        # 一次性算好再整体换上：读侧（by_id / by_stem）永远看到同一份完整索引
+        by_id = {s["id"]: s for s in songs}
         # 静态站点按 <曲目（去掉 .mcz）> 组织文件，开发服务器也按这个 key 反查
-        self.by_stem = {stem_key(s["id"][:-4] if s["id"].lower().endswith(".mcz") else s["id"]): s
-                        for s in songs}
-        self.versions = sorted({s["version"] for s in songs})
+        by_stem = {stem_key(s["id"][:-4] if s["id"].lower().endswith(".mcz") else s["id"]): s
+                   for s in songs}
+        versions = sorted({s["version"] for s in songs})
+        with self._lock:
+            self.songs = songs
+            self.by_id = by_id
+            self.by_stem = by_stem
+            self.versions = versions
 
     # —— 查询 ——
     def query(self, q: str = "", version: str = "") -> list[dict]:

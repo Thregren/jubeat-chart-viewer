@@ -9,6 +9,9 @@
 #    在 server 块和每个带 add_header 的 location 里都 include 一次（见 deploy/security-headers.conf）。
 
 # —— 限流 / 并发限制的 zone 必须写在 http {} 块里（不能写进 server {}），例如 ——
+#    zone 和真正用它的 limit_req/limit_conn 是**成对**的：下面这些要是没打开，
+#    本文件里 location /media/audio/ 那两行也要保持注释，否则 nginx 会以
+#    「unknown limit_req zone」直接起不来。
 # limit_req_zone  $binary_remote_addr zone=jubeat_req:10m   rate=20r/s;
 # limit_conn_zone $binary_remote_addr zone=jubeat_conn:10m;
 # limit_req_zone  $binary_remote_addr zone=jubeat_media:10m rate=2r/s;
@@ -75,8 +78,11 @@ server {
         add_header Cache-Control "public, max-age=604800" always;
         try_files $uri =404;
 
-        # limit_req  zone=jubeat_media burst=10 nodelay;   # zone 定义在 http {} 里
+        # 要开这两行，先把文件开头那 3 行 zone 定义一起打开（都在 http {} 里）：
+        # limit_req  zone=jubeat_media burst=10 nodelay;
         # limit_conn jubeat_conn 8;
+        # limit_req_status  429;
+        # limit_conn_status 429;
 
         # 防盗链：只允许本站和空 Referer（直接访问）
         valid_referers none blocked server_names *.thregren.world;

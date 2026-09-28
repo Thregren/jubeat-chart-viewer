@@ -1,0 +1,42 @@
+# 每次 push / PR 跑一遍 tools/check.sh --release。
+#
+# 这里守的都是「不会报错、只会静默出错」的东西：
+#   * 三份后端（Python 开发服务器 / Electron 静态服务 / PHP 整包）的 Range 与
+#     路径穿越语义必须一致 —— 差一点点只表现为某一端进度条拖不动
+#   * VERSION 和 index.html 的 ?v= 、electron 包版本必须同步 —— 忘了改就是用户
+#     浏览器缓存里一直是老前端
+#   * 前端纯逻辑（谱面解析 / 顺序数字 / A–B 打点）的单测
+#   * 两种部署模式的端到端接口冒烟（静态直发 + 开发服务器）
+#
+# 桌面包（6 份 zip / AppImage）不在 CI 里打：要 GUI 环境、几分钟，而且产物不入库。
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # PHP 入口的冒烟测试要用 php-cli；本机没有 php 时 check.sh 会自己跳过这一段
+      - name: 装 php-cli
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli
+
+      - name: tools/check.sh --release
+        run: sh tools/check.sh --release

@@ -139,7 +139,27 @@ async function createWindow() {
     minWidth: 420,
     backgroundColor: "#07090f",
     title: "jubeat 铺面查看器",
-    webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false,
+      // 页面本身是本地静态站点，用不到任何 Node 能力：渲染进程放进沙箱，
+      // 万一谱面数据里藏了奇怪的脚本，也摸不到文件系统。
+      sandbox: true,
+      webSecurity: true,
+    },
+  });
+  // 站内跳转（含 ?song=/?t= 这类深链接）放行，其余一律拦下：
+  //   - 外链交给系统浏览器（别在应用窗口里加载任意网页）
+  //   - window.open / target=_blank 直接拒绝
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (server && url.startsWith(server.url)) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
   });
   const dir = resolveSiteDir();
   if (!dir) {

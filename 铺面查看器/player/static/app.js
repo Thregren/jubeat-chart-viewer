@@ -596,6 +596,35 @@
     sfxSched.idx = lo;
   }
 
+  // 打点音排程器只在「正在播放」时开着。
+  // 以前是无条件 setInterval(sfxTick, 25)：暂停之后每秒还是白醒 40 次，
+  // 手机上就是纯耗电（函数里虽然第一行就 return，定时器本身照样唤醒主线程）。
+  let sfxTimer = 0;
+  function sfxTimerSync() {
+    if (state.playing && !sfxTimer) sfxTimer = setInterval(sfxTick, 25);
+    else if (!state.playing && sfxTimer) {
+      clearInterval(sfxTimer);
+      sfxTimer = 0;
+    }
+  }
+
+  /**
+   * state.playing 的唯一写入口。
+   *
+   * 播放状态会牵动两件「必须跟着开关」的东西：
+   *   - 打点音排程定时器（见 sfxTimerSync）
+   *   - 渲染循环（暂停且没有变化时 updateFrame 自己停表，恢复播放要唤醒）
+   * 以前 state.playing 在 8 个地方各写各的，谁忘了同步都会留下「暂停了还在响 /
+   * 播了画面不动」这种难查的问题，所以收敛成一个入口。
+   */
+  function setPlaying(v) {
+    const on = !!v;
+    if (state.playing === on) return;
+    state.playing = on;
+    sfxTimerSync();
+    if (on) requestPaint();
+  }
+
   function sfxTick() {
     if (!state.playing || !state.notes.length || !els.metroSound.value) return;
     if (metroGain(1) <= 0) return;
@@ -733,12 +762,14 @@
       els.anchorInput.value = "0";
     }
     renderAnchorStrip();
+    requestPaint();
   }
 
   function selectEffect(id) {
     markerCfg.effect = markerCfg.effects.find((e) => e.id === id) || null;
     store(STORAGE.effect, markerCfg.effect ? markerCfg.effect.id : "");
     if (markerCfg.effect) sheetImage(markerCfg.effect.sheet);
+    requestPaint();
   }
 
   function setAnchor(frame) {
@@ -749,6 +780,7 @@
     store(STORAGE.anchor(entry.id), f);
     els.anchorInput.value = String(f);
     renderAnchorStrip();
+    requestPaint();
   }
 
   function renderAnchorStrip() {
@@ -809,6 +841,7 @@
       const r = el.getBoundingClientRect();
       return { x: r.left - box.left, y: r.top - box.top, w: r.width, h: r.height };
     });
+    requestPaint();
   }
 
   /** 面板按「可用高度」自适应：小屏 + 选项展开时也不会被挤出可视区 */
@@ -1301,24 +1334,18 @@
       toast("先从左侧选择一首曲目");
       return;
     }
-    if (abLoop.a == null) {
-      abLoop.a = currentMediaTime();
-      abLoop.b = null;
-      toast(`A 点：${fmtTime(abLoop.a)}　再按一次打 B 点`);
-    } else if (abLoop.b == null) {
-      const t = currentMediaTime();
-      if (t <= abLoop.a) {
-        // 手抖点到 A 前面：两个点对调，别做出一个空区间
-        abLoop.b = abLoop.a;
-        abLoop.a = t;
-      } else {
-        abLoop.b = t;
-      }
-      toast(`循环 ${fmtTime(abLoop.a)} – ${fmtTime(abLoop.b)}　再按一次清除`);
-    } else {
+    // 状态转移本身在 Core.abTap 里（纯函数、有 node 单测）；这里只负责落地 + 提示。
+    const next = Core.abTap(abLoop, currentMediaTime());
+    if (next.phase === "clear") {
+      // 已经打过 A、B 了：这一按是「清除」，交给 clearAB 统一处理
       clearAB("已清除打点，恢复整首播放");
       return;
     }
+    abLoop.a = next.a;
+    abLoop.b = next.b;
+    toast(next.phase === "A"
+      ? `A 点：${fmtTime(abLoop.a)}　再按一次打 B 点`
+      : `循环 ${fmtTime(abLoop.a)} – ${fmtTime(abLoop.b)}　再按一次清除`);
     updateABButton();
     drawDensity();
   }
@@ -1341,11 +1368,13 @@
     const looping = abLoop.a != null && abLoop.b != null;
     b.classList.toggle("armed", armed);
     b.classList.toggle("on", looping);
+    // 悬浮描述里始终带上快捷键：三种状态各写各的，漏一个就会出现
+    // 「鼠标划过去看不到快捷键」的情况（键盘用户就是这么发现功能的）。
     b.title = abLoop.a == null
-      ? "A–B 循环：按 A 键或点这里打 A 点"
+      ? "A–B 段落循环（快捷键 A）：按一下打 A 点"
       : armed
-        ? `A = ${fmtTime(abLoop.a)}　再按一次打 B 点`
-        : `循环 ${fmtTime(abLoop.a)} – ${fmtTime(abLoop.b)}　再按一次清除`;
+        ? `A = ${fmtTime(abLoop.a)}　再按一下（快捷键 A）打 B 点`
+        : `循环 ${fmtTime(abLoop.a)} – ${fmtTime(abLoop.b)}　再按一下（快捷键 A）清除`;
   }
 
   /**
@@ -1406,6 +1435,7 @@
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const data = await res.json();
       state.songs = data.songs || [];
+      invalidateSongCaches();
       if (!els.versionFilter.dataset.ready) {
         const versions = (data.versions || []).slice().sort((a, b) => versionRank(a) - versionRank(b));
         for (const v of versions) {
@@ -1429,18 +1459,47 @@
     return songMeta(song).hasHold;
   }
 
+  // 筛选 / 排序的两级缓存。
+  //
+  // 全库 1371 首：每次敲键盘都要 filter 一遍（每首还要拼 searchFields 做
+  // substring 匹配），再按 ja 排序规则 localeCompare 排一次 —— 后者尤其贵。
+  // 搜索框还带 120ms 防抖，但「删一个字 / 换个排序」这种回头路完全是可以白拿的。
+  //   filterCache：同一个 (关键词 + 版本 + 长押) 的筛选结果
+  //   sortCache  ：同一个筛选结果 + 同一种排序
+  // 注意缓存里的数组是共享的：调用方只读，绝不能就地排序 / 改内容。
+  let filterCache = { key: null, list: [] };
+  let sortCache = { key: null, list: [] };
+  /** 曲库变了（重新读取 / 换库）就得把这两级缓存作废 */
+  function invalidateSongCaches() {
+    filterCache = { key: null, list: [] };
+    sortCache = { key: null, list: [] };
+  }
+
   function visibleSongs() {
     const q = els.search.value.trim().toLowerCase();
     const ver = els.versionFilter.value;
     const holdMode = els.holdFilter.value;
-    const list = state.songs.filter((s) => {
-      if (ver && s.version !== ver) return false;
-      if (holdMode === "hold" && !hasHold(s)) return false;
-      if (holdMode === "nohold" && hasHold(s)) return false;
-      if (!q) return true;
-      return songMeta(s).searchFields.some((field) => field.includes(q));
-    });
-    return sortSongs(list, els.sortSelect.value);
+    const fkey = `${q}\u0000${ver}\u0000${holdMode}`;
+    if (filterCache.key !== fkey) {
+      filterCache = {
+        key: fkey,
+        list: state.songs.filter((s) => {
+          if (ver && s.version !== ver) return false;
+          if (holdMode === "hold" && !hasHold(s)) return false;
+          if (holdMode === "nohold" && hasHold(s)) return false;
+          if (!q) return true;
+          return songMeta(s).searchFields.some((field) => field.includes(q));
+        }),
+      };
+      sortCache = { key: null, list: [] };
+    }
+    const mode = els.sortSelect.value;
+    const skey = `${fkey}\u0000${mode}`;
+    if (sortCache.key !== skey) {
+      // slice() 出一份副本再排：sortSongs 是就地排序，直接排缓存数组会污染 filterCache
+      sortCache = { key: skey, list: sortSongs(filterCache.list.slice(), mode) };
+    }
+    return sortCache.list;
   }
 
   /** 排序：曲名 / 推出版本（旧→新）/ 各难度等级、note 数（高→低） */
@@ -1490,14 +1549,42 @@
 
   function updateActiveSongRow() {
     const activeId = state.song ? state.song.id : "";
-    for (const [id, btn] of songButtonById) {
-      btn.classList.toggle("active", id === activeId);
-    }
+    if (activeSongRowId === activeId) return;
+    // 只动「上一次高亮的那一行」和「这一次要高亮的那一行」。
+    // 以前是遍历整个 songButtonById（上千个按钮）逐个 toggle，选一首歌就白扫一遍。
+    const prev = songButtonById.get(activeSongRowId);
+    if (prev) prev.classList.remove("active");
+    const next = songButtonById.get(activeId);
+    if (next) next.classList.add("active");
+    activeSongRowId = activeId;
   }
+
+  /** 列表行里当前的「选中项 id」，用于增量高亮（见 updateActiveSongRow） */
+  let activeSongRowId = "";
+  /** 分块渲染的令牌 + 取消句柄：新一次 renderList 会让上一次剩下的分块作废 */
+  let renderToken = 0;
+  let renderCancel = null;
+
+  // 一次同步搭多少行。1371 首 × 每行约 11 个节点 ≈ 一万五千个节点，
+  // 一口气搭完再插进文档会阻塞主线程 100ms 以上（手机上更明显），
+  // 敲关键词时就表现为「一顿一顿」。分块之后每次只干一小段，中间能响应输入。
+  const LIST_CHUNK = 120;
+  const scheduleChunk = window.requestAnimationFrame
+    ? (fn) => window.requestAnimationFrame(fn)
+    : (fn) => setTimeout(fn, 16);
+  const cancelChunk = window.cancelAnimationFrame
+    ? (id) => window.cancelAnimationFrame(id)
+    : (id) => clearTimeout(id);
 
   function renderList() {
     const ul = els.songList;
+    const token = ++renderToken;
+    if (renderCancel) {
+      cancelChunk(renderCancel);
+      renderCancel = null;
+    }
     songButtonById.clear();
+    activeSongRowId = state.song ? state.song.id : "";
     ul.replaceChildren();
     const songs = visibleSongs();
     els.listCount.textContent = `${songs.length} / ${state.songs.length} 首`;
@@ -1510,65 +1597,76 @@
       ul.appendChild(li);
       return;
     }
-    const frag = document.createDocumentFragment();
-    for (const s of songs) {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "song-item" + (state.song && state.song.id === s.id ? " active" : "");
-      const coverSrc = s.cover ? coverUrl(s) : "";
-      const thumbSrc = s.cover ? thumbUrl(s) : "";
-      // 骨架也用 DOM 搭：路径虽然已经过 encodeURIComponent，但统一不拼 HTML 更省心
-      const cv = el("span", "cv" + (coverSrc ? "" : " ph"));
-      if (coverSrc) {
-        const im = el("img");
-        im.dataset.src = thumbSrc;
-        im.dataset.full = coverSrc;
-        im.alt = "";
-        im.loading = "lazy";
-        im.decoding = "async";
-        cv.appendChild(im);
-      }
-      const sm = el("span", "sm");
-      sm.append(el("span", "ver"), el("span", "ar"));
-      const tx = el("span", "tx");
-      tx.append(el("span", "st"), sm, el("span", "lvset"));
-      btn.append(cv, tx);
-      const img = btn.querySelector(".cv img");
-      if (img) {
-        img.addEventListener("error", () => {
-          // 缩略图失败（例如没生成）就退回原图，再失败才用占位符
-          if (img.dataset.full && !img.dataset.triedFull) {
-            img.dataset.triedFull = "1";
-            img.src = img.dataset.full;
-            return;
-          }
-          img.remove();
-          btn.querySelector(".cv").classList.add("ph");
-        });
-        const io = observerForCovers();
-        if (io) io.observe(img);
-        else if (img.dataset.src) img.src = img.dataset.src; // 老浏览器直接加载
-      }
-      btn.querySelector(".st").textContent = s.title;
-      btn.querySelector(".ver").textContent = s.version;
-      btn.querySelector(".ar").textContent = s.artist || "";
-      const lvset = btn.querySelector(".lvset");
-      for (const code of ["BSC", "ADV", "EXT"]) {
-        const c = chartOf(s, code);
-        if (!c) continue;
-        const chip = document.createElement("span");
-        chip.className = "lv-chip " + diffClass(code);
-        chip.textContent = c.level;
-        lvset.appendChild(chip);
-      }
-      btn.dataset.songId = s.id;
-      btn.addEventListener("click", () => selectSong(s));
-      songButtonById.set(s.id, btn);
-      li.appendChild(btn);
-      frag.appendChild(li);
+    let i = 0;
+    const step = () => {
+      // 期间又搜过一次 → 这次渲染已经过时，剩下的分块直接丢掉
+      if (token !== renderToken) return;
+      const frag = document.createDocumentFragment();
+      const end = Math.min(songs.length, i + LIST_CHUNK);
+      for (; i < end; i++) frag.appendChild(buildSongRow(songs[i]));
+      ul.appendChild(frag);
+      renderCancel = i < songs.length ? scheduleChunk(step) : null;
+    };
+    step();
+  }
+
+  /** 把一首歌搭成一行（纯 DOM，不拼 HTML） */
+  function buildSongRow(s) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "song-item" + (state.song && state.song.id === s.id ? " active" : "");
+    const coverSrc = s.cover ? coverUrl(s) : "";
+    const thumbSrc = s.cover ? thumbUrl(s) : "";
+    // 骨架也用 DOM 搭：路径虽然已经过 encodeURIComponent，但统一不拼 HTML 更省心
+    const cv = el("span", "cv" + (coverSrc ? "" : " ph"));
+    if (coverSrc) {
+      const im = el("img");
+      im.dataset.src = thumbSrc;
+      im.dataset.full = coverSrc;
+      im.alt = "";
+      im.loading = "lazy";
+      im.decoding = "async";
+      cv.appendChild(im);
     }
-    ul.appendChild(frag);
+    const sm = el("span", "sm");
+    sm.append(el("span", "ver"), el("span", "ar"));
+    const tx = el("span", "tx");
+    tx.append(el("span", "st"), sm, el("span", "lvset"));
+    btn.append(cv, tx);
+    const img = btn.querySelector(".cv img");
+    if (img) {
+      img.addEventListener("error", () => {
+        // 缩略图失败（例如没生成）就退回原图，再失败才用占位符
+        if (img.dataset.full && !img.dataset.triedFull) {
+          img.dataset.triedFull = "1";
+          img.src = img.dataset.full;
+          return;
+        }
+        img.remove();
+        btn.querySelector(".cv").classList.add("ph");
+      });
+      const io = observerForCovers();
+      if (io) io.observe(img);
+      else if (img.dataset.src) img.src = img.dataset.src; // 老浏览器直接加载
+    }
+    btn.querySelector(".st").textContent = s.title;
+    btn.querySelector(".ver").textContent = s.version;
+    btn.querySelector(".ar").textContent = s.artist || "";
+    const lvset = btn.querySelector(".lvset");
+    for (const code of ["BSC", "ADV", "EXT"]) {
+      const c = chartOf(s, code);
+      if (!c) continue;
+      const chip = document.createElement("span");
+      chip.className = "lv-chip " + diffClass(code);
+      chip.textContent = c.level;
+      lvset.appendChild(chip);
+    }
+    btn.dataset.songId = s.id;
+    btn.addEventListener("click", () => selectSong(s));
+    songButtonById.set(s.id, btn);
+    li.appendChild(btn);
+    return li;
   }
 
   async function selectSong(song, preferredCode = null) {
@@ -1612,6 +1710,32 @@
     return Core.pickChart(charts, code);
   }
 
+  // 谱面 JSON 的缓存上限。一份 .mc 解析出来的 JSON 从几十 KB 到几百 KB，
+  // 以前是只进不出的 Map：一首一首听下去，内存只涨不落（手机上很致命）。
+  // 40 份够来回切歌不重读，同时把最早用过的挤出去。
+  const CHART_CACHE_MAX = 40;
+
+  /** 读缓存，顺带把这一项挪到队尾（Map 保持插入序 → 队首就是最久没用过的） */
+  function chartCacheGet(key) {
+    const c = state.chartCache;
+    if (!c.has(key)) return undefined;
+    const v = c.get(key);
+    c.delete(key);
+    c.set(key, v);
+    return v;
+  }
+
+  function chartCachePut(key, payload) {
+    const c = state.chartCache;
+    c.delete(key);
+    c.set(key, payload);
+    while (c.size > CHART_CACHE_MAX) {
+      const oldest = c.keys().next().value;
+      if (oldest === key) break;        // 理论上不会发生，兜一下防止无限循环
+      c.delete(oldest);
+    }
+  }
+
   async function loadChart(code) {
     if (!state.song) return;
     const picked = pickChart(state.song.charts, code);
@@ -1629,12 +1753,12 @@
     audioLoad.pendingLabel = state.chartCache.has(key) ? "音频加载" : "谱面读取";
     updateLoadMeter();
     try {
-      let payload = state.chartCache.get(key);
+      let payload = chartCacheGet(key);
       if (!payload) {
         const res = await fetch(chartPath(state.song, chart));
         if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
         payload = { chart: await res.json(), chartMeta: chart };
-        state.chartCache.set(key, payload);
+        chartCachePut(key, payload);
       }
       // 注意别叫 chart：上面已经有一个同名的难度元信息对象（`chart`），
       // 这里再声明一次会在 try 块内把它遮住，于是块内更早的
@@ -1699,6 +1823,7 @@
       const urlT = urlState().t;
       // 音源还没就绪时这一跳会被挂起，等可播了再落下去（深链接 / 截图脚本都靠它）
       seekWhenReady(urlT != null ? urlT : 0);
+      requestPaint();     // 换谱面后立刻重画一帧（暂停时渲染循环是停着的）
     } catch (err) {
       console.error(err);
       els.captionLeft.textContent = "LOAD FAILED";
@@ -1751,7 +1876,7 @@
     } catch (_) {
       /* ignore */
     }
-    state.playing = false;
+    setPlaying(false);
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
     state.notes = [];
@@ -1771,49 +1896,30 @@
   /** Rebuild note/pad visual state for a given chart time (seconds). */
   function rebuildVisualState(chartT) {
     clearPads();
-    // 连击数必须跟着谱面位置走：拖动进度条（尤其往回拖）之后，
-    // 总连击 = 到该时刻为止已经过的 note 数，而不是继续累加旧值。
-    let passed = 0;
-    for (const n of state.notes) {
-      if (n.t <= chartT) passed++;
-      if (n.kind === "hold" && n.endT != null) {
-        if (chartT >= n.t && chartT < n.endT) {
-          n.state = "holding";
-          setHold(n.index, n.t, n.endT);
-        } else if (chartT >= n.endT) {
-          n.state = "done";
-        } else {
-          n.state = "pending";
-        }
-      } else {
-        // tap
-        if (chartT >= n.t && chartT < n.t + FLASH) {
-          n.state = "flashing";
-          n.flashEnd = n.t + FLASH;
-          state.hitUntil[n.index] = n.flashEnd;
-        } else if (chartT >= n.t + FLASH) {
-          n.state = "done";
-        } else {
-          n.state = "pending";
-        }
-      }
+    const notes = state.notes;
+    // 判定状态机的重活全在 Core.rebuildNoteStates 里（纯函数、有 node 单测）：
+    // 它只改「这一帧真正跨过的那几颗音」，所以连续拖动进度条时不再每帧扫完整谱面、
+    // 也不再每帧 filter 出一个上千元素的新数组（以前拖一下卡一下就是这两件事）。
+    // 第三个参数传上一帧的活跃集合：长押收尾 / 闪灯结束的那几颗也要被复位成 done。
+    const r = Core.rebuildNoteStates(notes, state.noteCursor, state.activeNotes, chartT, {
+      flash: FLASH,
+      maxHold: (state._parsed && state._parsed.maxHold) || 0,
+    });
+    for (const u of r.updates) {
+      u.note.state = u.state;
+      if (u.flashEnd != null) u.note.flashEnd = u.flashEnd;
     }
-    state.combo = passed;
-    state.maxCombo = passed;
-    state.comboShown = -1;
-
+    for (const h of r.padHits) state.hitUntil[h.pad] = h.until;
+    for (const h of r.padHolds) setHold(h.pad, h.from, h.to);
     // notes 已按 t 排序：跳转后游标放在第一颗未来 note，
     // activeNotes 只保留当前还闪 / 还长押的，advanceNotes() 不用每帧扫完整谱面。
-    let lo = 0;
-    let hi = state.notes.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (state.notes[mid].t <= chartT) lo = mid + 1;
-      else hi = mid;
-    }
-    state.noteCursor = lo;
-    state.activeNotes = state.notes.filter((n) =>
-      n.t <= chartT && (n.state === "flashing" || n.state === "holding"));
+    state.noteCursor = r.cursor;
+    state.activeNotes = r.active;
+    // 连击数必须跟着谱面位置走：拖动进度条（尤其往回拖）之后，
+    // 总连击 = 到该时刻为止已经过的 note 数，而不是继续累加旧值。
+    state.combo = r.passed;
+    state.maxCombo = r.passed;
+    state.comboShown = -1;
   }
 
   // —— transport ——
@@ -2373,6 +2479,7 @@
     rebuildVisualState(renderMediaTime());
     state.lastTimeText = fmtTime(s);
     els.timeNow.textContent = state.lastTimeText;
+    requestPaint();          // 暂停状态下拖动进度条也要立刻看到新画面
   }
 
   async function play() {
@@ -2383,7 +2490,7 @@
     if (backend.mode === "webaudio" && backend.buf) {
       try {
         await startBufferAt(backend.anchorPos);
-        state.playing = true;   // 已经出声了，排队的这次请求就算用掉了
+        setPlaying(true);       // 已经出声了，排队的这次请求就算用掉了
         els.playIcon.textContent = "❚❚";
         els.btnPlay.setAttribute("aria-label", "暂停");
         sfxReset();
@@ -2407,7 +2514,7 @@
     try {
       els.audio.playbackRate = Number(els.rate.value) || 1;
       await els.audio.play();
-      state.playing = true;
+      setPlaying(true);
       els.playIcon.textContent = "❚❚";
       els.btnPlay.setAttribute("aria-label", "暂停");
       sfxReset();
@@ -2425,7 +2532,7 @@
     } else {
       els.audio.pause();
     }
-    state.playing = false;
+    setPlaying(false);
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
     updateLoadMeter();
@@ -2563,12 +2670,16 @@
     const markerMode = !!markerCfg.entry;
     state.armed.fill(false);
     if (!markerMode) {
-      // 没有 marker 时用「落点前微亮」代替接近动画
-      for (const n of state.notes) {
-        if (n.state !== "pending") continue;
-        if (n.t - ARM <= mediaT && mediaT < n.t) {
-          state.armed[n.index] = true;
-        }
+      // 没有 marker 时用「落点前微亮」代替接近动画。
+      // 要看的只有 (mediaT, mediaT + ARM] 这一小段：notes 已按 t 排好，先从
+      // mediaT 二分跳到第一颗未来的音，再往前扫到 ARM 窗口末尾就停。
+      // 以前这里每帧 `for (const n of state.notes)` 扫完整首谱面（上千颗音），
+      // 是暂停/播放时最没意义的一笔固定开销。
+      const notes = state.notes;
+      for (let i = Core.firstAfter(notes, mediaT); i < notes.length; i++) {
+        const n = notes[i];
+        if (n.t > mediaT + ARM) break;
+        if (n.state === "pending") state.armed[n.index] = true;
       }
     }
 
@@ -2619,7 +2730,28 @@
     if (!state.scrubbing) drawDensity(mediaT);
   }
 
+  // 画面「需要重画」的脏标记 + 把渲染循环重新点起来的入口。
+  //
+  // 暂停时时间是钉死的，画面本来就不变；以前照样 60fps 空转（每帧扫 note、
+  // 每帧把整张物量底图 blit 一次），手机上纯属白烧电。现在暂停且没有拖动、
+  // 没有变化时直接停表，等下面这些 requestPaint() 再把循环点起来。
+  // 兜底：设置区任何控件（滑杆 / 下拉 / 复选框）变动都会触发的 input/change
+  // 监听，见 bindEvents —— 所以不会有「改了设置但暂停时看不到效果」的情况。
+  let paintDirty = true;
+  function requestPaint() {
+    paintDirty = true;
+    if (!state.raf) state.raf = requestAnimationFrame(updateFrame);
+  }
+
   function updateFrame(now) {
+    state.raf = 0;
+    // 完全空闲（暂停、没在拖、没有外部指定帧时间、没开调试面板）且没有脏标记
+    // → 这一帧不画，也不再排下一帧。
+    if (!paintDirty && !state.playing && !state.scrubbing
+      && forcedMediaTime == null && !DEBUG_TIMELINE) {
+      return;
+    }
+    paintDirty = false;
     state.raf = requestAnimationFrame(updateFrame);
     const mediaT = renderMediaTime();   // 画面比音频位置提前一个输出延迟，和耳朵对齐
     state.lastFrameT = now;
@@ -2717,6 +2849,14 @@
   }
 
   function bindEvents() {
+    // 兜底重画：暂停时渲染循环是停着的（见 updateFrame / requestPaint），
+    // 而设置区任何控件改动都要立刻反映到画面（字号滑杆、透明度、序号位置…）。
+    // 与其在每个控件的回调里挨个补 requestPaint()、漏一个就出现「改了没反应」，
+    // 不如在捕获阶段统一听一遍：input/change 覆盖滑杆 / 下拉 / 复选框，
+    // 键盘（方向键跳转、A 打点等）也顺便点一下，多画的这一帧是幂等的。
+    document.addEventListener("input", requestPaint, true);
+    document.addEventListener("change", requestPaint, true);
+    document.addEventListener("keydown", requestPaint, true);
     if (els.markerSelect) {
       els.markerSelect.addEventListener("change", () => selectMarker(els.markerSelect.value));
       els.effectSelect.addEventListener("change", () => selectEffect(els.effectSelect.value));
@@ -2990,17 +3130,17 @@
         seekTo(0);
         play();
       } else {
-        state.playing = false;
+        setPlaying(false);
         els.playIcon.textContent = "▶";
       }
     });
 
     els.audio.addEventListener("play", () => {
-      state.playing = true;
+      setPlaying(true);
       els.playIcon.textContent = "❚❚";
     });
     els.audio.addEventListener("pause", () => {
-      state.playing = false;
+      setPlaying(false);
       els.playIcon.textContent = "▶";
     });
     els.audio.addEventListener("timeupdate", () => {
@@ -3119,7 +3259,9 @@
     loadLibrary();
     loadMarkers();
     state.raf = requestAnimationFrame(updateFrame);
-    setInterval(sfxTick, 25);        // 打点音排程：和渲染帧率解耦
+    // 打点音排程器（25ms 一次，和渲染帧率解耦）不再常驻：setPlaying() 会在
+    // 起播时开、暂停时关，见 sfxTimerSync()。
+    sfxTimerSync();
     window.__player = {
       state,
       markerCfg,
@@ -3141,7 +3283,12 @@
       rebuildVisualState,  // 逐帧录制用：按给定时刻重建连击 / 闪灯 / 长押状态
       // 逐帧录制用：把画面时间钉在某一刻（null = 交还给音频时钟）
       setFrameTime: (t) => {
-        forcedMediaTime = t == null || !isFinite(Number(t)) ? null : Number(t);
+        const v = t == null || !isFinite(Number(t)) ? null : Number(t);
+        // 录制结束时画面时间交还给音频时钟：如果此刻是暂停状态，渲染循环
+        // 早就停表了，得把它点起来，否则画面会一直停在录制的最后一帧。
+        const handBack = forcedMediaTime != null && v == null;
+        forcedMediaTime = v;
+        if (handBack) requestPaint();
       },
       loadLibrary,
       // 音效调试 / 自测用：可以用 OfflineAudioContext 直接渲染这几个合成音

@@ -79,6 +79,21 @@ function jubeat_fail(int $code, string $message): void
 }
 
 /**
+ * 安全响应头。nginx 直接发静态文件时由 nginx 那份配置负责（deploy/security-headers.conf）；
+ * 这个脚本自己发文件时（没配 nginx、或走目录兜底）也得有一份，否则两条路径的头不一致。
+ */
+function jubeat_security_headers(): void
+{
+    if (headers_sent()) {
+        return;
+    }
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer');
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Cross-Origin-Opener-Policy: same-origin');
+}
+
+/**
  * 把 URI 解析成磁盘上的真实文件；非法路径统一返回 null（调用方回 404）。
  */
 function jubeat_resolve(string $uri): ?array
@@ -104,7 +119,14 @@ function jubeat_resolve(string $uri): ?array
     return ['path' => $real, 'rel' => str_replace(DIRECTORY_SEPARATOR, '/', substr($real, strlen($root) + 1))];
 }
 
-/** 解析 Range 头；返回 [start, end] 或 null（无 Range / 不合法）；end 为含端点 */
+/**
+ * 解析 Range 头；返回 [start, end] 或 null；end 为含端点。
+ *
+ * 契约（和 Python / Node 两份实现刻意保持一致，见 tools/test_range.py）：
+ * 只认单段、语法合法的 `bytes=` 区间；**不合法或不满足**（多个区间、start ≥ size、
+ * start > end、bytes=-0）一律返回 null —— 调用方忽略 Range 按整文件 200 回。
+ * 不返回 416：播放器拖进度条时拿到 416 会直接卡死，而整文件 200 只是慢一点。
+ */
 function jubeat_parse_range(string $header, int $size): ?array
 {
     if (!preg_match('/^bytes=(\d*)-(\d*)$/', trim($header), $m)) {
@@ -127,9 +149,43 @@ function jubeat_parse_range(string $header, int $size): ?array
         $end = $endRaw === '' ? $size - 1 : (int) $endRaw;
     }
     if ($start > $end || $start >= $size) {
-        return null;                       // 不满足 → 交给调用方回 416
+        return null;                       // 不满足 → 调用方忽略 Range，整文件 200
     }
     return [$start, min($end, $size - 1)];
+}
+
+/** 流式 gzip：分块压缩后直接写出去，不把整个文件读进内存（以前是 file_get_contents + gzencode） */
+function jubeat_stream_gzip(string $path, bool $headOnly): bool
+{
+    $ctx = deflate_init(ZLIB_ENCODING_GZIP, ['level' => 6]);
+    if ($ctx === false) {
+        return false;
+    }
+    $fp = fopen($path, 'rb');
+    if ($fp === false) {
+        return false;
+    }
+    $out = '';
+    while (!feof($fp)) {
+        $buf = fread($fp, JUBEAT_CHUNK);
+        if ($buf === false || $buf === '') {
+            break;
+        }
+        $out .= deflate_add($ctx, $buf, ZLIB_NO_FLUSH);
+        // 攒够一块就吐出去：内存里只留一个分片
+        if (!$headOnly && strlen($out) >= JUBEAT_CHUNK) {
+            echo $out;
+            $out = '';
+            flush();
+        }
+    }
+    fclose($fp);
+    $out .= deflate_add($ctx, '', ZLIB_FINISH);
+    if (!$headOnly && $out !== '') {
+        echo $out;
+        flush();
+    }
+    return true;
 }
 
 /** 流式发文件（分块写，不把大文件读进内存） */
@@ -190,32 +246,41 @@ function jubeat_send(string $path, string $rel, string $method, array $headers, 
 
     if ($rangeHeader !== '') {
         $range = jubeat_parse_range($rangeHeader, $size);
-        if ($range === null) {
-            http_response_code(416);
-            header('Content-Range: bytes */' . $size);
+        // 解析不出（多个区间 / 越界 / 语法错）就当没收到 Range，按整文件发
+        if ($range !== null) {
+            [$start, $end] = $range;
+            http_response_code(206);
+            header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
+            header('Content-Length: ' . ($end - $start + 1));
+            jubeat_stream($path, $start, $end, $headOnly);
             return;
         }
-        [$start, $end] = $range;
-        http_response_code(206);
-        header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
-        header('Content-Length: ' . ($end - $start + 1));
-        jubeat_stream($path, $start, $end, $headOnly);
-        return;
     }
 
-    // 文本类走 gzip（只对整文件请求）
+    // 文本类走 gzip（只对整文件请求）。
+    // GET：流式压缩，内存里只留一个 256 KB 分片（以前 file_get_contents + gzencode
+    //      会把原文和压缩结果同时堆着，8 MB 上限时约 16 MB/请求）。
+    // HEAD：压一遍只为算 Content-Length（同样有 8 MB 上限）。
     if ($allowGzip && $size <= JUBEAT_GZIP_MAX && $size > 0 && jubeat_is_compressible($path)
         && stripos((string) ($headers['accept-encoding'] ?? ''), 'gzip') !== false) {
-        $raw = (string) file_get_contents($path);
-        $gz = gzencode($raw, 6);
-        if ($gz !== false && strlen($gz) < strlen($raw)) {
+        if ($headOnly) {
+            $raw = (string) file_get_contents($path);
+            $gz = gzencode($raw, 6);
+            if ($gz !== false && strlen($gz) < strlen($raw)) {
+                header('Content-Encoding: gzip');
+                header('Vary: Accept-Encoding');
+                header('Content-Length: ' . strlen($gz));
+                return;
+            }
+        } else {
             header('Content-Encoding: gzip');
             header('Vary: Accept-Encoding');
-            header('Content-Length: ' . strlen($gz));
-            if (!$headOnly) {
-                echo $gz;
+            // 流式压缩报不出长度：让 PHP-FPM 用 chunked（HTTP/1.1）
+            if (jubeat_stream_gzip($path, false)) {
+                return;
             }
-            return;
+            header_remove('Content-Encoding');
+            header_remove('Vary');
         }
     }
 
@@ -228,6 +293,7 @@ function jubeat_send(string $path, string $rel, string $method, array $headers, 
 function jubeat_php_run(): void
 {
     $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    jubeat_security_headers();
     if ($method !== 'GET' && $method !== 'HEAD') {
         jubeat_fail(405, '405 Method Not Allowed');
         return;

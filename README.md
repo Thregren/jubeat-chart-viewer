@@ -11,7 +11,7 @@
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.1** · [Release notes](docs/release-v0.6.1.md) ·
+当前版本：**v0.6.2** · [Release notes](docs/release-v0.6.2.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -174,15 +174,23 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 
 ```
 .
+├── VERSION                    唯一的版本号来源（set_version.py 铺到各处）
 ├── tools/
+│   ├── check.sh               一条命令跑完所有自测（提交前 / 发版前）
 │   ├── build_site.py          构建：music/*.mcz → site/（增量 + prune + 多线程）
 │   ├── pack_desktop.sh        打桌面版轻量包（Release 附件），绕开 exFAT / iCloud 两个坑
+│   ├── release.py             发版：校验六份产物 + sha256 清单 +（--run）推 GitHub Release
+│   ├── set_version.py         把 VERSION 同步到 index.html 的 ?v= 与 electron 包版本
+│   ├── verify_site.py         检查已有 site/ 是否完整（索引里的每一项都要在磁盘上）
 │   ├── build_php_package.py   构建：site/ → dist-php/jubeat-site-php.zip（含曲库的 PHP 整包）
 │   ├── pack_zip.py            打 zip 的公共实现（非 ASCII 文件名带 UTF-8 标记）
 │   ├── serve.py               本地预览静态站点（Range + keep-alive）
 │   ├── screenshot.js          用 Electron 给 README 抓界面截图
+│   ├── test_core.mjs          core.js 纯逻辑单测（node --test）
+│   ├── test_range.py          Range / 路径穿越：Python、Node、PHP 三份实现同一张用例表
 │   ├── smoke_test.py          端到端自测（静态 + 开发两种模式，32 项）
 │   └── php_smoke_test.py      PHP 入口自测（21 项：Range / gzip / 304 / 目录穿越）
+├── .github/workflows/ci.yml   每次 push 跑 tools/check.sh --release
 ├── deploy/
 │   ├── README.md              服务器部署步骤 + 流量估算
 │   ├── nginx-site.conf.example
@@ -195,9 +203,10 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 │   ├── main.js                窗口 + 菜单 +「选择站点目录」+ 拒绝一切系统权限申请
 │   ├── site-server.js         内置本地 HTTP 服务（含 Range）
 │   ├── electron-builder.config.js
-│   └── package.json           版本号在这里（打 release 时改）
+│   └── package.json           版本号由 set_version.py 从 VERSION 写入
 ├── 铺面查看器/player/          开发服务器（Python）
 │   ├── server.py              HTTP 路由 / Range / 静态文件
+│   ├── version.py             读 VERSION（构建期与运行期共用）
 │   ├── library.py             扫描 .mcz 生成索引（并行 + 缓存，构建脚本共用）
 │   ├── media.py               zip 成员读取 / 磁盘缓存 / Range 响应
 │   ├── thumbs.py              封面缩略图（Pillow，缺失时退化）
@@ -286,6 +295,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 紧挨着停止键的是 **`A-B` 段落循环**：同一个键按两下分别打 A、B 两点，
 播放头越过 B 就跳回 A；在已有打点时拖动进度条会清空两点（顺带恢复正常播放），
 换曲 / 换难度同样清空。物量条上会把 A–B 区间画成高亮，一眼能看到循环范围。
+鼠标停在 `A-B` 按钮上时，悬浮提示里也会写明快捷键（`A`）和当前打点状态。
 
 ### 变速与视听偏移
 
@@ -439,7 +449,7 @@ tap 命中后仍然会播 marker 的收尾帧 / 判定特效。
 例：
 
 ```
-https://ub.thregren.world/?song=jubeat-festo%2F1116.mcz&t=54.91&paused=1
+https://ub.thregren.world/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=74.54&paused=1
 ```
 
 `tools/screenshot.js` 就是用这个抓 README 顶部那张图的。
@@ -533,6 +543,7 @@ python3 tools/build_site.py --force            # 忽略增量，全部重建
 python3 tools/build_site.py --limit 20         # 只做前 20 首（调试）
 python3 tools/build_site.py --jobs 8           # 并行度（默认 CPU 数，上限 8）
 python3 tools/build_site.py --thumb-size 128   # 缩略图边长（默认 96）
+python3 tools/build_site.py --rescan           # 丢掉曲库扫描缓存，重新读一遍 music/*.mcz
 ```
 
 增量规则：以 `.mcz` 的修改时间为准，已存在且不比源文件旧就跳过。
@@ -573,7 +584,7 @@ python3 tools/build_php_package.py --no-zip    # 只准备目录，不压缩
 Release 附件（轻量包，每个约 100 MB）用脚本打：
 
 ```bash
-tools/pack_desktop.sh          # 打完自动收回 electron/dist
+sh tools/pack_desktop.sh       # 打完自动收回 electron/dist（脚本没有可执行位，用 sh 跑）
 ```
 
 脚本会把源码同步到一个**本地盘工作目录**（默认 `/Users/Shared/jubeat-dist-build`）再打包 —— 直接在仓库里跑 `cd electron && NO_SITE=1 npm run dist` 有两个坑：
@@ -631,12 +642,12 @@ nginx 上要保证的四件事：
 **改完必须同时改 `index.html` 里的 `?v=` 版本号**：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.1" />
-<link rel="stylesheet" href="static/record.css?v=0.6.1" />
-<script src="static/sfx.js?v=0.6.1"></script>
-<script src="static/core.js?v=0.6.1"></script>
-<script src="static/record.js?v=0.6.1"></script>
-<script src="static/app.js?v=0.6.1"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.2" />
+<link rel="stylesheet" href="static/record.css?v=0.6.2" />
+<script src="static/sfx.js?v=0.6.2"></script>
+<script src="static/core.js?v=0.6.2"></script>
+<script src="static/record.js?v=0.6.2"></script>
+<script src="static/app.js?v=0.6.2"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -670,18 +681,33 @@ Release 里放的是**不带曲库**的包（每个约 100 MB；GitHub 单个附
 
 ## 自测与调试
 
+改完代码先跑这一条，它把下面这些拼在一起（快，几秒钟）：
+
 ```bash
-node --test tools/test_core.mjs        # 前端纯逻辑（core.js）单测：谱面解析 / 顺序数字 / 同押光晕 / 难度匹配，不用开浏览器
+tools/check.sh              # JS 语法 / core 单测 / Range 三实现一致性 / 版本号
+tools/check.sh --site       # 再加上已有 ./site 的完整性检查（构建完、部署后）
+tools/check.sh --full       # 再加上端到端接口冒烟（临时造一个小站点）
+tools/check.sh --release    # 发版前：--full + PHP 入口冒烟（本机没 php 就跳过）
+```
+
+单独跑某一项：
+
+```bash
+node --test tools/test_core.mjs        # 前端纯逻辑（core.js）单测：谱面解析 / 顺序数字 / 同押光晕 / A–B 打点 / 难度匹配
+python3 tools/test_range.py            # Range 解析 + 路径穿越：同一张用例表跑 Python / Node（有 php 连 PHP）三份实现
 python3 tools/smoke_test.py --build    # 静态 + 开发两种模式，32 项（首页/索引/谱面/音源 Range/封面/缩略图/缓存/gzip/404）
 python3 tools/php_smoke_test.py        # PHP 入口，21 项（各种 Range、416、gzip、ETag/304、HEAD、目录穿越）
+python3 tools/verify_site.py --strict  # 已有 ./site 的完整性（索引里每一项都要落到磁盘上）
+python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= 与 electron 包版本
 
 # 抓一张界面截图（README 顶部那张就是这么来的）
 cd electron && npx electron ../tools/screenshot.js \
-    "http://127.0.0.1:8124/?song=jubeat-festo%2F1116.mcz&t=54.91&paused=1" \
-    ../docs/screenshot.jpg 1280x800
+    "http://127.0.0.1:8124/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=74.54&paused=1" \
+    ../docs/screenshot.jpg 1280x720
 ```
 
 两个 smoke 脚本都会临时起服务、造 fixture、自己清理，不需要真实曲库（PHP 那个需要机器上有 `php`）。
+CI（`.github/workflows/ci.yml`）每次 push 跑的就是 `tools/check.sh --release`。
 
 ### 在浏览器里调试
 
@@ -700,19 +726,30 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 一次前端改动从改代码到上线 / 发版：
 
 1. 改 `铺面查看器/player/static/` 下的源码（**不是** `site/static/`）
-2. 本地验证：`python3 tools/build_site.py --out site`（如果曲库有变动）+ `tools/serve.py` 预览
-3. 提版本号：
-   - `electron/package.json` 的 `version`（release 附件名用它）
-   - `铺面查看器/player/static/index.html` 里的 `?v=`（缓存键，必须和上一版不同）
-4. 构建桌面版轻量包：`tools/pack_desktop.sh`（产物自动收回 `electron/dist`）
-5. 打 tag 并发 release（附件就是 `electron/dist/` 里那几个 zip / AppImage，**不带曲库**）：
+2. 提版本号 —— 权威值只有仓库根的 `VERSION`，其余位置由脚本铺开：
 
    ```bash
-   git tag vX.Y.Z && git push origin master vX.Y.Z
-   gh release create vX.Y.Z --title "vX.Y.Z · 一句话" --notes-file docs/release-vX.Y.Z.md \
-       electron/dist/*
+   python3 tools/set_version.py 0.6.2     # 写 VERSION + index.html 的 ?v= + electron 包版本
    ```
-6. 服务器同步：只传 `index.html` + `static/core.js` + `static/app.js` + `static/style.css` + `static/sfx.js`（要用录制模式再加 `static/record.js` + `static/record.css`）
+3. 本地验证：`sh tools/check.sh --release`，再 `python3 tools/build_site.py`（曲库有变动时）+ `tools/serve.py` 预览
+4. 构建桌面版轻量包：`sh tools/pack_desktop.sh`（产物自动收回 `electron/dist`）
+5. 打 tag 并推上去（**先推 tag**，`release.py` 要能看到它）：
+
+   ```bash
+   git add -A && git commit -m "release: vX.Y.Z（一句话）"
+   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git push origin master vX.Y.Z
+   ```
+6. 发 Release：说明写在 `docs/release-vX.Y.Z.md`，然后
+
+   ```bash
+   python3 tools/release.py X.Y.Z           # 校验六份产物 + 生成 sha256 清单，不碰远端
+   python3 tools/release.py X.Y.Z --run     # 建草稿 → 逐个上传并重试 → 取消草稿并标 latest
+   ```
+
+   附件必须是 `electron/dist/` 里那几个 zip / AppImage（**不带曲库**的轻量包）。
+   `release.py` 会拦住体积超过 400 MB 的包（带曲库的包有 2.7 GB，GitHub 单文件上限是 2 GB）。
+7. 服务器同步：只传 `index.html` + `static/core.js` + `static/app.js` + `static/style.css` + `static/sfx.js`（要用录制模式再加 `static/record.js` + `static/record.css`）
 
 ## 性能与体积
 

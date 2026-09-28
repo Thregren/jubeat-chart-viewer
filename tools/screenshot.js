@@ -52,7 +52,17 @@ app.whenReady().then(async () => {
     await wait(900);
     const image = await win.webContents.capturePage();
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, image.toPNG());
+    // 按扩展名选格式：以前不管叫什么名字都写 PNG，生成一个「名字是 .jpg、
+    // 内容其实是 PNG」的文件，看着能用但很坑（图片工具按扩展名解码会失败）。
+    const jpeg = /\.jpe?g$/i.test(out);
+    fs.writeFileSync(out, jpeg ? image.toJPEG(92) : image.toPNG());
+    // 把屏上的时间读回来：截图要的是「停在某一刻」，但 seek 落地会差几十毫秒
+    // （声画校准的输出延迟会被算进显示值），不打印出来就只能靠肉眼比对。
+    const shown = await win.webContents.executeJavaScript(
+      `(() => { const t = document.getElementById("npTitle"); const n = document.getElementById("timeNow");
+        return (t ? t.textContent : "?") + " @ " + (n ? n.textContent : "?"); })()`,
+    ).catch(() => "?");
+    console.log(`  画面：${shown}`);
     console.log(`✓ ${out}  ${width}×${height}  ${(fs.statSync(out).size / 1024).toFixed(0)} KB`);
   } catch (err) {
     console.error("截图失败：", err);

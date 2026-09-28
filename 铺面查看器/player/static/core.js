@@ -250,12 +250,125 @@
       || null;
   }
 
+  /**
+   * notes 里第一颗 t 严格大于 sec 的下标（notes 已按 t 排好）。
+   * 也就是「到这一刻为止已经过去的 note 数」。整支谱面上千颗音，
+   * 线性扫一遍是 O(n)，播放/拖动时每帧都做的话太亏 → 二分。
+   */
+  function firstAfter(notes, sec) {
+    let lo = 0;
+    let hi = notes.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (notes[mid].t <= sec) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  /**
+   * 拖动 / 跳转之后重建 note 状态（不碰 DOM，纯函数，方便 node 测试）。
+   *
+   * 背景：以前是「每次跳转都扫完整首谱面」——歌一长就是上千颗音，拖动进度条
+   * 时每帧都做一遍，还会顺手 filter 出一个上千元素的新数组。这里是增量版：
+   * 只重算「这一刻真正需要改」的那些 note。
+   *
+   * 需要重算的三类 note：
+   *   1. [prevCursor, cursor) —— 这一帧真正跨过的那几颗（往前拖）/ 重新变成
+   *      「未来」的那几颗（往回拖，要复位成 pending）
+   *   2. [spanStart, cursor) —— 此刻还亮着 / 还长押着的：tap 在 FLASH 窗口内，
+   *      hold 在 maxHold 内，取两者较大值往回找起点
+   *   3. prevActive —— 上一次「活跃集合」里的 note。它们可能已经过期
+   *      （长押收尾、闪灯结束），必须被重新判成 done；少了这一步就会留下
+   *      一颗永远亮着的灯（这也是最容易被忽略的那一类）。
+   *
+   * 不在这三类里的 note 状态一定已经是对的：第一次重建之后，它们只可能是
+   * done（已经过去）或 pending（还没到），不会再变。于是连续拖动时每次只动
+   * 「手边那几颗」。
+   *
+   * 返回给调用方落地：updates / active / padHits / padHolds / cursor / passed。
+   * updates 里带的是 note 对象本身（不是下标），调用方直接改状态就行。
+   */
+  function rebuildNoteStates(notes, prevCursor, prevActive, chartT, opts = {}) {
+    const flash = Number.isFinite(opts.flash) ? opts.flash : 0.14;
+    const maxHold = Number.isFinite(opts.maxHold) ? opts.maxHold : 0;
+    const back = Math.max(flash, maxHold);
+    const cursor = firstAfter(notes, chartT);
+    const spanStart = back > 0 ? firstAfter(notes, chartT - back) : cursor;
+    const lo = Math.max(0, Math.min(prevCursor, cursor, spanStart));
+    const hi = Math.max(prevCursor, cursor);
+
+    const updates = [];   // {note, state, flashEnd?}
+    const active = [];    // 还亮着 / 还长押着的 note
+    const padHits = [];   // {pad, until}
+    const padHolds = [];  // {pad, from, to}
+    const seen = new Set();
+
+    const visit = (n) => {
+      if (seen.has(n)) return;
+      seen.add(n);
+      const state = noteStateAt(n, chartT, flash);
+      const flashEnd = state === "flashing" ? n.t + flash : null;
+      updates.push({ note: n, state, flashEnd });
+      if (state === "flashing") {
+        active.push(n);
+        padHits.push({ pad: n.index, until: flashEnd });
+      } else if (state === "holding") {
+        active.push(n);
+        padHolds.push({ pad: n.index, from: n.t, to: n.endT });
+      }
+    };
+
+    for (let i = lo; i < hi; i++) visit(notes[i]);
+    if (prevActive) {
+      for (const n of prevActive) visit(n);
+    }
+
+    return { cursor, passed: cursor, updates, active, padHits, padHolds };
+  }
+
+  /**
+   * 某一时刻这颗 note 该处于什么状态。
+   * 就是旧版 rebuildVisualState 里那段 if/else 的原文，抽出来让「范围内的」
+   * 和「上一帧活跃的」两批 note 走同一条判定，不会出现两套规则对不上的情况。
+   */
+  function noteStateAt(n, chartT, flash) {
+    if (n.t > chartT) return "pending";
+    if (n.kind === "hold" && n.endT != null) {
+      return chartT < n.endT ? "holding" : "done";
+    }
+    return chartT < n.t + flash ? "flashing" : "done";
+  }
+
+  /**
+   * A–B 段落循环的打点状态机（纯函数）。
+   * 同一个键连按：第一次打 A、第二次打 B 并开始循环、第三次清空。
+   * 第二次打点如果落在 A 前面就两点对调，不会做出一个空区间。
+   *
+   * 返回 { a, b, phase }，phase ∈ "A" | "B" | "clear"；
+   * 调用方拿 phase 去弹提示 / 更新按钮，状态本身是返回值算出来的。
+   */
+  function abTap(ab, sec) {
+    const t = Number(sec) || 0;
+    if (ab.a == null) return { a: t, b: null, phase: "A" };
+    if (ab.b == null) {
+      return t <= ab.a
+        ? { a: t, b: ab.a, phase: "B" }
+        : { a: ab.a, b: t, phase: "B" };
+    }
+    return { a: null, b: null, phase: "clear" };
+  }
+
   return {
     beatToFloat,
     buildTimeMap,
     numberNotes,
     parseNotes,
     pickChart,
+    firstAfter,
+    rebuildNoteStates,
+    noteStateAt,
+    abTap,
     GLOW_DENSE_GAP,
     PHRASE_BREAK_MULT,
     PHRASE_BREAK_FLOOR,

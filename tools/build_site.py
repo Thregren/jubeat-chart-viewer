@@ -28,6 +28,7 @@ import argparse
 import concurrent.futures
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -44,6 +45,7 @@ import config  # noqa: E402
 import library  # noqa: E402
 import markers  # noqa: E402
 import thumbs  # noqa: E402
+import version as version_mod  # noqa: E402
 from media import read_member, zip_name, write_atomic  # noqa: E402
 
 
@@ -97,6 +99,10 @@ class Stats:
         self.bytes = 0
         self.songs = 0
         self.failed: list[str] = []
+        # 「降级」不是失败：源素材自己就是坏的（已知有 5 张封面是坏 PNG），
+        # 前端会退化成一个 ♪ 占位。记下来是为了 verify_site.py 别把它们当错误，
+        # 同时也让 build.json 里留有痕迹 —— 别把「真出问题」和「本来就坏」混为一谈。
+        self.degraded: list[str] = []
 
     def added(self, n: int) -> None:
         self.files += 1
@@ -115,7 +121,7 @@ def static_files() -> list[Path]:
 
 def expected_paths(songs: list[dict], marker_files: list[str], se_files: list[str]) -> set[str]:
     """这次构建应该存在的所有文件（相对 out 的 posix 路径）。"""
-    want = {"robots.txt", "data/library.json", "data/markers.json"}
+    want = {"robots.txt", "data/library.json", "data/markers.json", "data/build.json"}
     want |= {p.name if p.name == "index.html" else f"static/{p.name}" for p in static_files()}
     want |= {"markers/" + rel for rel in marker_files}
     want |= {"media/se/" + name for name in se_files}
@@ -197,8 +203,13 @@ def build_song(song: dict, out: Path, force: bool, stats: Stats) -> None:
             thumb_dest.parent.mkdir(parents=True, exist_ok=True)
             if thumbs.make(cover_dest, thumb_dest, config.THUMB_SIZE, config.THUMB_QUALITY):
                 stats.added(thumb_dest.stat().st_size)
+            elif thumbs.backend() == "none":
+                # 没有任何缩略图后端（没有 Pillow 也没有 sips）才是真失败：
+                # 这会让整个曲库的列表都退化成大图，必须报出来。
+                stats.failed.append(f"thumb: {song['id']}（本机没有 Pillow / sips，缩略图做不了）")
             else:
-                stats.failed.append(f"thumb: {song['id']}")
+                # 后端可用但这一张失败了 —— 源封面本身就是坏图（README「已知限制」里那 5 张）
+                stats.degraded.append(f"media/thumb/{stem}.jpg")
         else:
             stats.skipped += 1
 
@@ -275,6 +286,8 @@ def main() -> int:
                     help="并行度（默认 CPU 数，最多 8）")
     ap.add_argument("--prune", action="store_true",
                     help="删掉输出目录里已不需要的文件（曲库删歌后同步用）")
+    ap.add_argument("--rescan", action="store_true",
+                    help="无视索引缓存，重新解压扫描每个 .mcz（默认走 cache/library_index.json）")
     ap.add_argument("--thumb-size", type=int, default=config.THUMB_SIZE)
     args = ap.parse_args()
 
@@ -308,9 +321,16 @@ def main() -> int:
         "Disallow: /markers/\n"
     ).encode("utf-8"))
 
-    # 2) 曲库索引（复用 player/library.py 的解析逻辑）
-    print("扫描曲库…")
-    songs = [s for s in (library.scan_song(p) for p in sorted(config.LIBRARY.rglob("*.mcz"))) if s]
+    # 2) 曲库索引（复用 player/library.py 的解析逻辑与索引缓存）
+    #
+    # 以前这里绕开缓存、每次都全量重扫：整个曲库的 zip 都要开一遍、再把每份谱面
+    # json.loads 一次，光「什么都没改」的重复构建就要几十秒。现在走 Library，
+    # 缓存带曲库指纹（条数 + 最新 mtime + 总字节，见 library.fingerprint），
+    # 曲库没动就直接命中；真要重建用 --rescan。
+    print("读取曲库索引…" + ("（--rescan：全量重扫）" if args.rescan else ""))
+    lib = library.Library()
+    lib.load(force=args.rescan)
+    songs = list(lib.songs)
     if args.limit:
         songs = songs[: args.limit]
     songs.sort(key=lambda s: (s["title"].lower(), s["version"]))
@@ -319,8 +339,17 @@ def main() -> int:
     index = library.published_index(songs)
     # 前端是拿 id 拼资源路径的（media/audio/<id>.ogg 等），所以 id 也要跟着
     # 一起规范化，否则站点里的文件名和索引里的 id 会差一个规范化形式。
+    # 站点内部一律 NFC：同一个 stem 规范化后如果撞车（两份只在规范化形式上不同的
+    # 曲目），媒体文件会互相覆盖，必须报出来而不是静默丢一份。
+    stem_owner: dict[str, str] = {}
     for s in index["songs"]:
         s["id"] = nfc(s["id"])
+        stem = nfc(stem_of(s["id"]))
+        other = stem_owner.get(stem)
+        if other and other != s["id"]:
+            stats.failed.append(f"NFC 规范化后路径撞车：{other} ↔ {s['id']}")
+        else:
+            stem_owner[stem] = s["id"]
     write_atomic(out / "data" / "library.json",
                  json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     stats.songs = len(songs)
@@ -352,12 +381,51 @@ def main() -> int:
             print(f"  清理旧文件 {removed} 个")
 
     elapsed = time.time() - started
+
+    # 6) 构建报告：上线后想确认「这一版站点是谁、什么时候、用哪份曲库建的」，
+    #    看 data/build.json 就行（不发本机绝对路径：这份文件是公开的）。
+    report = {
+        "version": version_mod.read_version(),
+        "index_version": config.INDEX_VERSION,
+        "built": int(time.time()),
+        "library_name": config.LIBRARY.name,
+        "songs": stats.songs,
+        "charts": sum(len(s["charts"]) for s in songs),
+        "audio": sum(1 for s in songs if s.get("audio")),
+        "covers": sum(1 for s in songs if s.get("cover")),
+        "markers": len(marker_files),
+        "se_files": len(se_files),
+        "thumb_backend": thumbs.backend(),
+        "thumb_size": config.THUMB_SIZE,
+        "files_written": stats.files,
+        "bytes_written": stats.bytes,
+        "skipped": stats.skipped,
+        "elapsed_s": round(elapsed, 1),
+        "failed_count": len(stats.failed),
+        "failures": stats.failed[:20],
+        "degraded": stats.degraded,
+    }
+    write_atomic(out / "data" / "build.json",
+                 json.dumps(report, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+    # 前端 ?v= 和 VERSION 对不上 = 用户浏览器可能还捧着旧 app.js，早点提醒
+    ver = report["version"]
+    index_html = (PLAYER_DIR / "static" / "index.html").read_text(encoding="utf-8")
+    v_in_html = version_mod.html_versions(index_html)
+    if v_in_html != {ver}:
+        print(f"⚠️  前端 index.html 的 ?v= 是 {sorted(v_in_html) or '（无）'}，"
+              f"和 VERSION（{ver}）不一致：跑 python3 tools/set_version.py {ver}")
+
     print("\n完成：")
     print(f"  曲目 {stats.songs} 首｜新写文件 {stats.files} 个（{stats.bytes/2**20:.1f} MB）｜跳过 {stats.skipped} 个")
     print(f"  耗时 {elapsed:.1f}s｜输出 {out}")
     if stats.failed:
         print(f"  失败 {len(stats.failed)} 项（前 5 条）：")
         for line in stats.failed[:5]:
+            print(f"    {line}")
+    if stats.degraded:
+        print(f"  降级 {len(stats.degraded)} 项（源素材本身有问题，前端有占位，不算失败）：")
+        for line in stats.degraded[:5]:
             print(f"    {line}")
     print("\n本地预览：python3 tools/serve.py " + str(out))
     return 0 if not stats.failed else 2

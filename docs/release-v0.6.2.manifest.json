@@ -1,0 +1,36 @@
+{
+  "version": "0.6.2",
+  "note": "不带曲库的轻量包：首次启动时自己选 site 目录（含全部音乐的静态站点）",
+  "assets": [
+    {
+      "name": "jubeatViewer-0.6.2-win-x64.zip",
+      "bytes": 111198671,
+      "sha256": "b7a7599770a1a52f09e5ec96e41549b957f9c9f1375fb598344c8bae58ec638c"
+    },
+    {
+      "name": "jubeatViewer-0.6.2-win-arm64.zip",
+      "bytes": 116146356,
+      "sha256": "0122afb22a92ebbc40603406aa1f2dedd749b57b55baf90dd477d7f54274e1e1"
+    },
+    {
+      "name": "jubeatViewer-0.6.2-mac-x64.zip",
+      "bytes": 99465930,
+      "sha256": "71951cf4ebc0d89679857fce1c6264a724254751941ae8f63f3e961d65f53aa8"
+    },
+    {
+      "name": "jubeatViewer-0.6.2-mac-arm64.zip",
+      "bytes": 94838737,
+      "sha256": "17ae74e946ea2dffc49e234867706474c821530080cc6de9182c85dd2cf51215"
+    },
+    {
+      "name": "jubeatViewer-0.6.2-linux-x86_64.AppImage",
+      "bytes": 107974232,
+      "sha256": "00ed101189707d7a92b8a15252fa35ebdb315515d786892804b603248e133e2a"
+    },
+    {
+      "name": "jubeatViewer-0.6.2-linux-arm64.AppImage",
+      "bytes": 108356755,
+      "sha256": "f8acacd961b4a7cd0b76afd26a5c97d6c5dacb81cb3922ced7828649e925cb47"
+    }
+  ]
+}

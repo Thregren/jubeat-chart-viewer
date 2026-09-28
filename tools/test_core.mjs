@@ -111,3 +111,133 @@ test("pickChart：按难度代号找，兼容旧的 file 写法", () => {
   assert.equal(Core.pickChart(charts, "0/a_BSC Lv3.mc"), charts[0]);   // 旧深链接
   assert.equal(Core.pickChart(charts, "BAS"), null);                   // 没有就返回 null，不静默回落
 });
+
+// ===================== 拖动进度条后的状态重建 =====================
+
+test("firstAfter：第一颗 t 严格大于 sec 的下标（二分）", () => {
+  const notes = [0, 1, 1, 2, 5].map((t) => ({ t }));
+  assert.equal(Core.firstAfter(notes, -1), 0);
+  assert.equal(Core.firstAfter(notes, 0), 1);
+  assert.equal(Core.firstAfter(notes, 1), 3);   // 同刻的两颗都算「已经过去」
+  assert.equal(Core.firstAfter(notes, 4.9), 4);
+  assert.equal(Core.firstAfter(notes, 99), 5);
+});
+
+const FLASH = 0.14;
+
+/** 旧版 rebuildVisualState 的「每帧扫完整谱面」实现，留着当参照物 */
+function referenceStates(notes, chartT) {
+  const out = [];
+  let passed = 0;
+  for (const n of notes) {
+    if (n.t <= chartT) passed++;
+    if (n.kind === "hold" && n.endT != null) {
+      if (chartT >= n.t && chartT < n.endT) out.push("holding");
+      else if (chartT >= n.endT) out.push("done");
+      else out.push("pending");
+    } else if (chartT >= n.t && chartT < n.t + FLASH) {
+      out.push("flashing");
+    } else if (chartT >= n.t + FLASH) {
+      out.push("done");
+    } else {
+      out.push("pending");
+    }
+  }
+  return { states: out, passed };
+}
+
+function applyRebuild(notes, prevCursor, prevActive, chartT, maxHold) {
+  const r = Core.rebuildNoteStates(notes, prevCursor, prevActive, chartT, { flash: FLASH, maxHold });
+  for (const u of r.updates) u.note.state = u.state;
+  return r;
+}
+
+test("rebuildNoteStates：状态与旧的整谱面扫描完全一致（随机拖动）", () => {
+  // 造一份「有 tap 有长押、有同刻音」的谱面
+  const notes = [];
+  let t = 0;
+  for (let i = 0; i < 400; i++) {
+    t += 0.05 + Math.random() * 0.4;
+    if (Math.random() < 0.25) {
+      notes.push({ t, endT: t + 0.3 + Math.random() * 3, kind: "hold", index: i % 16, state: "pending" });
+    } else {
+      notes.push({ t, endT: null, kind: "tap", index: i % 16, state: "pending" });
+    }
+  }
+  notes.sort((a, b) => a.t - b.t);
+  const maxHold = Math.max(...notes.filter((n) => n.kind === "hold")
+    .map((n) => n.endT - n.t), 0);
+
+  // 模拟连续拖动：每次只在上一次位置附近晃，也会偶尔来一次大跳。
+  // 每次都比对「整谱面重扫」的参照结果，确保增量版和旧行为逐颗一致。
+  let cursor = 0;
+  let chartT = 0;
+  let active = [];
+  for (let step = 0; step < 300; step++) {
+    const jump = Math.random() < 0.15;
+    chartT = jump
+      ? Math.random() * (t + 2)
+      : Math.max(0, chartT + (Math.random() - 0.35) * 1.2);
+    const r = applyRebuild(notes, cursor, active, chartT, maxHold);
+    cursor = r.cursor;
+    active = r.active;
+
+    const ref = referenceStates(notes, chartT);
+    assert.deepEqual(notes.map((n) => n.state), ref.states,
+      `第 ${step} 步 chartT=${chartT.toFixed(3)}`);
+    assert.equal(r.passed, ref.passed);
+    // active 表就是「现在还亮着 / 还长押着」的那些
+    assert.deepEqual(r.active, ref.states
+      .map((s, i) => (s === "flashing" || s === "holding" ? i : -1))
+      .filter((i) => i >= 0)
+      .map((i) => notes[i]));
+
+    // 面板上的灯：该亮的必须被重新点亮，不该亮的必须留在 -1
+    // （clearPads() 已经全清，所以这里给的就是「重建后应该点亮的那些」）
+    const wantHit = new Array(16).fill(-1);
+    const wantHold = new Array(16).fill(-1);
+    for (const n of notes) {
+      const s = n.state;
+      if (s === "holding") wantHold[n.index] = n.endT;
+      else if (s === "flashing") wantHit[n.index] = n.t + FLASH;
+    }
+    const gotHit = new Array(16).fill(-1);
+    const gotHold = new Array(16).fill(-1);
+    for (const h of r.padHits) gotHit[h.pad] = h.until;
+    for (const h of r.padHolds) gotHold[h.pad] = h.to;
+    assert.deepEqual(gotHit, wantHit, `第 ${step} 步闪烁灯`);
+    assert.deepEqual(gotHold, wantHold, `第 ${step} 步长押灯`);
+  }
+});
+
+test("rebuildNoteStates：连续小幅拖动只改动手边那几颗音（不整谱重刷）", () => {
+  const notes = [];
+  for (let i = 0; i < 500; i++) {
+    notes.push({ t: i * 0.1, endT: null, kind: "tap", index: i % 16, state: "pending" });
+  }
+  applyRebuild(notes, 0, [], 0, 0);                // 首次：把 [0, cursor) 全刷一遍（一次性）
+  const r = applyRebuild(notes, Core.firstAfter(notes, 10), [], 10.05, 0);
+  assert.ok(r.updates.length <= 2, `只该动 1~2 颗，实际 ${r.updates.length}`);
+});
+
+// ===================== A–B 段落循环打点 =====================
+
+test("abTap：A → B → 清除；B 打在 A 前面就两点对调", () => {
+  let ab = { a: null, b: null };
+  let r = Core.abTap(ab, 12.5);
+  assert.deepEqual(r, { a: 12.5, b: null, phase: "A" });
+  ab = { a: r.a, b: r.b };
+
+  r = Core.abTap(ab, 30);
+  assert.deepEqual(r, { a: 12.5, b: 30, phase: "B" });
+  ab = { a: r.a, b: r.b };
+
+  r = Core.abTap(ab, 40);
+  assert.deepEqual(r, { a: null, b: null, phase: "clear" });
+
+  // 第二点落在 A 前面（或同一刻）：对调，不产生空区间
+  r = Core.abTap({ a: 20, b: null }, 5);
+  assert.deepEqual(r, { a: 5, b: 20, phase: "B" });
+  r = Core.abTap({ a: 20, b: null }, 20);
+  assert.deepEqual(r, { a: 20, b: 20, phase: "B" });
+});

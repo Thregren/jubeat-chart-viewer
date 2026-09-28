@@ -34,8 +34,19 @@ LIB = Library()
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "JubeatViewer/0.2"
+    # 版本号来自仓库根的 VERSION（见版本单一来源）；顺手把 Python 版本藏掉：
+    # Server 头里报出解释器版本等于给扫描器送指纹。
+    server_version = f"JubeatViewer/{config.APP_VERSION}"
+    sys_version = ""
     protocol_version = "HTTP/1.1"  # 开 keep-alive：境外高延迟下差别很大
+
+    # 每个响应都带的头（_send_bytes 里 setdefault，调用方可以覆盖）
+    BASE_HEADERS = {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Cross-Origin-Opener-Policy": "same-origin",
+    }
 
     # —— 基础输出 ——
     def log_message(self, fmt: str, *args) -> None:
@@ -49,12 +60,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_bytes(self, code: int, body: bytes, ctype: str,
                     extra: dict | None = None, compress: bool = False) -> None:
-        headers = dict(extra or {})
+        headers = dict(self.BASE_HEADERS)
+        headers.update(extra or {})
         if compress and len(body) >= config.GZIP_MIN_BYTES and self._accepts_gzip():
             body = gzip.compress(body, compresslevel=6)
             headers["Content-Encoding"] = "gzip"
             headers["Vary"] = "Accept-Encoding"
-        headers.setdefault("X-Content-Type-Options", "nosniff")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -73,6 +84,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(304)
                 self.send_header("ETag", tag)
                 self.send_header("Cache-Control", cache)
+                for k, v in self.BASE_HEADERS.items():
+                    self.send_header(k, v)
                 self.end_headers()
                 return
             extra["ETag"] = tag
@@ -80,6 +93,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _error(self, message: str, code: int = 400) -> None:
         self._json({"error": message}, code)
+
+    def _hdr(self, extra: dict | None = None) -> dict:
+        """给要用 media.stream_file 直接发文件的响应凑一份带头（含安全头）。"""
+        headers = dict(self.BASE_HEADERS)
+        headers.update(extra or {})
+        return headers
 
     def _redirect(self, location: str, code: int = 302) -> None:
         self.send_response(code)
@@ -97,10 +116,14 @@ class Handler(BaseHTTPRequestHandler):
             self._error(str(exc), 400)
         except (BrokenPipeError, ConnectionResetError):
             pass  # 客户端提前断开（拖进度条时很常见）
-        except Exception as exc:  # 兜底：别因为单个请求把线程打挂
+        except Exception:  # 兜底：别因为单个请求把线程打挂
+            # 500 只回一个引用号：异常原文里可能带本机绝对路径（曲库 / 缓存目录），
+            # 这个服务是会被 nginx 反代到公网的。完整堆栈进 stderr 给运维看。
+            ref = os.urandom(4).hex()
             traceback.print_exc()
             try:
-                self._error(f"internal error: {exc}", 500)
+                print(f"[500 {ref}] {self.command} {self.path}", file=sys.stderr)
+                self._json({"error": "internal error", "ref": ref}, 500, cache="no-store")
             except Exception:
                 pass
 
@@ -142,10 +165,15 @@ class Handler(BaseHTTPRequestHandler):
     # —— API ——
     def _api_health(self) -> None:
         LIB.load()
+        # 物量读不出来的难度（坏 zip / 谱面 json 解析失败）：健康检查要能一眼看出
+        unknown = sum(1 for s in LIB.songs for c in s["charts"] if not c.get("notesKnown", True))
         return self._json({
             "ok": True,
+            "version": config.APP_VERSION,
             # 不回本机绝对路径 / 缓存目录：这个接口会被 nginx 反代出去
             "songs": len(LIB.songs),
+            "unreadable_charts": unknown,
+            "index_version": config.INDEX_VERSION,
             "cache": config.CACHE_DIR.name,
             "thumb_backend": thumbs.backend(),
             "thumb_size": config.THUMB_SIZE,
@@ -194,7 +222,8 @@ class Handler(BaseHTTPRequestHandler):
         if config.SE_DIR.resolve() not in path.parents or not path.is_file():
             raise FileNotFoundError(name)
         ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        return media.stream_file(self, path, ctype, {"Cache-Control": "public, max-age=86400"})
+        return media.stream_file(self, path, ctype,
+                                 self._hdr({"Cache-Control": "public, max-age=86400"}))
 
     def _serve_media(self, kind: str, song: dict) -> None:
         zip_path = LIB.mcz_path(song["id"])
@@ -213,22 +242,23 @@ class Handler(BaseHTTPRequestHandler):
         cover = self._cached(config.COVER_CACHE_DIR, song["id"], member, zip_path)
         if kind == "cover":
             return media.stream_file(self, cover, media.guess_ctype(member),
-                                     {"Cache-Control": "public, max-age=604800"})
+                                     self._hdr({"Cache-Control": "public, max-age=604800"}))
 
         # thumb：没有可用的图像库就直接把原图发出去
         if thumbs.backend() == "none":
             return media.stream_file(self, cover, media.guess_ctype(member),
-                                     {"Cache-Control": "public, max-age=604800"})
+                                     self._hdr({"Cache-Control": "public, max-age=604800"}))
         size = config.THUMB_SIZE
         thumb = config.THUMB_CACHE_DIR / f"{media.cache_key(song['id'], member, str(size))}.jpg"
         if not media.member_is_fresh(thumb, zip_path):
             with media.lock_for(str(thumb)):
                 if not media.member_is_fresh(thumb, zip_path):
                     if not thumbs.make(cover, thumb, size, config.THUMB_QUALITY):
-                        return media.stream_file(self, cover, media.guess_ctype(member),
-                                                 {"Cache-Control": "public, max-age=604800"})
+                        return media.stream_file(
+                            self, cover, media.guess_ctype(member),
+                            self._hdr({"Cache-Control": "public, max-age=604800"}))
         return media.stream_file(self, thumb, "image/jpeg",
-                                 {"Cache-Control": "public, max-age=604800"})
+                                 self._hdr({"Cache-Control": "public, max-age=604800"}))
 
     def _send_audio(self, dest: Path, ctype: str, cache: str) -> None:
         if config.X_ACCEL_PREFIX:
@@ -239,9 +269,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Cache-Control", cache)
             self.send_header("Content-Length", "0")
+            for k, v in self.BASE_HEADERS.items():
+                self.send_header(k, v)
             self.end_headers()
             return
-        return media.stream_file(self, dest, ctype, {"Cache-Control": cache})
+        return media.stream_file(self, dest, ctype, self._hdr({"Cache-Control": cache}))
 
     # —— 辅助 ——
     def _cached(self, cache_dir: Path, song_id: str, member: str, zip_path: Path) -> Path:
@@ -266,15 +298,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(304)
             self.send_header("ETag", tag)
             self.send_header("Content-Length", "0")
+            for k, v in self.BASE_HEADERS.items():
+                self.send_header(k, v)
             self.end_headers()
             return
         return media.stream_file(self, dest, ctype,
-                                 {"ETag": tag, "Cache-Control": "no-cache"})
+                                 self._hdr({"ETag": tag, "Cache-Control": "no-cache"}))
 
     def _serve_marker(self, rel: str) -> None:
         dest = markers.asset_path(rel)
         return media.stream_file(self, dest, media.guess_ctype(dest.name),
-                                 {"Cache-Control": "public, max-age=300"})
+                                 self._hdr({"Cache-Control": "public, max-age=300"}))
 
 
 def main() -> None:

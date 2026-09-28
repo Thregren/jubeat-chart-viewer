@@ -11,7 +11,7 @@
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.0** · [Release notes](docs/release-v0.6.0.md) ·
+当前版本：**v0.6.1** · [Release notes](docs/release-v0.6.1.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -49,7 +49,8 @@
 |---|---|
 | 做谱面视频，要确认 marker 有没有对齐 | `PERFECT 帧` 微调 + `?t=` 深链接定位 + 暂停逐帧看 |
 | 核对一份谱面对不对 | 曲库搜索 / 筛选 + 难度切换 + 物量条看分布 |
-| 练谱前先看一遍节奏 | 变速（0.5×–2×）+ 循环 + 打点音 + 总连击 |
+| 练谱前先看一遍节奏 | 变速（0.25×–2×）+ 循环 + 打点音 + 总连击 |
+| 反复啃某一段 | `A-B` 段落循环（同一键打 A / B 两点，第三下清除） |
 | 看一堆同押到底哪几个键一起按 | marker 顺序数字 + 同押双色光晕 |
 | 手机上随手看一眼 | 窄屏布局（曲库抽屉 / 折叠选项 / 半高物量条） |
 
@@ -61,6 +62,7 @@
 | `R` | 重播（回到 0 再播） |
 | `←` / `→` | 后退 / 前进 5 秒 |
 | `1` `2` `3` `4` | 切难度（BSC / ADV / EXT / …） |
+| `A` | A–B 段落循环：第一下打 A，第二下打 B 并开始循环，第三下清除 |
 | `M` | 下一套 marker |
 | `,` / `.` | 微调 PERFECT 帧 −1 / +1 |
 
@@ -218,7 +220,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ## 前端
 
 前端是**原生 JS + Canvas，没有构建步骤、没有依赖**（`static/` 七个文件就是全部，
-合计约 187 KB，gzip 后约 62 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
+合计约 198 KB，gzip 后约 63 KB）。其中**不碰 DOM 的纯逻辑单独放在 `core.js`**
 （谱面解析、顺序数字、同押分组、难度匹配），所以能用 node 直接跑单测
 （`node --test tools/test_core.mjs`）；`core.js` + `app.js` 合计约 3200 行，按职责分区：
 
@@ -254,7 +256,7 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 
 所有开关都记在 `localStorage`（键前缀 `jubeat.`）：marker、判定特效、marker 速度、
 每套 marker 的 PERFECT 帧、打点音音色与音量、总连击 / 顺序数字 / 同押光晕、光晕配色、
-选项区是否折叠、排序方式、长押筛选。
+序号字号与透明度、序号是否放右下角、选项区是否折叠、排序方式、长押筛选。
 
 `jubeat.settingsVersion` 是**设置默认值的版本号**：从旧版本升上来时，新默认值会生效一次，
 之后再按你自己的选择记住。
@@ -281,9 +283,14 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 折叠按钮收起后只剩：折叠、重播、播放/暂停、停止、当前时间 / 总时长。
 播放按钮在**音源还没就绪**时会转一圈外环（见[音源加载进度](#音源加载进度)）。
 
+紧挨着停止键的是 **`A-B` 段落循环**：同一个键按两下分别打 A、B 两点，
+播放头越过 B 就跳回 A；在已有打点时拖动进度条会清空两点（顺带恢复正常播放），
+换曲 / 换难度同样清空。物量条上会把 A–B 区间画成高亮，一眼能看到循环范围。
+
 ### 变速与视听偏移
 
-- **速度**：0.5×–2×（只改 `playbackRate`，marker 和打点音都跟着音频时间走，不会漂）
+- **速度**：0.25× / 0.5× / 0.75× / 1× / 1.25× / 1.5× / 2×（只改 `playbackRate`，
+  marker 和打点音都跟着音频时间走，不会漂）
 - **偏移**：±500 ms，正数表示画面整体推迟，用来做「我听到的和看到的差多少」的视听校准
 - **循环**：一首放完自动回到 0 再播
 
@@ -367,6 +374,9 @@ tap 命中后仍然会播 marker 的收尾帧 / 判定特效。
   **相邻两批在主色 / 副色之间交替**，一眼能看出哪几个键是一起按的；
   稀疏的地方只有一批，只用主色，画面不会太花
 - 数字本身和光晕各有一个开关（「marker 顺序数字」「同押光晕」）
+- **外观可以调**（选项区里三个控件，改完立刻生效并记住）：**序号字号** 50–200%、
+  **序号透明度** 10–100%，以及一个 **「序号放右下角」** 开关 —— 默认数字画在格子正中，
+  打开后挪到右下角，方便在密集处不挡 marker 动画
 
 ### 打点音
 
@@ -463,6 +473,9 @@ marker 与动画速度，录制预设会写进 localStorage，保证每段画面
 - 面板尺寸按所在区块的**真实可用高度**算，不按视口高度估算，避免上下溢出
 - 高度用 `100dvh`（老 iOS 回退 `100vh`）并按安全区留边——iOS 的 `100vh` 是工具栏收起后的高度，
   比可视区高，会让整页能上下滑动、顶栏被顶出屏幕
+- **页面缩放锁死**：`viewport` 里写了 `maximum-scale=1, user-scalable=no`，
+  `touch-action: pan-x pan-y` 掐掉捏合，另外用 `lockZoom()` 拦掉 iOS 不认 viewport 时的
+  双指手势（`gesturestart/change/end`）、多指 `touchmove`、双击缩放和 `ctrl+滚轮` 缩放
 
 ## 时间轴与对齐
 
@@ -618,12 +631,12 @@ nginx 上要保证的四件事：
 **改完必须同时改 `index.html` 里的 `?v=` 版本号**：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.0" />
-<link rel="stylesheet" href="static/record.css?v=0.6.0" />
-<script src="static/sfx.js?v=0.6.0"></script>
-<script src="static/core.js?v=0.6.0"></script>
-<script src="static/record.js?v=0.6.0"></script>
-<script src="static/app.js?v=0.6.0"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.1" />
+<link rel="stylesheet" href="static/record.css?v=0.6.1" />
+<script src="static/sfx.js?v=0.6.1"></script>
+<script src="static/core.js?v=0.6.1"></script>
+<script src="static/record.js?v=0.6.1"></script>
+<script src="static/app.js?v=0.6.1"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件

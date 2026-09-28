@@ -1,7 +1,10 @@
-# jubeat 铺面查看器
+# jubeat 谱面确认
 
-本地跑的 jubeat 谱面（铺面）确认播放器：浏览曲库、在 4×4 面板上按谱面回放，
+本地跑的 jubeat 谱面确认播放器（Jubeat Viewer）：浏览曲库、在 4×4 面板上按谱面回放，
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
+
+界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.6`，由 `tools/set_version.py` 同步）。
 
 [![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
@@ -16,7 +19,7 @@
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.3** · [Release notes](docs/release-v0.6.3.md) ·
+当前版本：**v0.6.6** · [Release notes](docs/release-v0.6.6.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -254,9 +257,9 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 |---|---|
 | 状态与工具 | `state`（notes / padRects / combo / duration / chartCache）、`beatToFloat`、`buildTimeMap`（拍号 → 秒，支持变速） |
 | `parseNotes`（`core.js`） | 谱面 JSON → note 列表：算每条 note 的秒数、hold 区间、`maxSec`、顺序编号 `seq`、同押分组 `group`/`groupSize`、光晕用色 `glowSlot` |
-| 面板 | 16 个 pad 的 DOM；命中 / arm / hold 三种状态；hold 的扇形填充 + 倒计时 |
+| 面板 | 16 个 pad 的 DOM；命中 / arm 两种状态（长押不再占 pad 的 CSS 状态，改由画布层画箭头） |
 | 按键音效 | WebAudio 合成的四种音色（点击 / 拍手 / 喵 / 太鼓咚·咔）+ 素材组「比利·海灵顿」，按 note 的精确时间提前排程；往 `se/` 里放同名音频就用真素材（见[构建](#构建)） |
-| marker 动画 | 从 sprite sheet 取帧画到 canvas；PERFECT 帧对齐拍点；hold 到 PERFECT 即止 |
+| marker 动画 | 从 sprite sheet 取帧画到 canvas；PERFECT 帧对齐拍点；长押在按下 / 松开各播一次命中动画 |
 | 顺序数字 / 光晕 | 同押那一批数字加霓虹光晕 + 两圈外扩波纹；密集处相邻两批双色交替 |
 | 物量条 | 每 2 秒一根柱子的 note 密度图，**本身就是进度条**（按住拖动跳转） |
 | 音源加载 | 换歌时的下载 / 解码进度、加载途中排队的播放请求 |
@@ -343,32 +346,64 @@ lead = (anchor + 1) / fps                        # 接近动画时长
 
 ### hold 的表现
 
-1. **到位**：接近动画照常播，anchor 落在首拍上
-2. **按住**：marker 动画到 PERFECT 帧**就结束**，该格改为从 12 点顺时针**逐渐填满的扇形 + 居中倒计时**
-   （剩余秒数，≥10s 显示整数，否则一位小数）
-3. **末拍**：倒计时走完、扇形清空——**hold 没有任何 marker 收尾动画**
+长押的画面是**官方那套「会移动的箭头」**，整个动效都由画布层按谱面时间现画，不占用面板灯的
+CSS 状态（0.6.4 之前是「扇形倒计时」，和实机完全不一样，已去掉）。逐帧量自 festo 实机录屏：
 
-tap 命中后仍然会播 marker 的收尾帧 / 判定特效。
+1. **提前 0.5s 起势**（`HOLD_PRE`）：走廊（起点格 → 终点格之间那串格子）淡蓝光束先亮到 **0.56**，
+   终点格（被按住的那一格）浮出一枚大的 V，起点格上是那枚**很淡**的移动箭头（0.22）
+2. **到位/按下**（`t_note`）：被按住那格的 marker 接近动画照常播、anchor 落在首拍上，
+   紧跟着播一次**命中动画**（TOUCH → 爆花 → 余烬）
+3. **按住期间**：箭头从起点格出发、沿走廊匀速滑到终点格，压在哪一格就只亮哪一格，
+   走过的格子立刻回到空闲外观；这一格全程是被「按亮」的样子（≈2 倍底色 + 一枚大 V）
+4. **松开/末拍**（`endbeat`）：箭头正好压到终点格，终点格**再播一次同一套命中动画**，
+   之后 0.28s 内清干净
 
-#### 长押只占一个键
+tap 命中后同样播 marker 的收尾帧 / 判定特效。
 
-`.mc` 里长押除了 `beat`/`index`（起点）还有 `endbeat`/`endindex`，很容易把 `endindex` 当成
-「长押另一头的键」——**它不是**。在 jubeatools 里这个字段叫 `tail_tip`，是长押那根条
-**朝哪个方向收尾**的方向指示，不是掌上第二个键，更不是第二条 note：
+#### 箭头：形状、速度、明暗
 
-- 实测它的偏移量在 1–3 格之间随机，**和长押时长完全没有关系**（1 拍的可能是 2 格，12 拍的也可能是 2 格）
-- 那个位置上通常也没有任何 note（抽查 60 个长押：没有一个在 `endbeat` 时刻有 `endindex` 那个键的 note）
+- **形状**：一枚正好一格大的 V（chevron，平边在后、箭尖在前），全程不缩放，整体在「行进坐标系」
+  里画好再旋转过去；竖直长押的 V 朝上/下，水平长押的朝左/右，终点格那枚也一样
+- **速度**：严格线性，`进度 = (当前时刻 − t_note) / (endbeat − t_note)`。实测平边从起点格后沿
+  走到终点格后沿 = N 格 × 格距：**345px / 2.4615s = 140.2px/s**（视频里一格 101px、格距 115px）；
+  1/2/3 格与上/下/左/右四个方向都验过。对 hold0 逐帧量平边位置（每帧 1/30s）做直线拟合：
+  斜率 **140.27px/s**（理论 140.19），中位残差 0.8px（只有平边正好落在格子缝里那几帧会顶到缝边，
+  因为缝里没有亮线，那时偏差最大 14px）；拟合出的两个端点时刻相差 2.460s，就是长押时长
+- **时间轴以谱面为准，不要对着爆花对齐**：录屏整体比谱面**早 ≈0.10s**，这个偏移不是动画本身，
+  由三条**谱面驱动**（非输入驱动）的线索交叉验证——箭头行程两端、走廊光束亮起的那一帧、
+  终点格的 note 艺术开始出现的那一帧，三者算出的视频时基互相吻合到 0.01s。而按下/松开的爆花
+  比谱面只早 ≈0.05s（玩家手感 / 输入延迟），比箭头晚 1–2 帧。所以箭头锚在 `t_note` / `endbeat`
+  上是对的，**不要**为了迁就爆花去挪 `prog`
+- **走廊光束**：很细的亮芯 + 两侧极窄的缓降，芯的半高宽 ≈4px（≈0.04 格），峰值是实机那个
+  淡蓝白 `rgb(195,221,255)`
+- **明暗**：只有两条臂和平边是亮线；平边中央一块暗楔（顶部宽 ≈0.68 格、深 ≈0.58 格，越往下越淡）；
+  贴两臂内侧一道很浅的暗影；V 内侧整体比格子底亮一档（≈1.37 倍底色）；箭尖一个亮点正好接上光束。
+  描线亮度按实机量到的**峰值**取（移动箭头 ≈175、压在亮格上的终点格那枚 ≈167），不按倍数放大：
+  我们这边实测 ≈196 / ≈178，比实机高 12% / 6%——再压下去「整行均值」就反过来比实机暗了
+  （实机那条线被 640×480 录屏的模糊摊平：峰值低、行均值高），所以停在这一档
+- **尺寸**：箭头本体正好一格。视频里逐帧量：平边横跨 `x=1..99`（整格宽 101px），箭尖在平边下方
+  **101px** 处——横竖都正好一格。我们这边 `along` / `cross` 都取一整格的边长，所以同尺寸。
+  实机面板「一格 101px + 缝 14px」，我们的面板是「一格 95.4 CSS px + 缝 8px」，缝相对窄一点，
+  所以同一段时间里箭头相对**整块面板**走过的比例略小（箭头相对面板宽度：我们 23.5%、实机 22.6%）；
+  按「格距」归一化后两边完全一致（都是 3 个格距 / 2.4615s）
+- **裁切**：所有图案都裁在格子的圆角里，跨过格子缝（gap）时自然断开
 
-所以本播放器**只用 `index`**：一个长押 = 一个键按住 + 倒计时。
-（0.5.0 及之前的版本把 `endindex` 当成第二个键一起点亮，密集长押的曲子会凭空多出几十个亮着的键，
-像「飽和世界」EXT 这种有 60 个长押的，整首都飘着不存在的 note。）
+#### 长押占两个键，`index` 是「被按住的那一格」
 
-#### `tail_tip` 只用来理解数据，不画出来
+`.mc` 里长押除了 `beat`/`index` 还有 `endbeat`/`endindex`。在 jubeatools 里 `endindex` 这个字段
+叫 `tail_tip`，就是上面那枚箭头**从哪一格出发**——实机上确实有这一格：
 
-`tail_tip` 表示这条长押往哪边收尾（游戏里画成一个三角箭头）。**本播放器不画它**：
-长押那一格已经有扇形填充 + 倒计时，再加箭头显得很乱；试过「接近时滑进位、按住时往外推」
-的移动版和静止版，都去掉了。这个字段仍然解析出来放在 `note.tailTip` 上，主要是留个记录：
-**它是方向，不是第二个键**，别再拿它当 note 点亮（见上一条）。
+- **`index` = 玩家按住的那一格**：marker 落在这里、命中动画在这里、终点格那枚大 V 和走廊光束的
+  终点也在这里
+- **`tail_tip` = 箭头的出发格**：长押起手时箭头就停在这一格上，然后朝 `index` 滑过去
+
+所以一个长押 = 两格 + 一根会动的箭头，但**只有 `index` 一格会亮面板灯 / 算连击**。
+斜向（行、列都不同）的长押本家没有，`holdCells()` 会返回 `null` 直接不画。
+
+> 历史坑：0.5.0 及之前的版本把 `endindex` 当成「长押另一头的键」一起点亮，密集长押的曲子会凭空
+> 多出几十个亮着的键（像「飽和世界」EXT 这种有 60 个长押的，整首都飘着不存在的 note）。
+> 0.5.1–0.6.3 又走到了另一个极端：只用 `index`、按住期间画扇形倒计时、`tail_tip` 完全不画。
+> 现在两格都在，但**箭头那格只出现在长押进行中的画面里**，不算 note、不亮面板灯、不进连击。
 
 ### 连击
 
@@ -394,15 +429,23 @@ tap 命中后仍然会播 marker 的收尾帧 / 判定特效。
   > 密集谱面里光调「序号断句」降不下两位数占比：间隔是量化的 0.5/0.75 拍，
   > 倍数在 1.05~1.25 触发的是同一批断点，两位数一直卡在 ~13%。真正管用的是「序号上限」。
 - **同押光晕**：这一批数字带浓厚的霓虹光晕 + 两圈往外扩散的波纹（同一批同步呼吸，
-  一眼看出哪些是同时按的），光晕严格裁在格子内
+  一眼看出哪些是同时按的），光晕严格裁在格子内；**透明度可以单独调，默认 70%**
+  （0 就是只剩白数字）。播放时整组跟着一个时钟一起呼吸，**暂停后光晕钉在当时的相位、
+  不再呼吸** —— 定格看谱时画面不会一直闪，拖滑杆 / 切开关重画也不会让光晕跳相位
 - **双色规则**：光晕配色从 **6 组预设对比色**里挑（青/洋红、琥珀/蓝、薄荷/珊瑚、柠檬/紫、
   天蓝/玫红、橙/青绿）——**不提供自定义取色**，因为挑两个太接近的颜色等于没区分。
   同押挨得密的地方（相邻两批间隔 ≤ 0.35 s，约等于 190 BPM 的一拍），
   **相邻两批在主色 / 副色之间交替**，一眼能看出哪几个键是一起按的；
   稀疏的地方只有一批，只用主色，画面不会太花
 - 数字本身和光晕各有一个开关（「marker 顺序数字」「同押光晕」）
-- **外观可以调**（选项区里三个控件，改完立刻生效并记住）：**序号字号** 50–200%、
-  **序号透明度** 10–100%，以及一个 **「序号放右下角」** 开关 —— 默认数字画在格子正中，
+- **出现时机对齐实机**：数字在**拍点前 0.10s** 才冒出来（不是 marker 一进屏就画）。
+  逐帧量 festo 实机录屏：7 条 note 的数字「第一次可见」都在爆花前 3 帧 = 100ms，
+  一次不差；而爆花本身比拍点晚约 33ms（那是玩家的输入延迟，我们这边把爆花钉在拍点上），
+  所以数字取「拍点前 0.10s」
+- **外观可以调**（选项区里四个控件，改完立刻生效并记住）：**序号字号** 50–200%、
+  **序号透明度** 10–100%、**光晕透明度** 0–100%（默认 70%；只淡「同押光晕」那一层：数字背后的
+  光晕 + 两圈波纹 + 数字的霓虹描边；数字本身跟着「序号透明度」走），
+  以及一个 **「序号放右下角」** 开关 —— 默认数字画在格子正中，
   打开后挪到右下角，方便在密集处不挡 marker 动画
 
 ### 打点音
@@ -462,6 +505,11 @@ tap 命中后仍然会播 marker 的收尾帧 / 判定特效。
 | `&play=1` | 打开后自动播放 |
 | `?media=1` | 强制用 `<audio>` 直出，不解码成 AudioBuffer（排查用） |
 | `?debug=1` | 左下角显示时间轴调试信息（chart / audio / 后端 / 输出峰值） |
+
+`t=` 和 `chart=` 都会先过一遍校验再落到状态里：`t` 只接受**有限数且 ≥ 0**
+（负数、`abc`、`Infinity` 一律当没写，回落到「从头开始」），`chart` 只放行
+`[A-Za-z0-9_-]` 且不超过 8 个字符。所以深链接里的 `?t=%20%20`、`?t=-5`、
+`?chart=xx/../../y` 这类畸形值只会被忽略，不会崩页面，也不会被拼进请求路径。
 
 例：
 
@@ -665,24 +713,24 @@ nginx 上要保证的四件事：
 ```
 
 **改完必须同时改 `index.html` 里的 `?v=` 版本号**（`python3 tools/set_version.py X.Y.Z`
-一次改完这 14 处，不用手改）：
+一次改完全部 `?v=` **和侧栏那枚版本号徽章**，不用手改）：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.3" />
-<link rel="stylesheet" href="static/record.css?v=0.6.3" />
-<script src="static/sfx.js?v=0.6.3"></script>
-<script src="static/core.js?v=0.6.3"></script>
-<script src="static/record.js?v=0.6.3"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.6" />
+<link rel="stylesheet" href="static/record.css?v=0.6.6" />
+<script src="static/sfx.js?v=0.6.6"></script>
+<script src="static/core.js?v=0.6.6"></script>
+<script src="static/record.js?v=0.6.6"></script>
 <!-- 下面 9 行的顺序不能改：每一层只依赖比它更早的那几层 -->
-<script src="static/app-base.js?v=0.6.3"></script>
-<script src="static/app-audio.js?v=0.6.3"></script>
-<script src="static/app-marker.js?v=0.6.3"></script>
-<script src="static/app-density.js?v=0.6.3"></script>
-<script src="static/app-library.js?v=0.6.3"></script>
-<script src="static/app-player.js?v=0.6.3"></script>
-<script src="static/app-render.js?v=0.6.3"></script>
-<script src="static/app-wiring.js?v=0.6.3"></script>
-<script src="static/app.js?v=0.6.3"></script>
+<script src="static/app-base.js?v=0.6.6"></script>
+<script src="static/app-audio.js?v=0.6.6"></script>
+<script src="static/app-marker.js?v=0.6.6"></script>
+<script src="static/app-density.js?v=0.6.6"></script>
+<script src="static/app-library.js?v=0.6.6"></script>
+<script src="static/app-player.js?v=0.6.6"></script>
+<script src="static/app-render.js?v=0.6.6"></script>
+<script src="static/app-wiring.js?v=0.6.6"></script>
+<script src="static/app.js?v=0.6.6"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -707,11 +755,11 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.3-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.3-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.3-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.6-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.6-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.6-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.3）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.6）的附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
@@ -723,7 +771,7 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 改完代码先跑这一条，它把下面这些拼在一起（快，几秒钟）：
 
 ```bash
-tools/check.sh              # JS 语法 / core 单测 / Range 三实现一致性 / 版本号
+tools/check.sh              # JS 语法 / core 单测 / Range 四份实现一致性 / 版本号
 tools/check.sh --site       # 再加上已有 ./site 的完整性检查（构建完、部署后）
 tools/check.sh --full       # 再加上端到端接口冒烟（临时造一个小站点）
 tools/check.sh --release    # 发版前：--full + PHP 入口冒烟（本机没 php 就跳过）
@@ -733,12 +781,12 @@ tools/check.sh --release    # 发版前：--full + PHP 入口冒烟（本机没 
 
 ```bash
 node --test tools/test_core.mjs        # 前端纯逻辑（core.js）单测：谱面解析 / 顺序数字 / 同押光晕 / A–B 打点 / 难度匹配
-python3 tools/test_range.py            # Range 解析 + 路径穿越：同一张用例表跑 Python / Node（有 php 连 PHP）三份实现
+python3 tools/test_range.py            # Range 解析 + 路径穿越：同一张用例表跑 Python / Node / 开发服务器 / Electron 四份实现（有 php 连 PHP）
 python3 tools/smoke_test.py --build    # 静态 + 开发两种模式，32 项（首页/索引/谱面/音源 Range/封面/缩略图/缓存/gzip/404）
 cd electron && npx electron ../tools/ui_smoke.js   # 界面自测 45 项：真渲染进程里跑一遍页面并点关键路径
 python3 tools/php_smoke_test.py        # PHP 入口，21 项（各种 Range、416、gzip、ETag/304、HEAD、目录穿越）
 python3 tools/verify_site.py --strict  # 已有 ./site 的完整性（索引里每一项都要落到磁盘上）
-python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= 与 electron 包版本
+python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= / 侧栏版本号徽章 / site 构建产物 / electron 包版本
 
 # 抓一张界面截图（README 顶部那张就是这么来的）
 cd electron && npx electron ../tools/screenshot.js \
@@ -771,7 +819,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 2. 提版本号 —— 权威值只有仓库根的 `VERSION`，其余位置由脚本铺开：
 
    ```bash
-   python3 tools/set_version.py 0.6.3     # 写 VERSION + index.html 的 ?v= + electron 包版本
+   python3 tools/set_version.py 0.6.6     # 写 VERSION + index.html 的 ?v= 与版本号徽章 + electron 包版本
    ```
 3. 本地验证：`sh tools/check.sh --release`，再 `python3 tools/build_site.py`（曲库有变动时）+ `tools/serve.py` 预览
 4. 构建桌面版轻量包：`sh tools/pack_desktop.sh`（产物自动收回 `electron/dist`）

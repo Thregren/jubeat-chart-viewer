@@ -125,14 +125,6 @@ html.rec #app { display: none !important; }
   font-size: 12px;
 }
 
-/* 长押倒计时：录像里格子有 222px，中间那个深色圆盘直径约 120px，
-   默认的 17px 数字在里面像只蚂蚁（录出来的视频上根本看不清剩余几秒）。
-   这里按录制卡片的固定尺寸写死 —— 最多 3 个字符（"99" / "9.9"），放得下。 */
-#recCard .hold-count {
-  font-size: 42px;
-  letter-spacing: -0.02em;
-}
-
 #recCard .panel-caption {
   width: 966px !important;
   margin-top: 12px;

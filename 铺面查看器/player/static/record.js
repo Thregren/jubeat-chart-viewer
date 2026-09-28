@@ -34,6 +34,7 @@
     // 序号外观固定成默认值：录制机器上残留的滑杆设置不能影响成片
     numScale: "100",
     numAlpha: "100",
+    numGlowAlpha: "70",                   // 与同押光晕的默认透明度保持一致（0.7）
     numCorner: "0",
     showChordGlow: "1",
     metroSound: "",                       // 录制页不出声：音轨由录制脚本离线合成

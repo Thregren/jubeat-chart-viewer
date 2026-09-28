@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 3 层 · marker：按键动画帧、判定锚点、顺序数字与连击叠字 */
+/* jubeat 谱面确认 — 第 3 层 · marker：按键动画帧、判定锚点、顺序数字与连击叠字 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。
@@ -10,7 +10,7 @@
   const A = (window.JubeatApp = window.JubeatApp || {});
 
   // —— 更早那层提供的接口 ——
-  const { $, el, els, state, LEGACY_DEFAULT_MARKER, DEFAULT_MARKER_SPEED, markerCfg, numCfg,
+  const { el, els, state, LEGACY_DEFAULT_MARKER, DEFAULT_MARKER_SPEED, markerCfg, numCfg,
      STORAGE, PATHS, encPath, FPS_FALLBACK, GLOW_PAIRS, store, toast } = A;
 
   // ================= marker 动画 =================
@@ -275,6 +275,342 @@
     return out;
   }
 
+  // ================= 长押：官方「会移动的箭头」 =================
+  //
+  // 逐帧量出来的模型（jubeat festo 实机，视频 640×480 / 30fps）：
+  //   · 长押的两格是「起点」tail 和「终点」head。mc 里 note.index 是终点格——玩家
+  //     按住的那一格、marker 也画在这里；note.tailTip（= 原始 endindex）是起点格。
+  //     箭头从 tailTip 出发、朝 index 走，箭尖朝 index。
+  //   · 提前 0.5s（HOLD_PRE）先亮起「走廊」：终点格的整格提亮 + 那枚 V、起点格上
+  //     一枚很淡的箭头，以及两点之间那条淡蓝光束；到 t 一起转亮，箭头才开始滑。
+  //   · 箭头 = 一枚正好一格大的 V（chevron：平边在后、箭尖在前），全程不缩放，在
+  //     [t, endT] 里沿走廊匀速滑过 N 格。progress=0 时正好盖住起点格、=1 时压在
+  //     终点格上。实测平边（箭头那条后边）从起点格后沿走到终点格后沿(= N*格距)：
+  //     345px / 2.4615s = 140.2px/s，严格线性（1/2/3 格与上/下/左/右四个方向都验过）。
+  //   · 方向：竖直长押的 V 朝上/下，水平长押的 V 朝左/右（终点格那枚也一样）——
+  //     所以整套图案都在「行进坐标系」里画，再整体旋转过去。
+  //   · 所有图案都裁在格子圆角里：跨过格子缝（gap）时断开；箭头走过哪一格，哪一格
+  //     立刻回到空闲外观（不留痕）。
+  const HOLD_PRE = 0.5;    // 提前量（实测 0.495 ± 0.005s）
+  // 结束后的残留：终点格的 V 到 endT 就该消失，之后那 0.27s 盖着的是松开命中
+  // 动画的爆花（实测 hold0 终点格在 endT+0.26、hold30 在 endT+0.31 回到空闲底色）。
+  const HOLD_POST = 0.28;
+  // 提前量那 0.5s 里：走廊光束 + 终点格是「半亮」，移动箭头本身却淡得多。
+  // 实测（格宽 101px）：光束峰值 227，预卷时 152 → 0.56；箭头平边 125，预卷时
+  // 69.6（底色 56）→ 换算成不透明度只有正式版的 ≈ 1/5。
+  const HOLD_PRE_BEAM = 0.56;
+  const HOLD_PRE_ARROW = 0.22;
+
+  // 顺序数字的出现时机：官方只在「拍点前 0.10s」才把数字画出来 —— 逐帧量了 7 条 note
+  // （festo 实机视频），「数字第一次可见 → 爆花第一帧」恒定 3 帧 = 100ms，一次没差。
+  // 录屏里爆花本身比拍点晚 ~33ms（那是玩家输入的延迟，不跟），本查看器把爆花钉在拍点上，
+  // 所以数字就取「拍点前 0.10s」。以前整段接近动画（默认 0.8× 下 0.71s）都在画数字，
+  // 看起来就是「数字提前一大截出现」，和实机差得远。
+  const NUM_LEAD = 0.10;
+
+  /** 终点格（被按住那格）的填充色：跟着「同押光晕」的主色走
+   *  （实机里长押格的颜色也随乐段变，这里用它做可配置的替代） */
+  function holdTint() {
+    return glowRgb(0);
+  }
+
+  /** 终点格是「被按住的格子」：实机里整格提亮到约两倍底色、只留一点点染色。
+   *  我们的底色比实机深，所以把主色往白里调淡再用，避免整格糊成一块艳蓝。 */
+  function holdTintLight(mix = 0.55) {
+    return holdTint()
+      .split(",")
+      .map((v) => Math.round(Number(v) + (255 - Number(v)) * mix))
+      .join(",");
+  }
+
+  /** 长押两端在 4×4 面板上的格位；斜向（本家没这种东西）返回 null */
+  function holdCells(note) {
+    const head = note.index;
+    const tail = note.tailTip;
+    if (head == null || head < 0 || head > 15 || tail == null || tail < 0 || tail > 15) return null;
+    const hr = head >> 2; const hc = head & 3;
+    const tr = tail >> 2; const tc = tail & 3;
+    const dr = hr - tr; const dc = hc - tc;
+    if (dr && dc) return null;
+    if (!dr && !dc) return null;
+    return { head, tail, dr, dc, N: Math.abs(dr) + Math.abs(dc) };
+  }
+
+  /**
+   * 把长押的几何摊到「局部坐标」上：
+   *   x 轴垂直于行进方向、y 轴顺着行进方向，原点 = 起点格后沿中点。
+   * 于是起点格 = [0, along]、第 k 格 = [k*pitch, k*pitch+along]、终点格后沿 = N*pitch。
+   */
+  function holdFrame(g) {
+    const rects = state.padRects;
+    if (!rects || rects.length < 16) return null;
+    const tailRect = rects[g.tail];
+    const headRect = rects[g.head];
+    if (!tailRect || !headRect) return null;
+    const vertical = g.dr !== 0;
+    const along = vertical ? tailRect.h : tailRect.w;      // 沿行进方向的格长
+    const cross = vertical ? tailRect.w : tailRect.h;      // 垂直方向的格长
+    const sign = vertical ? Math.sign(g.dr) : Math.sign(g.dc);
+    const pitch = vertical
+      ? (rects[4] && rects[0] ? rects[4].y - rects[0].y : along)
+      : (rects[1] && rects[0] ? rects[1].x - rects[0].x : along);
+    // 局部 +y → 世界方向：向下 0、向上 π、向右 -π/2、向左 π/2
+    const angle = vertical ? (sign > 0 ? 0 : Math.PI) : (sign > 0 ? -Math.PI / 2 : Math.PI / 2);
+    const ox = vertical ? tailRect.x + tailRect.w / 2 : (sign > 0 ? tailRect.x : tailRect.x + tailRect.w);
+    const oy = vertical ? (sign > 0 ? tailRect.y : tailRect.y + tailRect.h) : tailRect.y + tailRect.h / 2;
+    return { tailRect, headRect, vertical, along, cross, pitch, angle, ox, oy };
+  }
+
+  function padClipRadius(rect) {
+    return Math.max(2, Math.min(10, (rect.w || 0) * 0.08));
+  }
+
+  /** 那枚 V 的三角形路径：平边在 y=0、箭尖在 (0,h)，+y 就是行进方向 */
+  function vPath(w, h) {
+    const hw = w / 2;
+    ctx.beginPath();
+    ctx.moveTo(-hw, 0);
+    ctx.lineTo(hw, 0);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+  }
+
+  /**
+   * 在「已经平移到平边中点、+y 指向行进方向」的局部坐标里画一枚官方长押的 V。
+   *
+   * 明暗结构是照着视频逐帧量出来的（按格子归一化）：
+   *   · 亮线只有两条臂和平边，内部其余部分基本保持格子底色；
+   *   · 平边中央一块「暗楔」：顶部宽 ≈0.68 格、深 ≈0.6 格，越往下越淡（最深处约
+   *     压到格底的一半）；
+   *   · 贴两臂内侧一道很浅的暗影（约压到八折）；
+   *   · V 内侧整体比底色亮一档：中段稳定在 ≈1.37 倍底色，到箭尖再收回底色；
+   *   · 箭尖一个亮点（实机那里正好接上走廊光束）。
+   *
+   * tint 传颜色串 = 终点格用的「玻璃」版（整格被按亮到约两倍底色，暗楔/暗影收敛
+   * 一档）；null = 移动箭头本体（暗楔更实、内侧更亮）。
+   */
+  function drawV(w, h, tint, light) {
+    const hw = w / 2;
+    const k = light == null ? 1 : light;
+    const glass = !!tint;
+    const soft = Math.max(1.2, w * 0.045);   // 暗楔 / 暗影的软化半径
+
+    ctx.save();
+    vPath(w, h);
+    ctx.clip();
+
+    // 0) V 内侧整体提亮：两臂之间比格子底亮一档，中段最亮、到箭尖收回。
+    //    （实机中段 ≈1.37 倍底色；我们的底色更深，所以按「倍数」折算成更小的不透明度）
+    const lift = ctx.createLinearGradient(0, 0, 0, h);
+    lift.addColorStop(0.00, `rgba(224,238,255,${(glass ? 0.06 : 0.02) * k})`);
+    lift.addColorStop(0.25, `rgba(222,236,255,${(glass ? 0.09 : 0.055) * k})`);
+    lift.addColorStop(0.55, `rgba(218,234,255,${(glass ? 0.10 : 0.07) * k})`);
+    lift.addColorStop(0.82, `rgba(214,232,255,${(glass ? 0.07 : 0.035) * k})`);
+    lift.addColorStop(1.00, "rgba(214,232,255,0)");
+    ctx.fillStyle = lift;
+    ctx.fillRect(-hw, 0, w, h);
+
+    // 1) 平边中央的暗楔（顶部在软半径外一点，压过平边后靠裁剪切齐）。
+    //    移动箭头压得实（顶部约五折），终点格那枚只是浅浅一层（约八五折）。
+    ctx.save();
+    ctx.filter = `blur(${soft.toFixed(2)}px)`;
+    const wedge = ctx.createLinearGradient(0, 0, 0, h * 0.58);
+    wedge.addColorStop(0, `rgba(0,0,0,${(glass ? 0.16 : 0.52) * k})`);
+    wedge.addColorStop(0.45, `rgba(0,0,0,${(glass ? 0.08 : 0.27) * k})`);
+    wedge.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = wedge;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.34, -soft);
+    ctx.lineTo(w * 0.34, -soft);
+    ctx.lineTo(0, h * 0.58);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // 2) 贴两臂内侧的浅暗影（描在两臂折线上，外侧那半被裁掉）
+    ctx.save();
+    ctx.filter = `blur(${(soft * 0.6).toFixed(2)}px)`;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = `rgba(0,0,0,${(glass ? 0.06 : 0.18) * k})`;
+    ctx.lineWidth = w * 0.26;
+    ctx.beginPath();
+    ctx.moveTo(-hw, 0);
+    ctx.lineTo(0, h);
+    ctx.lineTo(hw, 0);
+    ctx.stroke();
+    ctx.restore();
+
+    // 3) 内侧那条比底色亮的「折痕」：跟两臂平行、往箭尖收，实机里很淡、很宽
+    ctx.save();
+    ctx.filter = `blur(${(soft * 1.15).toFixed(2)}px)`;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = glass
+      ? `rgba(255,255,255,${0.05 * k})`
+      : `rgba(214,234,255,${0.06 * k})`;
+    ctx.lineWidth = w * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.32, h * 0.06);
+    ctx.lineTo(0, h * 0.5);
+    ctx.lineTo(w * 0.32, h * 0.06);
+    ctx.stroke();
+    ctx.restore();
+
+    // 4) 箭尖亮点（实机那儿正好接上走廊光束，所以移动箭头这枚要留得很轻）
+    const spotR = h * (glass ? 0.16 : 0.10);
+    const spot = ctx.createRadialGradient(0, h, 0, 0, h, spotR);
+    spot.addColorStop(0, `rgba(255,255,255,${(glass ? 0.5 : 0.28) * k})`);
+    spot.addColorStop(0.4, `rgba(210,228,255,${(glass ? 0.2 : 0.1) * k})`);
+    spot.addColorStop(1, "rgba(210,228,255,0)");
+    ctx.fillStyle = spot;
+    ctx.beginPath();
+    ctx.arc(0, h, spotR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // —— 线框：两臂一条折线（亮）+ 平边（淡一档）——
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.shadowColor = `rgba(150,180,240,${0.22 * k})`;
+    ctx.shadowBlur = w * 0.03;
+    ctx.lineWidth = Math.max(1.1, w * 0.018);
+    // 描线明暗：拿实机量到的「线峰值」当标尺，不按倍数放大。实机移动箭头的描线峰值
+    // ≈175（格底 56）、终点格那枚压在亮格上 ≈167；我们按 0.70 / 0.60 画，实测峰值
+    // ≈196 / ≈178——比实机高 ≈12% / ≈6%。再压下去「整行均值」就反过来比实机暗
+    // （实机那条线被 640×480 的模糊摊平了：峰值低、行均值高），所以停在这一档。
+    ctx.strokeStyle = `rgba(232,240,252,${(glass ? 0.60 : 0.70) * k})`;
+    ctx.beginPath();
+    ctx.moveTo(-hw, 0);
+    ctx.lineTo(0, h);
+    ctx.lineTo(hw, 0);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(228,238,252,${(glass ? 0.34 : 0.42) * k})`;
+    ctx.beginPath();
+    ctx.moveTo(-hw, 0);
+    ctx.lineTo(hw, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * 走廊光束：横截面 = 很细的亮芯 + 两侧极窄的缓降。
+   * 实测（格宽 101px）芯的半高宽 FWHM ≈4px（≈0.04 格），±0.03 格处 ≈0.56、
+   * ±0.06 格处 ≈0.12、±0.09 格外就没了；峰值就是实机那个淡蓝白 rgb(195,221,255)。
+   */
+  function beamGradient(hw, alpha) {
+    const line = (a) => `rgba(196,221,255,${a * alpha})`;
+    const grad = ctx.createLinearGradient(-hw, 0, hw, 0);
+    grad.addColorStop(0.000, line(0));
+    grad.addColorStop(0.430, line(0));
+    grad.addColorStop(0.455, line(0.12));
+    grad.addColorStop(0.472, line(0.42));
+    grad.addColorStop(0.488, line(0.92));
+    grad.addColorStop(0.497, line(1.00));
+    grad.addColorStop(0.503, line(1.00));
+    grad.addColorStop(0.512, line(0.92));
+    grad.addColorStop(0.528, line(0.42));
+    grad.addColorStop(0.545, line(0.12));
+    grad.addColorStop(0.570, line(0));
+    grad.addColorStop(1.000, line(0));
+    return grad;
+  }
+
+  function drawHoldArrow(note, g, chartT) {
+    const f = holdFrame(g);
+    if (!f) return;
+    const t0 = note.t;
+    const t1 = note.endT;
+    if (!(t1 > t0)) return;
+    const prog = Math.min(1, Math.max(0, (chartT - t0) / (t1 - t0)));
+    const started = chartT >= t0;
+    const w = f.cross;
+    const hw = w / 2;
+    const along = f.along;
+    const pitch = f.pitch;
+    const N = g.N;
+    const radius = padClipRadius(f.tailRect);
+    const headRadius = padClipRadius(f.headRect);
+
+    ctx.save();
+    ctx.translate(f.ox, f.oy);
+    ctx.rotate(f.angle);
+
+    const headNear = N * pitch;      // 终点格后沿：beam 到此为止
+    const backY = prog * headNear;   // 平边：progress=0 时正好压在起点格后沿
+    const apexY = backY + along;     // 箭尖
+    // 正式开画前（提前量那 0.5s）：走廊光束与终点格先半亮起来，移动箭头本身很淡地
+    // 停在起点格上；到了 t 一起转成全亮，箭头才开始往前走。
+    const lightBeam = started ? 1 : HOLD_PRE_BEAM;
+    const lightArrow = started ? 1 : HOLD_PRE_ARROW;
+    const tint = holdTint();
+    const tintLight = holdTintLight();
+
+    // —— 终点格：整格提亮（实机里就是「被按住那一格」的亮面板）+ 一枚固定的 V ——
+    ctx.save();
+    roundRectPath(ctx, -hw, headNear, w, along, headRadius);
+    ctx.clip();
+    ctx.fillStyle = `rgba(${tintLight}, ${0.20 * lightBeam})`;
+    ctx.fillRect(-hw, headNear, w, along);
+    ctx.save();
+    ctx.translate(0, headNear);
+    drawV(w, along, tint, lightBeam);
+    ctx.restore();
+    ctx.restore();
+
+    // —— 走廊光束：从箭尖到终点格后沿，逐格裁切（格子缝里不画） ——
+    if (apexY < headNear - 0.5) {
+      const grad = beamGradient(hw, lightBeam);
+      for (let k = 0; k <= N; k++) {
+        const cy0 = k * pitch;
+        const y0 = Math.max(cy0, apexY);
+        const y1 = Math.min(cy0 + along, headNear);
+        if (y1 - y0 < 1) continue;
+        ctx.save();
+        roundRectPath(ctx, -hw, cy0, w, along, radius);
+        ctx.clip();
+        ctx.fillStyle = grad;
+        ctx.fillRect(-hw, y0, w, y1 - y0);
+        ctx.restore();
+      }
+    }
+
+    // —— 箭头本体：按格裁切后画（progress = 0 时正好盖住起点格） ——
+    for (let k = 0; k <= N; k++) {
+      const cy0 = k * pitch;
+      if (cy0 + along <= backY + 0.5 || cy0 >= apexY - 0.5) continue;
+      ctx.save();
+      roundRectPath(ctx, -hw, cy0, w, along, radius);
+      ctx.clip();
+      ctx.save();
+      ctx.translate(0, backY);
+      drawV(w, along, null, lightArrow);
+      ctx.restore();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  /** 官方长押的全部画面：终点格 V + 走廊光束 + 起点格 V + 移动箭头 */
+  function drawHoldArrows(chartT) {
+    if (!ctx || !state.padRects || state.padRects.length < 16) return;
+    const notes = state.notes;
+    if (!notes.length) return;
+    const maxHold = (state._parsed && state._parsed.maxHold) || 0;
+    const lo = chartT - maxHold - HOLD_PRE - 0.05;
+    // 还没开始的长押也要提前 HOLD_PRE 亮起来，所以上界要往后放一个提前量
+    const hi = chartT + HOLD_PRE + 0.05;
+    for (const n of notesInWindow(lo, hi)) {
+      if (n.kind !== "hold" || n.endT == null) continue;
+      if (chartT < n.t - HOLD_PRE || chartT > n.endT + HOLD_POST) continue;
+      const g = holdCells(n);
+      if (!g) continue;
+      drawHoldArrow(n, g, chartT);
+    }
+  }
+
   function drawSheetFrame(sheet, spec, frame, rect, alpha = 1) {
     if (!ready(sheet) || !rect) return;
     const cell = spec.cell;
@@ -311,6 +647,16 @@
   function glowRgb(slot = 0) {
     const pair = glowPair();
     return hexRgb(slot ? pair.alt : pair.main);
+  }
+
+  // 同押光晕「呼吸」用的时钟：播放时跟着真实时间走，**暂停就钉住不动**。
+  // 暂停时渲染循环本来就会停表，但拖滑杆 / 切开关会用同一个 performance.now()
+  // 重画一次 —— 那样光晕会在每次交互时突然跳到另一个相位。钉住的时钟保证
+  // 暂停画面里的光晕永远停在同一个相位（也就是「暂停后不呼吸」）。
+  let glowClock = null;
+  function glowNow() {
+    if (state.playing || glowClock == null) glowClock = performance.now();
+    return glowClock;
   }
 
   function drawOrderNumber(note, rect) {
@@ -355,15 +701,18 @@
       // 颜色按这一批所在位置的密度取：密的地方相邻两批在主色 / 副色之间交替。
       const rgb = glowRgb(note.glowSlot || 0);
       const period = 560;                                     // ms，一个呼吸周期（收得比之前快）
-      const phase = (performance.now() % period) / period;     // 0 → 1
+      const phase = (glowNow() % period) / period;             // 0 → 1（暂停时钉住）
       const stroke = Math.pow(1 - phase, 1.4);                 // 波纹 / 描边淡出的速度
       const glow = Math.pow(0.5 - 0.5 * Math.cos(phase * Math.PI * 2), 0.75); // 峰更尖，落得更快
+      // 「光晕透明度」只乘在这一层上：光晕、波纹、数字的霓虹描边都跟着它淡，
+      // 0 的时候就只剩下面那圈白色数字（形状 / 半径都不变，只改不透明度）。
+      const ga = numCfg.glowAlpha;
 
       // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0
       const haloR = glowSize * (0.72 + 0.12 * glow);
       const grad = ctx.createRadialGradient(cx, cy, glowSize * 0.1, cx, cy, haloR);
-      grad.addColorStop(0, `rgba(${rgb}, ${0.34 + 0.5 * glow})`);
-      grad.addColorStop(0.45, `rgba(${rgb}, ${0.16 + 0.3 * glow})`);
+      grad.addColorStop(0, `rgba(${rgb}, ${(0.34 + 0.5 * glow) * ga})`);
+      grad.addColorStop(0.45, `rgba(${rgb}, ${(0.16 + 0.3 * glow) * ga})`);
       grad.addColorStop(1, `rgba(${rgb}, 0)`);
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -374,7 +723,7 @@
       ctx.lineCap = "round";
       for (const offset of [0, 0.5]) {
         const p = (phase + offset) % 1;
-        ctx.globalAlpha = numCfg.alpha * Math.pow(1 - p, 1.5) * 0.85;
+        ctx.globalAlpha = numCfg.alpha * ga * Math.pow(1 - p, 1.5) * 0.85;
         ctx.strokeStyle = `rgb(${rgb})`;
         ctx.lineWidth = Math.max(2.5, size * 0.1);
         ctx.beginPath();
@@ -385,13 +734,13 @@
 
       // 3) 数字的霓虹描边：外面一层散光、里面一层实色
       ctx.lineJoin = "round";
-      ctx.shadowColor = `rgba(${rgb}, 0.95)`;
+      ctx.shadowColor = `rgba(${rgb}, ${0.95 * ga})`;
       ctx.shadowBlur = size * (0.6 + 0.65 * glow);
       ctx.lineWidth = Math.max(5, size * 0.34);
-      ctx.strokeStyle = `rgba(${rgb}, ${0.5 + 0.5 * glow})`;
+      ctx.strokeStyle = `rgba(${rgb}, ${(0.5 + 0.5 * glow) * ga})`;
       ctx.strokeText(text, x, y);
       ctx.shadowBlur = size * 0.35 * stroke;
-      ctx.globalAlpha = numCfg.alpha * (0.35 + 0.65 * stroke);
+      ctx.globalAlpha = numCfg.alpha * ga * (0.35 + 0.65 * stroke);
       ctx.lineWidth = Math.max(3, size * 0.2);
       ctx.strokeStyle = `rgb(${rgb})`;
       ctx.strokeText(text, x, y);
@@ -411,6 +760,9 @@
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
     drawComboOverlay();     // 连击在最底层：marker 会压住它（和游戏一致）
+    // 长押（官方「会移动的箭头」）画在 marker 下面：它不属于任何一张 marker 素材，
+    // 就算设成「无（仅面板灯）」也要画，所以放在 entry 的早退之前。
+    drawHoldArrows(chartT);
     const entry = markerCfg.entry;
     if (!entry || !state.notes.length) return;
 
@@ -437,8 +789,10 @@
     for (const n of notesInWindow(chartT - lead - holdBack, windowEnd)) {
       // 每段 = 一个 pad 上的一次 marker 播放：
       //   t        到位时间（anchor 帧落在这一刻）
-      //   holdEnd  若是 hold 头拍，则 [t, holdEnd) 期间冻结在 anchor 帧
-      // hold 只在头拍那格播 marker：到 PERFECT 为止，之后交给倒计时（尾拍格不再有 marker）
+      //   holdEnd  若是 hold，则按下（t）与松开（holdEnd）各播一次命中动画，
+      //            [t, holdEnd) 中间只留「会移动的箭头」，不再有 marker
+      // 长押的 marker 只落在被按住的那一格（n.index）；起点格（n.tailTip）没有
+      // marker，它上面出现的是「会移动的箭头」的出发位置，由 drawHoldArrows 画。
       const segments = [
         { pad: n.index, t: n.t, holdEnd: n.kind === "hold" ? n.endT : null },
       ];
@@ -457,12 +811,18 @@
           frame = Math.min(anchor, k);
           spec = entry;
           image = sheet;
-        } else if (seg.holdEnd != null) {
-          // 2) hold：marker 到 PERFECT 就结束，后面全是倒计时，没有任何 marker 动画
-          continue;
         } else {
-          // 3) 收尾：tap 是命中之后，hold 是末拍之后，继续播剩余帧
-          const after = rel;
+          // 2) 命中动画。官方长押在「按下」和「松开」两个瞬间各播一次同一套命中
+          //    动画，都画在被按住的那一格 n.index 上：按下 = 谱面的 t（起点格那枚
+          //    箭头出动的同一刻），松开 = endT（箭头正好压到终点格的同一刻）。
+          //    按住中间这段什么都不播 —— 那一格只有「会移动的箭头」陪着你。
+          //    逐帧核对（festo 实机视频，hold30 向上 3 格）：终点格 74.90 起
+          //    TOUCH、75.03 爆花、75.27 余烬；77.47 松开时又原样重播一次。
+          let after = rel;
+          if (seg.holdEnd != null) {
+            const holdDur = seg.holdEnd - seg.t;
+            if (after >= holdDur) after -= holdDur;
+          }
           if (after >= tail) continue;
           if (hitSpec) {
             const k = Math.floor(after * fps);
@@ -483,8 +843,9 @@
         if (count >= 6) continue;
         counts.set(seg.pad, count + 1);
         drawSheetFrame(image, spec, frame, state.padRects[seg.pad], alpha);
-        // 顺序数字跟着 marker 一起出现、一起消失（和参考视频一致）
-        drawOrderNumber(n, state.padRects[seg.pad]);
+        // 顺序数字：marker 一出现就跟着画会「提前一大截」，官方是拍点前 0.10s 才出现
+        // （见 NUM_LEAD），之后就跟着 marker 一起消失。
+        if (rel >= -NUM_LEAD) drawOrderNumber(n, state.padRects[seg.pad]);
       }
 
       // 额外的判定特效（可选）：在头拍命中后叠加
@@ -543,5 +904,6 @@
     layoutCanvas,
     glowPair,
     drawMarkers,
+    drawHoldArrows,
   });
 })();

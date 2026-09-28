@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 1 层 · 基础：DOM 句柄、全局状态、常量、曲库元数据与格式化工具 */
+/* jubeat 谱面确认 — 第 1 层 · 基础：DOM 句柄、全局状态、常量、曲库元数据与格式化工具 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。
@@ -24,11 +24,7 @@
 
   /**
    * 前端版本 = 自己那个 script 标签上的 ?v=。
-   * 后面用来自检「浏览器是不是还捧着一份旧页面」。
-   */
-  /**
-   * 前端版本 = 自己那个 script 标签上的 ?v=。
-   * 后来自检「浏览器是不是还捧着一份旧页面」用。
+   * 后来自检「浏览器是不是还捧着一份旧页面」用（见 app-wiring 的 checkFrontVersion）。
    * 必须懒读 DOM：拆成多层后本文件先执行，那时 app.js 的 <script> 还没被解析到。
    */
   let frontVersionCache = null;
@@ -74,6 +70,8 @@
     numScaleLabel: $("#numScaleLabel"),
     numAlpha: $("#numAlpha"),
     numAlphaLabel: $("#numAlphaLabel"),
+    numGlowAlpha: $("#numGlowAlpha"),
+    numGlowAlphaLabel: $("#numGlowAlphaLabel"),
     numCorner: $("#numCorner"),
     showChordGlow: $("#showChordGlow"),
     phraseMult: $("#phraseMult"),
@@ -108,20 +106,34 @@
     toast: $("#toast"),
   };
 
+  // 允许缺失的元素：真的可以没有（缺了只是少一个装饰），不算「版本对不上」。
+  const OPTIONAL_ELS = new Set(["glowPairChips"]);
+
+  /**
+   * 启动自检：els 里的 #id 只要有一个在 index.html 里找不到（改名 / 少写了一个），
+   * 后面第一个用到它的事件才炸，报错是 "Cannot read properties of null (reading 'checked')"
+   * 加一句看不懂的堆栈 —— 整页白屏却说不出缺了哪个。这里一次性把名字全列出来。
+   */
+  function assertEls() {
+    const missing = Object.keys(els).filter((k) => !els[k] && !OPTIONAL_ELS.has(k));
+    if (!missing.length) return;
+    const msg = `页面元素缺失：${missing.join(", ")}（index.html 与 js 版本对不上？）`;
+    console.error("[jubeat]", msg);
+    throw new Error(msg);
+  }
+
   const state = {
     songs: [],
     song: null,
     chartMeta: null,
     chart: null,
-    notes: [], // {t, endT, index, tailTip|null, kind}（tailTip 只是长押尾巴方向，不参与渲染）
+    notes: [], // {t, endT, index, tailTip|null, kind}（tailTip = 长押箭头的出发点，见 app-marker 的 hold 段）
     bpmEvents: [], // {beat, bpm}
     duration: 0,
     playing: false,
     raf: 0,
     padEls: [],
     hitUntil: new Array(16).fill(-1),
-    holdUntil: new Array(16).fill(-1),
-    holdFrom: new Array(16).fill(-1),
     armed: new Array(16).fill(false),
     combo: 0,
     maxCombo: 0,
@@ -134,7 +146,6 @@
     // —— marker / timing ——
     baseOffset: 0, // 谱面 beat 0 对应的音频时间（秒）
     padRects: [],
-    holdCountEls: [],
     activeNotes: [],
     noteCursor: 0,
     lastTimeText: "",
@@ -161,13 +172,23 @@
   };
 
   // 音符序号（marker 上的顺序数字）的外观：字号倍率 / 透明度 / 位置。
-  // 默认和以前完全一样：满字号、不透明、居中。
+  // glowAlpha 只作用于「同押光晕」那一层（数字背后的光晕 + 两圈波纹 + 数字的霓虹描边），
+  // 和 alpha 是两件事：alpha 淡的是整层，glowAlpha 只淡光晕。默认与以前完全一致。
   const NUM_SCALE_MIN = 0.5;
   const NUM_SCALE_MAX = 2;
-  const numCfg = { scale: 1, alpha: 1, corner: false };
+  /** 「光晕透明度」的默认值：滑杆 / 代码里只有这一份来源 */
+  const DEFAULT_NUM_GLOW_ALPHA = 0.7;
+  // glowAlpha 默认 0.7：光晕能看清「哪几个键是一起按的」，又不会糊住底下的 marker。
+  const numCfg = { scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: false };
   // localStorage 里可能存着乱七八糟的值（手改过、或老版本留下的），一律夹到合法区间
   const clampNumScale = (v) => Math.min(NUM_SCALE_MAX, Math.max(NUM_SCALE_MIN, Number(v) || 1));
   const clampNumAlpha = (v) => Math.min(1, Math.max(0.1, Number(v) || 1));
+  // 同押光晕的透明度：可以一路降到 0（光晕 / 波纹 / 霓虹描边全关，只留白色数字）。
+  // 注意不能写成 `Number(v) || 1`，那样 0 会被当成「没存过」而弹回 1。
+  const clampNumGlowAlpha = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : DEFAULT_NUM_GLOW_ALPHA;
+  };
 
   // A–B 段落循环：同一个键（A）连按两次分别打 A / B 两个点，之后就在这一段里循环。
   // 时间是「谱面时间」（和进度条 / 时间显示同一套坐标），null = 还没打点。
@@ -184,6 +205,7 @@
     showNumbers: "jubeat.showNumbers",
     numScale: "jubeat.numScale",
     numAlpha: "jubeat.numAlpha",
+    numGlowAlpha: "jubeat.numGlowAlpha",
     numCorner: "jubeat.numCorner",
     showChordGlow: "jubeat.showChordGlow",
     phraseMult: "jubeat.phraseMult",
@@ -439,14 +461,9 @@
       btn.className = "pad";
       btn.dataset.index = String(i);
       btn.setAttribute("aria-label", `pad ${i}`);
-      const fx = el("span", "hold-fx");
-      fx.setAttribute("aria-hidden", "true");
-      fx.append(el("span", "hold-pie"), el("span", "hold-count"));
-      const count = fx.querySelector(".hold-count");
-      btn.append(el("span", "idx", i), fx);
+      btn.append(el("span", "idx", i));
       frag.appendChild(btn);
       state.padEls.push(btn);
-      state.holdCountEls.push(count);
     }
     els.panel.appendChild(frag);
   }
@@ -457,6 +474,7 @@
     $,
     Core,
     el,
+    assertEls,
     frontVersion,
     els,
     state,
@@ -466,6 +484,8 @@
     numCfg,
     clampNumScale,
     clampNumAlpha,
+    clampNumGlowAlpha,
+    DEFAULT_NUM_GLOW_ALPHA,
     abLoop,
     STORAGE,
     versionRank,

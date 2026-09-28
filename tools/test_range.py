@@ -13,6 +13,10 @@
 「到文件尾」。这类差异不会报错，只会让某一端的进度条行为跟别处不一样，所以
 这里用同一张用例表把三份实现钉在一起。
 
+第四处 `tools/serve.py`（本机预览 ./site 用）不再自带实现，改成直接
+`from media import parse_range` —— 它以前抄了一份自己的，结果 `bytes=0 - 99`
+被它放行、前导空格反过来只有它拒绝，而这张用例表又没把它算进来，谁都没发现。
+
 PHP 没装就跳过 PHP 那一段（只在本机跑得动的部分做断言），不会当成失败。
 
     python3 tools/test_range.py
@@ -87,12 +91,16 @@ RANGE_CASES: list[tuple[int, str, tuple[int, int] | None]] = [
 ]
 
 
-def load_python_impl():
-    spec = importlib.util.spec_from_file_location("jubeat_media", PLAYER_DIR / "media.py")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     return mod
+
+
+def load_python_impl():
+    return load_module(PLAYER_DIR / "media.py", "jubeat_media")
 
 
 NODE_DRIVER = r"""
@@ -185,13 +193,20 @@ def main() -> int:
             php_range = [None if r is None else (r[0], r[1]) for r in raw]
 
     media = load_python_impl()
-    counts = {"python": 0, "node": 0, "php": 0}
+    # 第四处 tools/serve.py（本机预览 ./site）也要过同一张表：它以前自带一份实现，
+    # `bytes=0 - 99` 被它放行、前导空格反过来只有它拒绝。现在它 from media import
+    # parse_range，这里再钉一遍行为 —— 谁将来又抄一份走样了，这条会红。
+    serve = load_module(REPO / "tools" / "serve.py", "jubeat_serve")
+
+    counts = {"python": 0, "node": 0, "php": 0, "serve": 0}
     for i, (size, header, want) in enumerate(RANGE_CASES):
         label = f"size={size} Range={header!r} → {want}"
         check(f"py   {label}", media.parse_range(header, size), want)
         counts["python"] += 1
         check(f"node {label}", node_range[i], want)
         counts["node"] += 1
+        check(f"serve {label}", serve.parse_range(header, size), want)
+        counts["serve"] += 1
         if php_range is not None:
             check(f"php  {label}", php_range[i], want)
             counts["php"] += 1

@@ -35,8 +35,19 @@ from version import (  # noqa: E402
 )
 
 INDEX_HTML = REPO / "铺面查看器" / "player" / "static" / "index.html"
+# 构建产物里的那份 index.html 拷贝（site/ 是 gitignore 的，由 tools/build_site.py 生成）。
+# 它也带着一整排 ?v=：改了源却忘了重建 site/，线上就会变成「新 HTML + 老 JS」。
+SITE_INDEX = REPO / "site" / "index.html"
 PACKAGE_JSON = REPO / "electron" / "package.json"
 PACKAGE_LOCK = REPO / "electron" / "package-lock.json"
+
+# 侧栏标题右边那枚版本号徽章（#brandVer）。
+# app.js 启动时也会用 script 标签的 ?v= 覆盖一遍，但 HTML 里必须自己带一份：
+# 万一脚本被 12h 缓存挡住，页面至少还能显示版本号，不会空着一块。
+BRAND_VER_RE = re.compile(
+    r'(<span class="brand-ver" id="brandVer"[^>]*>)v([0-9A-Za-z.\-]*)(</span>)'
+)
+
 
 def _pkg_versions(path: Path) -> list[str]:
     """package.json / package-lock.json 里记版本号的位置。"""
@@ -64,11 +75,25 @@ def _bump_pkg(path: Path, version: str) -> bool:
 
 
 def _bump_index(version: str) -> int:
-    raw = INDEX_HTML.read_text(encoding="utf-8")
+    return _bump_html(INDEX_HTML, version)
+
+
+def _bump_html(path: Path, version: str) -> int:
+    """把某个 index.html 里的 ?v= 与版本号徽章都改成 version；文件不在就当没事。"""
+    if not path.is_file():
+        return 0
+    raw = path.read_text(encoding="utf-8")
     out, n = V_QUERY_RE.subn(rf'\g<1>?v={version}', raw)
-    if n and out != raw:
-        INDEX_HTML.write_text(out, encoding="utf-8")
-    return n
+    out, m = BRAND_VER_RE.subn(rf'\g<1>v{version}\g<3>', out)
+    if out != raw:
+        path.write_text(out, encoding="utf-8")
+    return n + m
+
+
+def _brand_version(raw: str) -> str | None:
+    """读出徽章里写的版本号；找不到元素返回 None。"""
+    m = BRAND_VER_RE.search(raw)
+    return m.group(2) if m else None
 
 
 def check() -> int:
@@ -82,6 +107,26 @@ def check() -> int:
         problems.append(f"index.html 的 ?v= = {found or '（一个都没有）'}")
     if len(V_QUERY_FIND.findall(raw)) < 6:
         problems.append("index.html 里 ?v= 的数量少于 6 处（有资源漏了版本号）")
+    badge = _brand_version(raw)
+    if badge is None:
+        problems.append("index.html 里找不到版本号徽章 #brandVer")
+    elif badge != want:
+        problems.append(f"index.html 的版本号徽章 = v{badge}")
+
+    if SITE_INDEX.is_file():
+        site_raw = SITE_INDEX.read_text(encoding="utf-8")
+        site_found = sorted(html_versions(site_raw))
+        if site_found != [want]:
+            problems.append(
+                f"site/index.html 的 ?v= = {site_found or '（一个都没有）'}"
+                f"（构建产物过期了，跑 python3 tools/build_site.py 重新生成）"
+            )
+        site_badge = _brand_version(site_raw)
+        if site_badge != want:
+            problems.append(
+                f"site/index.html 的版本号徽章 = v{site_badge or '（缺）'}"
+                f"（构建产物过期了，跑 python3 tools/build_site.py 重新生成）"
+            )
 
     for path, label in ((PACKAGE_JSON, "package.json"), (PACKAGE_LOCK, "package-lock.json")):
         versions = _pkg_versions(path)
@@ -98,7 +143,10 @@ def check() -> int:
 def apply(version: str) -> None:
     VERSION_FILE.write_text(version + "\n", encoding="utf-8")
     n = _bump_index(version)
-    changed = [f"index.html（{n} 处 ?v=）"]
+    changed = [f"index.html（{n} 处 ?v= / 版本号徽章）"]
+    m = _bump_html(SITE_INDEX, version)
+    if m:
+        changed.append(f"site/index.html（{m} 处 ?v= / 版本号徽章）")
     for path, label in ((PACKAGE_JSON, "package.json"), (PACKAGE_LOCK, "package-lock.json")):
         if _bump_pkg(path, version):
             changed.append(f"electron/{label}")

@@ -17,7 +17,6 @@ import mimetypes
 import os
 import sys
 import traceback
-import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse

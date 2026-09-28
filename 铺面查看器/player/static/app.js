@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 9 层 · 启动：把各层装起来（main），并暴露调试 / 录制用的 window.__player */
+/* jubeat 谱面确认 — 第 9 层 · 启动：把各层装起来（main），并暴露调试 / 录制用的 window.__player */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。
@@ -11,6 +11,7 @@
 
   // —— 更早那层提供的接口 ——
   const { state, markerCfg, numCfg, abLoop, buildPanel, SFX, sfxTimerSync, loadMarkers,
+     assertEls, frontVersion,
      selectMarker, selectEffect, setAnchor, layoutCanvas, drawMarkers, layoutDensity, tapAB,
      clearAB, lockZoom, isNarrow, setSidebarOpen, loadLibrary, selectSong, loadChart,
      rebuildVisualState, backend, audioLoad, loadRatio, seekTo, play, pause, paintFrame,
@@ -19,6 +20,7 @@
   // —— boot ——
 
   async function main() {
+    assertEls();           // 先自检页面元素：缺了就直接报清楚，别等某个事件炸出白屏
     buildGlowPairOptions();
     buildPanel();
     bindEvents();
@@ -37,6 +39,13 @@
     // 打点音排程器（25ms 一次，和渲染帧率解耦）不再常驻：setPlaying() 会在
     // 起播时开、暂停时关，见 sfxTimerSync()。
     sfxTimerSync();
+    // 侧栏标题右侧那枚版本号：直接来自前端自己 script 标签上的 ?v=。
+    // 不写死在 HTML 里 —— 少一处要跟 VERSION 同步的地方。
+    const brandVer = document.getElementById("brandVer");
+    if (brandVer) {
+      const v = frontVersion();
+      brandVer.textContent = v === "dev" ? "" : "v" + v;
+    }
     window.__player = {
       state,
       markerCfg,
@@ -104,17 +113,33 @@
       };
       if (state.songs.length) ready();
       else {
+        // 曲库是异步加载的，深链接要等它。以前这里是个没有上限的 setInterval：
+        // 曲库加载失败（404 / 断网）就永远每 200ms 醒一次，闭包还一直挂着 ready。
+        // 给个上限，到点就放弃并说明，别默默烧一辈子。
+        const deadline = Date.now() + 20000;
         const timer = setInterval(() => {
           if (state.songs.length) {
             clearInterval(timer);
             ready();
+          } else if (Date.now() > deadline) {
+            clearInterval(timer);
+            console.warn("[jubeat] 曲库 20s 内没加载出来，放弃深链接定位");
           }
         }, 200);
       }
     }
   }
 
-  main();
+  main().catch((err) => {
+    // 启动就失败（最常见的是 assertEls：index.html 和 js 版本对不上）：
+    // 直接把原因写进页面，而不是留一个什么都没解释的白屏。
+    console.error("[jubeat] 启动失败", err);
+    const box = document.createElement("pre");
+    box.style.cssText = "margin:0;padding:24px;color:#ff9d9d;background:#0b0f1a;"
+      + "font:12px/1.7 ui-monospace,Menlo,monospace;white-space:pre-wrap";
+    box.textContent = "启动失败：\n" + (err && err.message ? err.message : String(err));
+    document.body.replaceChildren(box);
+  });
 
   // —— 对外接口 ——
   Object.assign(A, {

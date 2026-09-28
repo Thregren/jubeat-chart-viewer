@@ -10,13 +10,18 @@ from __future__ import annotations
 
 import argparse
 import functools
-import mimetypes
-import os
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+# Range 解析只有一份实现：player/media.py 里的那个（另一份 Node 的在 electron/site-server.js）。
+# 这里以前自己抄了第三份，结果和另外两份分了叉（`bytes=0 - 99` 被这里放行、前导空格反过来
+# 只有这里拒绝），而 tools/test_range.py 的一致性用例表又没把它算进去 —— 于是没人发现。
+# 直接复用，别再有第四份。
+sys.path.insert(0, str(REPO / "铺面查看器" / "player"))
+from media import parse_range  # noqa: E402
 
 TEXT_SUFFIXES = {".html", ".js", ".css", ".json", ".svg"}
 
@@ -52,7 +57,7 @@ class RangeHandler(SimpleHTTPRequestHandler):
             return None
 
         size = path.stat().st_size
-        rng = self._parse_range(self.headers.get("Range", ""), size)
+        rng = parse_range(self.headers.get("Range", ""), size)
         ctype = self.guess_type(str(path))
         try:
             fh = open(path, "rb")
@@ -76,31 +81,6 @@ class RangeHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self._range_left = end - start + 1
         return fh
-
-    @staticmethod
-    def _parse_range(header: str, size: int):
-        if not header.startswith("bytes=") or "," in header or size <= 0:
-            return None
-        spec = header.split("=", 1)[1].strip()
-        if "-" not in spec:
-            return None
-        a, b = spec.split("-", 1)
-        try:
-            if a == "":
-                n = int(b)
-                if n <= 0:
-                    return None
-                return max(0, size - n), size - 1
-            start = int(a)
-            end = int(b) if b else size - 1
-        except ValueError:
-            return None
-        if start < 0 or start >= size:
-            return None
-        end = min(end, size - 1)
-        if end < start:
-            return None
-        return start, end
 
     def copyfile(self, source, outputfile) -> None:
         left = getattr(self, "_range_left", None)

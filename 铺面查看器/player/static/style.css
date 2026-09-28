@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — design tokens
+/* jubeat 谱面确认 — design tokens
    void/cabinet ink amber hold flash muted pad */
 
 :root {
@@ -140,6 +140,24 @@ button, input, select {
   width: 13px;
   height: 13px;
   fill: currentColor;
+}
+
+/* 前端版本号：贴在 GitHub 图标右边，做成「标签」而不是标题的一部分 */
+.brand-ver {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+/* 本地开发没有 ?v=：app.js 会留空，别在标题后面挂一个空框 */
+.brand-ver:empty {
+  display: none;
 }
 
 .brand-text .brand-credit {
@@ -764,74 +782,6 @@ button:focus-visible,
 .pad.hit::after {
   opacity: 1;
   transform: scale(1);
-}
-
-.pad.hold {
-  background: linear-gradient(180deg, #4f74c8, #2c4a9c);
-  border-color: #7ea2f0;
-  box-shadow:
-    0 0 16px rgba(91, 140, 255, 0.45),
-    inset 0 0 18px rgba(255, 255, 255, 0.12);
-}
-
-/* —— hold：扇形填充 + 倒计时 —— */
-.hold-fx {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  opacity: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  overflow: hidden;
-}
-
-.pad.hold .hold-fx {
-  opacity: 1;
-}
-
-/* 12 点起顺时针的扇形，从空填到满 */
-.hold-pie {
-  position: absolute;
-  inset: 0;
-  background: conic-gradient(
-    rgba(235, 245, 255, 0.92) 0deg,
-    rgba(235, 245, 255, 0.92) calc(var(--hp, 0) * 360deg),
-    rgba(20, 32, 64, 0.35) calc(var(--hp, 0) * 360deg),
-    rgba(20, 32, 64, 0.35) 360deg
-  );
-}
-
-/* 中间留一个深色圆盘，让倒计时数字看得清 */
-.pad.hold .hold-pie::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 54%;
-  height: 54%;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: rgba(16, 24, 52, 0.72);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.12),
-    inset 0 0 10px rgba(0, 0, 0, 0.35);
-}
-
-.hold-count {
-  position: relative;
-  z-index: 1;
-  font-family: var(--mono);
-  /* 以前是 clamp(12px, 1.5vw, 17px)：小屏还行，桌面上面板一大就显得太小、
-     录像里几乎看不清。跟着面板尺寸放大一档。 */
-  font-size: clamp(14px, 2.2vw, 30px);
-  font-weight: 700;
-  line-height: 1;
-  color: #f2f7ff;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.7),
-    0 0 8px rgba(120, 170, 255, 0.45);
-  font-variant-numeric: tabular-nums;
 }
 
 .pad.armed {

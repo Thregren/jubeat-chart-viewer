@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 7 层 · 渲染：推进 note 时间轴、单帧绘制与按需重画 */
+/* jubeat 谱面确认 — 第 7 层 · 渲染：推进 note 时间轴、单帧绘制与按需重画 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。
@@ -11,7 +11,7 @@
 
   // —— 更早那层提供的接口 ——
   const { Core, els, state, markerCfg, abLoop, fmtTime, drawMarkers, drawDensity,
-     updateComboDisplay, bumpCombo, setHold, rebuildVisualState, backend, masterPeak, audioNow,
+     updateComboDisplay, bumpCombo, rebuildVisualState, backend, masterPeak, audioNow,
      renderMediaTime, seekTo, play, pause } = A;
 
   // —— frame render ——
@@ -37,10 +37,9 @@
         // 打点音交给 sfxTick 提前排程（不再跟着渲染帧走）
         A.pulseGlow();
       } else {
-        // 立刻进入 hold（长押只占它自己那一格，另一头是尾巴方向，不是第二个键）
+        // 立刻进入 hold。长押的画面（会移动的箭头 / 走廊）全在 app-marker 的
+        // canvas 层按谱面时间画，这里只负责推进状态、连击与打点音。
         n.state = "holding";
-        const end = n.endT ?? n.t + FLASH;
-        setHold(n.index, n.t, end);
         state.hitUntil[n.index] = n.t + FLASH;
         bumpCombo();
         // hold 的头拍同样要有打点音，同样交给排程器
@@ -58,9 +57,6 @@
         n.state = "flashing";
         n.flashEnd = n.endT + FLASH;
         state.hitUntil[n.index] = n.flashEnd;
-        if (state.holdUntil[n.index] > 0 && chartT > n.endT) {
-          state.holdUntil[n.index] = -1;
-        }
       } else if (n.state === "done") {
         state.activeNotes.splice(i, 1);
       }
@@ -68,7 +64,7 @@
   }
 
   /**
-   * 把「某一时刻」的画面画出来：面板灯 / 长押扇形 / marker / 连击 / 物量条。
+   * 把「某一时刻」的画面画出来：面板灯 / 长押箭头 / marker / 连击 / 物量条。
    *
    * 从 updateFrame 里抽出来是为了逐帧录制（?rec=1）：录制时时间由外部给，
    * 直接同步画一帧就行 —— 不用等 rAF，也不用真的按实时播放。
@@ -97,39 +93,15 @@
     for (let i = 0; i < 16; i++) {
       const pad = state.padEls[i];
       if (state.hitUntil[i] > 0 && mediaT > state.hitUntil[i]) state.hitUntil[i] = -1;
-      if (state.holdUntil[i] > 0 && mediaT > state.holdUntil[i]) {
-        state.holdUntil[i] = -1;
-        state.holdFrom[i] = -1;
-      }
 
-      const holdEnd = state.holdUntil[i];
-      const holdStart = state.holdFrom[i];
-      const hold = holdEnd > 0 && mediaT <= holdEnd && holdStart >= 0;
-      const hit =
-        !hold && state.hitUntil[i] > 0 && mediaT <= state.hitUntil[i];
-      const armed = !hit && !hold && state.armed[i];
+      // 长押不再占用 pad 的 CSS 状态（以前是蓝色底 + 扇形倒计时，官方没有这个）：
+      // 它由 canvas 上的「会移动的箭头」表现，这里只管「命中闪灯」和「落点前微亮」。
+      const hit = state.hitUntil[i] > 0 && mediaT <= state.hitUntil[i];
+      const armed = !hit && state.armed[i];
       if (hit) anyHit = true;
 
       if (pad.classList.contains("hit") !== hit) pad.classList.toggle("hit", hit);
-      if (pad.classList.contains("hold") !== hold) pad.classList.toggle("hold", hold);
       if (pad.classList.contains("armed") !== armed) pad.classList.toggle("armed", armed);
-
-      // hold：扇形从空填到满 + 居中倒计时
-      const count = state.holdCountEls[i];
-      if (hold) {
-        const span = holdEnd - holdStart;
-        const p = span > 0 ? (mediaT - holdStart) / span : 1;
-        const hp = Math.min(1, Math.max(0, p)).toFixed(4);
-        if (pad.style.getPropertyValue("--hp") !== hp) pad.style.setProperty("--hp", hp);
-        if (count) {
-          const remain = Math.max(0, holdEnd - mediaT);
-          const text = remain >= 10 ? String(Math.ceil(remain)) : remain.toFixed(1);
-          if (count.textContent !== text) count.textContent = text;
-        }
-      } else {
-        if (pad.style.getPropertyValue("--hp")) pad.style.removeProperty("--hp");
-        if (count && count.textContent) count.textContent = "";
-      }
     }
     els.panelGlow.classList.toggle("on", anyHit);
 

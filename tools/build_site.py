@@ -28,12 +28,10 @@ import argparse
 import concurrent.futures
 import json
 import os
-import re
 import shutil
 import sys
 import time
 import unicodedata
-import zipfile
 from pathlib import Path
 
 TOOLS_DIR = Path(__file__).resolve().parent
@@ -46,7 +44,7 @@ import library  # noqa: E402
 import markers  # noqa: E402
 import thumbs  # noqa: E402
 import version as version_mod  # noqa: E402
-from media import read_member, zip_name, write_atomic  # noqa: E402
+from media import read_member, write_atomic  # noqa: E402
 
 
 def stem_of(rel_id: str) -> str:

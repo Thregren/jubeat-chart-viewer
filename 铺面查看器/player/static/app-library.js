@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 5 层 · 曲库：侧栏折叠 / 锁缩放、列表渲染、选曲与加载谱面 */
+/* jubeat 谱面确认 — 第 5 层 · 曲库：侧栏折叠 / 锁缩放、列表渲染、选曲与加载谱面 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。
@@ -405,8 +405,6 @@
       // .mc 里 type-1 note 的 offset（ms）= beat 0 相对音频起点的时间
       state.baseOffset = (parsed.type1 && Number(parsed.type1.offset)) / 1000 || 0;
       state.hitUntil.fill(-1);
-      state.holdUntil.fill(-1);
-      state.holdFrom.fill(-1);
 
       // highlight diff button
       // 注意：谱面 JSON 顶层只有 meta / time / note / extra，**没有 code**
@@ -464,27 +462,13 @@
 
   function clearPads() {
     state.hitUntil.fill(-1);
-    state.holdUntil.fill(-1);
-    state.holdFrom.fill(-1);
     state.armed.fill(false);
     if (ctx) ctx.clearRect(0, 0, A.canvasW, A.canvasH);
     for (let i = 0; i < state.padEls.length; i++) {
       const pad = state.padEls[i];
-      pad.classList.remove("hit", "hold", "armed");
-      pad.style.removeProperty("--hp");
-      const count = state.holdCountEls[i];
-      if (count && count.textContent) count.textContent = "";
+      pad.classList.remove("hit", "armed");
     }
     els.panelGlow.classList.remove("on");
-  }
-
-  /** 记录某个 pad 上的 hold 区间（取更晚的结束时间） */
-  function setHold(padIndex, from, until) {
-    if (padIndex == null || padIndex < 0 || padIndex > 15) return;
-    if (until >= (state.holdUntil[padIndex] || -1)) {
-      state.holdUntil[padIndex] = until;
-      state.holdFrom[padIndex] = from;
-    }
   }
 
   /** 切歌/切难度：先停播、进度归零、清掉上一首的状态，再去加载新谱面 */
@@ -539,7 +523,6 @@
       if (u.flashEnd != null) u.note.flashEnd = u.flashEnd;
     }
     for (const h of r.padHits) state.hitUntil[h.pad] = h.until;
-    for (const h of r.padHolds) setHold(h.pad, h.from, h.to);
     // notes 已按 t 排序：跳转后游标放在第一颗未来 note，
     // activeNotes 只保留当前还闪 / 还长押的，advanceNotes() 不用每帧扫完整谱面。
     state.noteCursor = r.cursor;
@@ -564,7 +547,6 @@
     renderList,
     selectSong,
     loadChart,
-    setHold,
     rebuildVisualState,
   });
 })();

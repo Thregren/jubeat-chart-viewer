@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 —— 纯逻辑（浏览器 + node 都能用）
+/* jubeat 谱面确认 —— 纯逻辑（浏览器 + node 都能用）
  *
  * 这里只放「输入谱面 JSON / 参数 → 输出 note 列表」这类不碰 DOM 的函数，
  * 于是可以用 node 直接测（tools/test_core.mjs），不用每次都开浏览器。

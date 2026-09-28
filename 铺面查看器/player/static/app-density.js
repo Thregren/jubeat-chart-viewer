@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 4 层 · 物量条：note 密度柱状图、拖动定位、连击计数与 A–B 段落循环打点 */
+/* jubeat 谱面确认 — 第 4 层 · 物量条：note 密度柱状图、拖动定位、连击计数与 A–B 段落循环打点 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。

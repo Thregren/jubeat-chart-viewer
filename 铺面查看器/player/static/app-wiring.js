@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 8 层 · 交互：控件事件绑定、URL 参数（?t= / ?v= 等）与前端版本自检 */
+/* jubeat 谱面确认 — 第 8 层 · 交互：控件事件绑定、URL 参数（?t= / ?v= 等）与前端版本自检 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。
@@ -11,7 +11,8 @@
 
   // —— 更早那层提供的接口 ——
   const { el, frontVersion, els, state, DEFAULT_MARKER_SPEED, markerCfg, numCfg, clampNumScale,
-     clampNumAlpha, abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent, fmtTime, toast, seProbe,
+     clampNumAlpha, clampNumGlowAlpha, abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
+     fmtTime, toast, seProbe,
      playMetro, sfxReset, setPlaying, currentAnchor, selectMarker, selectEffect, setAnchor,
      layoutCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
      updateComboDisplay, bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
@@ -27,10 +28,17 @@
   function urlState() {
     const p = new URLSearchParams(location.search);
     const tRaw = p.get("t");
+    // ?t=：只认「非空 + 是有限数 + 不为负」。以前只判 isFinite()，于是
+    // `?t=%20%20`（全空格）→ Number("") = 0、`?t=-5` 也被放行，定位到莫名其妙的位置。
+    // 上界不在这里管：seekTo() 会按音频 / 谱面长度再夹一次。
+    const tNum = tRaw == null || tRaw.trim() === "" ? NaN : Number(tRaw);
+    // ?chart=：难度码只可能是 BSC/ADV/EXT 这种短标识，畸形值当没给（走默认难度）
+    const chartRaw = p.get("chart");
+    const chart = chartRaw && /^[A-Za-z0-9_-]{1,8}$/.test(chartRaw) ? chartRaw : null;
     return {
       song: p.get("song"),
-      chart: p.get("chart"),
-      t: tRaw != null && tRaw !== "" && isFinite(Number(tRaw)) ? Number(tRaw) : null,
+      chart,
+      t: Number.isFinite(tNum) && tNum >= 0 ? tNum : null,
       paused: p.get("paused") === "1",
       play: p.get("play") === "1",
     };
@@ -115,6 +123,12 @@
         els.numAlphaLabel.textContent = els.numAlpha.value + "%";
       });
       els.numAlpha.addEventListener("change", () => store(STORAGE.numAlpha, els.numAlpha.value));
+      // 「光晕透明度」：只淡同押光晕那一层，0% 就是关掉光晕只留数字。
+      els.numGlowAlpha.addEventListener("input", () => {
+        numCfg.glowAlpha = clampNumGlowAlpha((Number(els.numGlowAlpha.value) || 0) / 100);
+        els.numGlowAlphaLabel.textContent = els.numGlowAlpha.value + "%";
+      });
+      els.numGlowAlpha.addEventListener("change", () => store(STORAGE.numGlowAlpha, els.numGlowAlpha.value));
       els.numCorner.addEventListener("change", () => {
         numCfg.corner = els.numCorner.checked;
         store(STORAGE.numCorner, els.numCorner.checked ? "1" : "0");
@@ -147,6 +161,7 @@
         showNumbers: store(STORAGE.showNumbers),
         numScale: store(STORAGE.numScale),
         numAlpha: store(STORAGE.numAlpha),
+        numGlowAlpha: store(STORAGE.numGlowAlpha),
         numCorner: store(STORAGE.numCorner),
         showChordGlow: store(STORAGE.showChordGlow),
         phraseMult: store(STORAGE.phraseMult),
@@ -191,6 +206,11 @@
         els.numAlpha.value = saved.numAlpha;
         numCfg.alpha = clampNumAlpha((Number(saved.numAlpha) || 100) / 100);
         els.numAlphaLabel.textContent = els.numAlpha.value + "%";
+      }
+      if (saved.numGlowAlpha != null) {
+        els.numGlowAlpha.value = saved.numGlowAlpha;
+        numCfg.glowAlpha = clampNumGlowAlpha((Number(saved.numGlowAlpha) || 0) / 100);
+        els.numGlowAlphaLabel.textContent = els.numGlowAlpha.value + "%";
       }
       if (saved.numCorner != null) {
         els.numCorner.checked = saved.numCorner === "1";

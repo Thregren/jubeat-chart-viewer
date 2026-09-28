@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 6 层 · 播放：WebAudio / <audio> 两种后端、音源加载进度、seek / play / pause */
+/* jubeat 谱面确认 — 第 6 层 · 播放：WebAudio / <audio> 两种后端、音源加载进度、seek / play / pause */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。

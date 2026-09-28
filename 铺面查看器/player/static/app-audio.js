@@ -1,4 +1,4 @@
-/* jubeat 铺面确认 — 第 2 层 · 音效：合成音 / 真素材（media/se）加载、打点音排程与输出总线 */
+/* jubeat 谱面确认 — 第 2 层 · 音效：合成音 / 真素材（media/se）加载、打点音排程与输出总线 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。

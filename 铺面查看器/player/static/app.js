@@ -11,11 +11,22 @@
 
   // —— 更早那层提供的接口 ——
   const { state, markerCfg, numCfg, abLoop, buildPanel, SFX, sfxTimerSync, loadMarkers,
-     assertEls, frontVersion,
+     assertEls, frontVersion, toast,
      selectMarker, selectEffect, setAnchor, layoutCanvas, drawMarkers, layoutDensity, tapAB,
      clearAB, lockZoom, isNarrow, setSidebarOpen, loadLibrary, selectSong, loadChart,
      rebuildVisualState, backend, audioLoad, loadRatio, seekTo, play, pause, paintFrame,
      requestPaint, updateFrame, urlState, buildGlowPairOptions, bindEvents, checkFrontVersion } = A;
+
+  /**
+   * 是不是 iOS / iPadOS。
+   * iPadOS 13 起默认把自己装成 macOS（platform 是 MacIntel），所以还得靠触摸点数认出来。
+   * 这两个平台上所有浏览器内核都是 WebKit，静音拨片一拨全都哑，所以不区分具体浏览器。
+   */
+  function isIOSFamily() {
+    const ua = navigator.userAgent || "";
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+    return navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1;
+  }
 
   // —— boot ——
 
@@ -25,6 +36,11 @@
     buildPanel();
     bindEvents();
     lockZoom();            // 手机上锁死页面缩放
+    // iOS / iPadOS 的「静音拨片」一开，WebAudio 和 <audio> 都直接哑掉，而页面拿不到
+    // 这个状态（没有任何 API 能读）。所以只能主动提示一次，免得用户以为播放器坏了。
+    if (isIOSFamily()) {
+      setTimeout(() => toast("检测到 iOS / iPadOS：请关掉系统静音（侧边拨片），否则可能没有声音", false, 7000), 900);
+    }
     checkFrontVersion();
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) checkFrontVersion();

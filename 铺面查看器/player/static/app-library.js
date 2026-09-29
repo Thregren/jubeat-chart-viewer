@@ -12,7 +12,8 @@
   // —— 更早那层提供的接口 ——
   const { Core, el, els, state, STORAGE, versionRank, versionLabel, diffClass, songMeta, chartOf,
      PATHS, chartPath, audioUrl, coverUrl, thumbUrl, store, parseNotes, fmtTime, computeDuration,
-     toast, setPlaying, ctx, layoutCanvas, buildDensity, layoutDensity, resetCombo, clearAB } = A;
+     toast, setPlaying, ctx, layoutCanvas, buildDensity, layoutDensity, resetCombo, clearAB,
+     normalizeSearch } = A;
 
   function lockZoom() {
     const stop = (e) => e.preventDefault();
@@ -106,6 +107,9 @@
 
   function visibleSongs() {
     const q = els.search.value.trim().toLowerCase();
+    // 归一化后的关键词：`SCU` 也能命中 `S-C-U`（见 app-base 的 normalizeSearch）。
+    // 归一化后为空（关键词全是符号）就退回原来的字面匹配。
+    const nq = normalizeSearch(q);
     const ver = els.versionFilter.value;
     const holdMode = els.holdFilter.value;
     const fkey = `${q}\u0000${ver}\u0000${holdMode}`;
@@ -117,7 +121,9 @@
           if (holdMode === "hold" && !hasHold(s)) return false;
           if (holdMode === "nohold" && hasHold(s)) return false;
           if (!q) return true;
-          return songMeta(s).searchFields.some((field) => field.includes(q));
+          const meta = songMeta(s);
+          if (meta.searchFields.some((field) => field.includes(q))) return true;
+          return nq.length > 0 && meta.searchNorm.some((field) => field.includes(nq));
         }),
       };
       sortCache = { key: null, list: [] };

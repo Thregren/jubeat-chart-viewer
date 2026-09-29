@@ -4,7 +4,7 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.6`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.7`，由 `tools/set_version.py` 同步）。
 
 [![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
@@ -19,7 +19,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.6`，由 `tools/set_v
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.6** · [Release notes](docs/release-v0.6.6.md) ·
+当前版本：**v0.6.7** · [Release notes](docs/release-v0.6.7.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -295,6 +295,9 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ### 曲库面板
 
 - 搜索框（曲名 / 机台 / 作曲，输入停顿 120 ms 后本地过滤）、机台版本筛选、长押筛选
+  - **忽略符号**：关键词和曲名都先做 NFKC + 小写 + 去掉空白 / 标点 / 符号再比，
+    所以 `SCU` 能搜到 `S-C-U`、`jubeat plus` 能搜到 `jubeat+`；先按原样匹配一遍，
+    没命中才走归一化这条，避免把本来能精确命中的结果排到后面
 - 8 种排序：曲名、推出版本（旧→新）、BSC/ADV/EXT 等级（高→低）、BSC/ADV/EXT note 数（多→少）
 - 列表项显示缩略图（`loading="lazy"`，滚到才加载）、曲名、版本、作曲、三难度等级
 - 窄屏下曲库是抽屉：顶栏整条可点，选完曲自动收起
@@ -460,11 +463,24 @@ tap 命中后同样播 marker 的收尾帧 / 判定特效。
 
 ### 物量条与拖动跳转
 
-控制条上方按 **2 秒一段**画出整首歌的 note 密度（越高越黄、峰值白色），**它就同时是进度条**：
+控制条上方是**官方结算画面那条分布图的画法**：一格一格的小正方形码成柱状，**它同时是进度条**。
+
+官方那套的关键在于「方格是正方形」——所以横着一格多宽没得挑，只能由条子的高度反推：
+我们这条只有桌面 36 px / 窄屏 46 px 高，就**少码几层**（桌面 4 层、窄屏 6 层），
+而不是把方块拉成竖条（那样一眼就不是官方那个样子了）。
+
+- 方块 **5 px**（4 px 亮面 + 1 px 暗缝），暗金边 + 金芯，所以缩到 36 px 高也看得出是「小方块」
+- 柱高按这一段（约 0.5 秒）的 note 数线性映射到层数，**有 note 就至少亮一格**，
+  于是底部总有一条连贯的基线，上面是高低起伏
+- **长押覆盖的整列填满**（那段时间手指一直按着），颜色和普通列**完全一样**
+- 每 30 秒一条淡竖线，条子够高（≥ 40 px）才写刻度，免得字糊住方块
+
+拖动：
 
 - 按住拖动 = 跳转（拖动期间只更新画面预览，**松手才真正 seek 一次**，避免把音频管线打断）
-- 松手后恢复原来的播放状态；悬停显示该时段有多少 note
-- 柱子按 `duration` 铺满整条，所以「看得到柱子的地方就有内容」
+- 松手后恢复原来的播放状态；悬停显示该时间点**前后各 1 秒**里有多少 note
+  （柱子本身细到不到 1 秒，再按「某一格」报数既看不清也没意义）
+- 方块按 `duration` 铺满整条，所以「看得到方块的地方就有内容」
 - 高度：桌面 36 px、窄屏 46 px、特别矮的屏 32 px
 
 ### 音源加载进度
@@ -551,6 +567,10 @@ marker 与动画速度，录制预设会写进 localStorage，保证每段画面
 - **页面缩放锁死**：`viewport` 里写了 `maximum-scale=1, user-scalable=no`，
   `touch-action: pan-x pan-y` 掐掉捏合，另外用 `lockZoom()` 拦掉 iOS 不认 viewport 时的
   双指手势（`gesturestart/change/end`）、多指 `touchmove`、双击缩放和 `ctrl+滚轮` 缩放
+- **iOS / iPadOS 进页面会提示一次「关掉系统静音」**（7 秒后自动消失）：静音拨片一拨，
+  WebAudio 和 `<audio>` 一起哑，而页面**没有任何 API 能读到这个状态**，只能主动提醒一句，
+  免得用户以为播放器坏了。iPadOS 13 起 `navigator.platform` 是 `MacIntel`，
+  所以还要靠 `maxTouchPoints > 1` 一起认
 
 ## 时间轴与对齐
 
@@ -592,6 +612,21 @@ t_chart = audio.currentTime + offset(ms) − 谱面自身起点偏移
 - **seek 的位置同时记在 `anchorPos`**：解码完成切到 WebAudio 后端时，时钟要从这里接着走，
   否则位置会跳回 0（深链接 `?t=`、暂停时拖动都会中招）
 - 打点音是**提前 120 ms 用 WebAudio 时间轴排好**的，和渲染帧率解耦
+
+### 切后台再回来
+
+手机浏览器（尤其 iOS）把标签页切到后台时会把 WebAudio 挂起，**已经起播的 `BufferSource`
+还可能被直接掐死**——这时候光 `resume()` 没用，源已经没了，画面照走却没声音，
+以前唯一的办法是刷新页面。现在：
+
+- 进后台时记下播放位置；回到前台（或下一次触摸 / 按键）等 `AudioContext` 真的回到
+  `running`，再按那个位置**重起一个源**接上
+- `resume()` 在 iOS 上是异步的、还可能先 resolve 而状态仍是 `interrupted`，
+  所以是「resume + 每 120 ms 轮询状态」一起上，最多等约 1.5 秒（等不到也照办，别把播放卡死）
+- 桌面端切标签页时 `AudioContext` 一般还是 `running`，这条路直接返回、**不重建源**，
+  所以不会听出一次断音
+- 触摸 / 按键上还挂了一层兜底：任何一次手势发现 `AudioContext` 不在 `running`，
+  就顺手走一遍上面这套（iOS 上 `resume()` 只有手势里调才一定成功）
 
 排查对拍问题：`?debug=1` 会在左下角显示 `chart` / `audio` / 后端 / 输出峰值，
 `mode=wa` 表示走 WebAudio，`out=` 是输出上的实时峰值（恒为 0 就说明声音没送出去）。
@@ -716,21 +751,21 @@ nginx 上要保证的四件事：
 一次改完全部 `?v=` **和侧栏那枚版本号徽章**，不用手改）：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.6" />
-<link rel="stylesheet" href="static/record.css?v=0.6.6" />
-<script src="static/sfx.js?v=0.6.6"></script>
-<script src="static/core.js?v=0.6.6"></script>
-<script src="static/record.js?v=0.6.6"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.7" />
+<link rel="stylesheet" href="static/record.css?v=0.6.7" />
+<script src="static/sfx.js?v=0.6.7"></script>
+<script src="static/core.js?v=0.6.7"></script>
+<script src="static/record.js?v=0.6.7"></script>
 <!-- 下面 9 行的顺序不能改：每一层只依赖比它更早的那几层 -->
-<script src="static/app-base.js?v=0.6.6"></script>
-<script src="static/app-audio.js?v=0.6.6"></script>
-<script src="static/app-marker.js?v=0.6.6"></script>
-<script src="static/app-density.js?v=0.6.6"></script>
-<script src="static/app-library.js?v=0.6.6"></script>
-<script src="static/app-player.js?v=0.6.6"></script>
-<script src="static/app-render.js?v=0.6.6"></script>
-<script src="static/app-wiring.js?v=0.6.6"></script>
-<script src="static/app.js?v=0.6.6"></script>
+<script src="static/app-base.js?v=0.6.7"></script>
+<script src="static/app-audio.js?v=0.6.7"></script>
+<script src="static/app-marker.js?v=0.6.7"></script>
+<script src="static/app-density.js?v=0.6.7"></script>
+<script src="static/app-library.js?v=0.6.7"></script>
+<script src="static/app-player.js?v=0.6.7"></script>
+<script src="static/app-render.js?v=0.6.7"></script>
+<script src="static/app-wiring.js?v=0.6.7"></script>
+<script src="static/app.js?v=0.6.7"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -755,11 +790,11 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.6-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.6-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.6-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.7-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.7-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.7-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.6）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.7）的附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
@@ -819,7 +854,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 2. 提版本号 —— 权威值只有仓库根的 `VERSION`，其余位置由脚本铺开：
 
    ```bash
-   python3 tools/set_version.py 0.6.6     # 写 VERSION + index.html 的 ?v= 与版本号徽章 + electron 包版本
+   python3 tools/set_version.py 0.6.7     # 写 VERSION + index.html 的 ?v= 与版本号徽章 + electron 包版本
    ```
 3. 本地验证：`sh tools/check.sh --release`，再 `python3 tools/build_site.py`（曲库有变动时）+ `tools/serve.py` 预览
 4. 构建桌面版轻量包：`sh tools/pack_desktop.sh`（产物自动收回 `electron/dist`）

@@ -349,6 +349,15 @@
     // 切回前台 / 重新可见时，确保音频图还在跑（隐藏页面里 WebAudio 可能被挂起）
     document.addEventListener("visibilitychange", keepAudioAlive);
     window.addEventListener("focus", keepAudioAlive);
+    // 兜底：任何一次用户手势都顺便确认一次 AudioContext。iOS 上被系统挂起后，
+    // resume() 只有在手势里调用才一定成功；真挂起过的话 keepAudioAlive() 会
+    // 顺带把已经死掉的音源按挂起前的位置重建。
+    const nudgeAudio = () => {
+      const ctx = A.audioCtx;
+      if (ctx && ctx.state !== "running") keepAudioAlive();
+    };
+    document.addEventListener("pointerdown", nudgeAudio, true);
+    document.addEventListener("keydown", nudgeAudio, true);
 
     bindLoadEvents();     // 音源加载进度：<audio> 的缓冲状态都在这里收
 

@@ -450,10 +450,67 @@
     return Number.isFinite(l) && l > 0 ? Math.min(0.2, l) : 0;
   }
 
-  /** 页面切回前台时，如果 AudioContext 被系统挂起了就恢复（否则会没声音） */
+  // —— 前后台切换：把被系统掐掉的音频接回来 ——
+  //
+  // 手机浏览器（尤其 iOS）把标签页切到后台时会把 WebAudio 挂起：AudioContext 进入
+  // suspended / interrupted，已经起播的 BufferSource 还可能被直接掐死。
+  // 光 resume() 是救不回来的 —— 源已经没了，画面在走却没声音，只能刷新页面。
+  // 所以这里：进后台记下位置，回前台（或下一次手势）等 AudioContext 真的回到 running
+  // 之后，按那个位置重新起一个源。
+  let suspendedPos = null;      // 进后台那一刻的播放位置（音频秒）；null = 当时没在播
+
+  /** 现在是「整首解码好了、走 WebAudio」这条后端吗 */
+  function webaudioLive() {
+    return backend.mode === "webaudio" && !!backend.buf;
+  }
+
+  /**
+   * 等 AudioContext 真的回到 running 再回调。
+   * iOS 上 resume() 是异步的，而且可能先 resolve、状态还停在 interrupted，
+   * 所以这里「resume + 轮询」一起上，最多等约 1.5 秒，到点就照办（别把播放卡死）。
+   */
+  function whenAudioRunning(cb, tries = 12) {
+    const ctx = A.audioCtx;
+    if (!ctx) return;
+    if (ctx.state === "running") {
+      cb();
+      return;
+    }
+    ctx.resume().catch(() => {});
+    if (tries <= 0) {
+      cb();
+      return;
+    }
+    setTimeout(() => whenAudioRunning(cb, tries - 1), 120);
+  }
+
+  /** AudioContext 被系统挂起时把播放接回来（挂着的时候调它才有意义） */
+  function reviveAudio(pos) {
+    const at = pos != null ? pos : audioNow();
+    if (!state.playing) return;
+    if (webaudioLive()) startBufferAt(at).catch(() => {});
+    else if (els.audio.paused) els.audio.play().catch(() => {});
+  }
+
+  /**
+   * 页面切回前台 / 重新获得焦点时调一次。
+   * 状态还是 running 就说明系统没动过音频（桌面端切标签页基本都这样），
+   * 这时候什么都不做 —— 重建源会听出一次断音。
+   */
   function keepAudioAlive() {
-    if (!A.audioCtx) return;
-    if (state.playing && A.audioCtx.state !== "running") A.audioCtx.resume().catch(() => {});
+    if (document.hidden) {
+      suspendedPos = state.playing ? audioNow() : null;
+      return;
+    }
+    const ctx = A.audioCtx;
+    if (!ctx) return;
+    if (ctx.state === "running") {
+      suspendedPos = null;
+      return;
+    }
+    const pos = suspendedPos != null ? suspendedPos : audioNow();
+    suspendedPos = null;
+    whenAudioRunning(() => reviveAudio(pos));
   }
 
   // audio 元素的 currentTime 大约每 30~40ms 才更新一次，直接拿来驱动渲染会一顿一顿的

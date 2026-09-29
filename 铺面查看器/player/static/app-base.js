@@ -262,6 +262,18 @@
   // 上千首曲子会反复查 chartOf / hasHold / 搜索字段；这些派生值每首只算一次。
   const songMetaCache = new WeakMap();
 
+  /**
+   * 搜索用的归一化：NFKC（全角 → 半角、合成字符拆成基字 + 组合符）+ 小写 +
+   * 去掉所有空白 / 标点 / 符号。目的是「无视符号」匹配 ——
+   * 输入 `SCU` 也能搜到 `S-C-U`，输入 `jubeat plus` 也能搜到 `jubeat+`。
+   */
+  function normalizeSearch(value) {
+    return String(value == null ? "" : value)
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[\s\p{P}\p{S}]/gu, "");
+  }
+
   function songMeta(song) {
     let meta = songMetaCache.get(song);
     if (meta) return meta;
@@ -274,12 +286,13 @@
       if (!bsc && (c.code === "BSC" || c.code === "BAS")) bsc = c;
       if ((c.holds || 0) > 0) hasHold = true;
     }
+    const fields = [song.title, song.artist, song.version].filter(Boolean).map(String);
     meta = {
       charts,
       bsc,
       hasHold,
-      searchFields: [song.title, song.artist, song.version]
-        .filter(Boolean).map((value) => String(value).toLowerCase()),
+      searchFields: fields.map((value) => value.toLowerCase()),
+      searchNorm: fields.map(normalizeSearch),
     };
     songMetaCache.set(song, meta);
     return meta;
@@ -442,14 +455,14 @@
     return Math.max(dur, 1);
   }
 
-  function toast(msg, isErr = false) {
+  function toast(msg, isErr = false, ms = 3200) {
     els.toast.hidden = false;
     els.toast.textContent = msg;
     els.toast.classList.toggle("err", isErr);
     clearTimeout(toast._t);
     toast._t = setTimeout(() => {
       els.toast.hidden = true;
-    }, 3200);
+    }, ms);
   }
 
   // —— panel ——
@@ -492,6 +505,7 @@
     versionLabel,
     diffClass,
     songMeta,
+    normalizeSearch,
     chartOf,
     PATHS,
     encPath,

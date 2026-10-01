@@ -4,7 +4,7 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.7`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.8`，由 `tools/set_version.py` 同步）。
 
 [![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
@@ -19,7 +19,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.7`，由 `tools/set_v
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.7** · [Release notes](docs/release-v0.6.7.md) ·
+当前版本：**v0.6.8** · [Release notes](docs/release-v0.6.8.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -112,7 +112,7 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
         │
         │  tools/build_site.py   展开 + 生成索引；增量（按 mtime 跳过已是最新的），--prune 清理删掉的曲
         ▼
-site/                           ← 唯一的「运行时数据」，约 2.9 GB
+site/                           ← 唯一的「运行时数据」，约 2.0 GB
 ├── index.html                    前端页面（15 KB）
 ├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（14 KB，node 可测）
 ├── static/app-base.js            前端第 1 层：DOM 句柄 / state / 常量 / 曲库元数据（17 KB）
@@ -131,14 +131,16 @@ site/                           ← 唯一的「运行时数据」，约 2.9 GB
 ├── data/library.json             曲库索引（428 KB，gzip 后约 63 KB）
 ├── data/markers.json             marker 清单（12 套 + 1 种判定特效）
 ├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 4103 个）
-├── media/audio/<曲目>.ogg        音源（2.4 GB）
-├── media/cover/<曲目>.<ext>      封面原图（203 MB）
+├── media/audio/<曲目>.ogg        音源（Ogg Opus 80k，1.5 GB）
+├── media/cover/<曲目>.<ext>      封面原图（202 MB）
 ├── media/thumb/<曲目>.jpg        列表缩略图 96px（11 MB）
 └── markers/                     marker 逐帧素材（4.6 MB）
 ```
 
-- **一次展开，到处跑**：`.ogg` 本身已压缩，构建只是「解 zip + 改名 + 生成索引」，
-  当前曲库（1371 首）首次约 50 秒、之后增量 3 秒左右
+- **一次展开，到处跑**：构建做两件事 —— 解 zip 改名，加索引；音源顺手从 mcz 里的
+  **Vorbis 转成 Ogg Opus 80k**（体积砍掉三分之一，听感基本一样，见 `tools/audio_opus.py`）。
+  当前曲库（1371 首）首次约 4 分钟（其中转码约 3 分钟，之后有内容哈希缓存），增量 3 秒左右；
+  本机没装 `ffmpeg` 时不转码、原样复制，站点照跑，只是包大一圈
 - **索引里就带 note / hold 数**，列表排序、筛选、物量条都不用再读谱面
 - 曲库（`music/`）和产物（`site/` 等）都**不入库**，仓库里只有代码和 marker 素材
 
@@ -698,7 +700,7 @@ sh tools/pack_desktop.sh       # 打完自动收回 electron/dist（脚本没有
 想手工跑的话：
 
 ```bash
-npm run dist                  # 默认把 site/ 打进包里（每个平台约 2.9 GB）
+npm run dist                  # 默认把 site/ 打进包里（每个平台约 1.9 GB）
 NO_WINE=1 npm run dist:win    # 没有 wine 的机器上打 Windows 包（跳过 exe 图标/版本信息）
 ```
 
@@ -751,21 +753,21 @@ nginx 上要保证的四件事：
 一次改完全部 `?v=` **和侧栏那枚版本号徽章**，不用手改）：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.7" />
-<link rel="stylesheet" href="static/record.css?v=0.6.7" />
-<script src="static/sfx.js?v=0.6.7"></script>
-<script src="static/core.js?v=0.6.7"></script>
-<script src="static/record.js?v=0.6.7"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.8" />
+<link rel="stylesheet" href="static/record.css?v=0.6.8" />
+<script src="static/sfx.js?v=0.6.8"></script>
+<script src="static/core.js?v=0.6.8"></script>
+<script src="static/record.js?v=0.6.8"></script>
 <!-- 下面 9 行的顺序不能改：每一层只依赖比它更早的那几层 -->
-<script src="static/app-base.js?v=0.6.7"></script>
-<script src="static/app-audio.js?v=0.6.7"></script>
-<script src="static/app-marker.js?v=0.6.7"></script>
-<script src="static/app-density.js?v=0.6.7"></script>
-<script src="static/app-library.js?v=0.6.7"></script>
-<script src="static/app-player.js?v=0.6.7"></script>
-<script src="static/app-render.js?v=0.6.7"></script>
-<script src="static/app-wiring.js?v=0.6.7"></script>
-<script src="static/app.js?v=0.6.7"></script>
+<script src="static/app-base.js?v=0.6.8"></script>
+<script src="static/app-audio.js?v=0.6.8"></script>
+<script src="static/app-marker.js?v=0.6.8"></script>
+<script src="static/app-density.js?v=0.6.8"></script>
+<script src="static/app-library.js?v=0.6.8"></script>
+<script src="static/app-player.js?v=0.6.8"></script>
+<script src="static/app-render.js?v=0.6.8"></script>
+<script src="static/app-wiring.js?v=0.6.8"></script>
+<script src="static/app.js?v=0.6.8"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -786,15 +788,15 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 **带全量曲库**的桌面版整包（解压即用，不必自备 `site/`）见
 [文首网盘链接](https://pan.quark.cn/s/e9c12157e039)；下面这批 Release 附件是**不带曲库**的轻量包
-（每个约 100 MB；GitHub 单个附件上限 2 GB，而带曲库的整包 2.9 GB 传不上去）：
+（每个约 100 MB；GitHub 单个附件上限 2 GB，而带曲库的整包 1.9 GB 已经贴着上限，传上去也难受）：
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.7-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.7-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.7-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.8-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.8-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.8-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.7）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.8）的附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
@@ -854,7 +856,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 2. 提版本号 —— 权威值只有仓库根的 `VERSION`，其余位置由脚本铺开：
 
    ```bash
-   python3 tools/set_version.py 0.6.7     # 写 VERSION + index.html 的 ?v= 与版本号徽章 + electron 包版本
+   python3 tools/set_version.py 0.6.8     # 写 VERSION + index.html 的 ?v= 与版本号徽章 + electron 包版本
    ```
 3. 本地验证：`sh tools/check.sh --release`，再 `python3 tools/build_site.py`（曲库有变动时）+ `tools/serve.py` 预览
 4. 构建桌面版轻量包：`sh tools/pack_desktop.sh`（产物自动收回 `electron/dist`）
@@ -881,8 +883,8 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 
 | 项 | 做法 |
 |---|---|
-| 体积 | 2.9 GB 里 2.4 GB 是音源（Ogg 已压过，压不动）；封面原图按需加载，列表只用 96px 缩略图（11 MB） |
-| 带宽 | 一首歌 ≈ 2 MB，听一遍 ≈ 2 MB；索引 gzip 后 63 KB，只拉一次 |
+| 体积 | 2.0 GB 里 1.5 GB 是音源（**Ogg Opus 80k**，比原来的 Vorbis 128k 小三成半且听感相当）；封面原图按需加载，列表只用 96px 缩略图（11 MB） |
+| 带宽 | 一首歌 ≈ 1.2 MB，听一遍 ≈ 1.2 MB；索引 gzip 后 63 KB，只拉一次 |
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
 | 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
 | 首屏 | 只拉 `index.html` + 前端（合计约 223 KB，gzip 后约 83 KB）+ 索引（gzip 后约 63 KB）和当前可见行的缩略图 |
@@ -890,7 +892,9 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 
 ## 已知限制
 
-- **Safari 不支持 Ogg Vorbis**：没声音就换 Chrome / Edge；另外浏览器要求先有一次页面交互才允许播放
+- **音源是 Ogg Opus**：Chrome / Edge / Firefox / 各安卓浏览器都没问题；Safari 要 **18.4** 以上
+  才认 Ogg 容器，而桌面 Safari 还得 **macOS 15.4（Sequoia）**以上才带 Opus 解码器 ——
+  够不上时页面会弹一条提示让人换 Chrome / Edge / Firefox；另外浏览器要求先有一次页面交互才允许播放
 - **曲库里有 48 个包没被索引**：它们的谱面文件名是 `曲名_难度.mc`（缺 `Lv<等级>`），
   目前只认 `曲名_难度 Lv<等级>.mc`。需要的话可以放开这条规则（等级改从谱面 JSON 里读）
 - **5 个封面在源包里就是坏的 PNG**（HEKIREKI、こどなの階段、となりのトトロ feat_sayurina、マスターピース、女々しくて），

@@ -28,6 +28,22 @@
     return navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1;
   }
 
+  /**
+   * 浏览器能不能解码 Ogg Opus（站点音源从 v0.6.8 起都是 Opus）。
+   * 绝大多数环境都没问题：Chromium 系（Chrome / Edge / 安卓各种套壳）、Firefox、
+   * 移动端 Safari（iOS 18.4 起和 Vorbis 一起支持）。唯一的窄口子是桌面 Safari：
+   * 18.4 起才认得 Ogg 容器，而 Opus 还要 macOS 15.4（Sequoia）以上的系统解码器。
+   * 探针只是「多说一句」，不影响任何播放逻辑 —— 真放不出来时下面的 <audio> /
+   * decodeAudioData 本来就会报错。
+   */
+  function canDecodeOpus() {
+    try {
+      return document.createElement("audio").canPlayType('audio/ogg; codecs="opus"') !== "";
+    } catch (_) {
+      return true;      // 探针本身不添乱：测不出来就当作能用
+    }
+  }
+
   // —— boot ——
 
   async function main() {
@@ -36,9 +52,14 @@
     buildPanel();
     bindEvents();
     lockZoom();            // 手机上锁死页面缩放
-    // iOS / iPadOS 的「静音拨片」一开，WebAudio 和 <audio> 都直接哑掉，而页面拿不到
-    // 这个状态（没有任何 API 能读）。所以只能主动提示一次，免得用户以为播放器坏了。
-    if (isIOSFamily()) {
+    // 先探音源格式，再谈静音拨片：解码不了的时候「关静音」是句废话，
+    // 同一条提示位优先说更要紧的那件事（toast 只有一个元素，后弹的会盖掉前一个）。
+    if (!canDecodeOpus()) {
+      setTimeout(() => toast("当前浏览器无法解码 Opus 音源：请改用 Chrome / Edge / Firefox，"
+        + "或把 macOS 升级到 15.4 以上", true, 9000), 900);
+    } else if (isIOSFamily()) {
+      // iOS / iPadOS 的「静音拨片」一开，WebAudio 和 <audio> 都直接哑掉，而页面拿不到
+      // 这个状态（没有任何 API 能读）。所以只能主动提示一次，免得用户以为播放器坏了。
       setTimeout(() => toast("检测到 iOS / iPadOS：请关掉系统静音（侧边拨片），否则可能没有声音", false, 7000), 900);
     }
     checkFrontVersion();

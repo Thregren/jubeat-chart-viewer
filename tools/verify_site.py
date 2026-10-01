@@ -126,8 +126,19 @@ def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[s
     if known_audio:
         rel = f"media/audio/{stem}.ogg"
         want.add(rel)
-        size = (out / rel).stat().st_size if (out / rel).is_file() else 0
+        path = out / rel
+        size = path.stat().st_size if path.is_file() else 0
         r.check(f"音源 {rel}", size > 1024, f"{size}B")
+        # 音源从 0.6.8 起是 Ogg Opus。构建机上没有 ffmpeg 时会退回源格式（Vorbis），
+        # 站点照样能用，只是包大一圈 —— 报成警告，别把这种「知道的降级」当错误。
+        if size > 1024:
+            try:
+                with open(path, "rb") as fh:
+                    head = fh.read(64)
+            except OSError:
+                head = b""
+            if b"OpusHead" not in head:
+                r.warn(f"音源编码 {rel}", "不是 Opus（构建时没有 ffmpeg？安装包会大一截）")
     elif audio_map is None and (out / rel_audio).is_file():
         # 没有完整索引可查：只要这首歌还在库索引里，它的音源就不算孤儿文件
         want.add(rel_audio)

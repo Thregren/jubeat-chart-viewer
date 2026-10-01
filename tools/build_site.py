@@ -8,7 +8,7 @@
       data/library.json                  曲库索引
       data/markers.json                  marker 清单（路径已改成站内相对路径）
       data/charts/<曲目>/<难度>.json       谱面
-      media/audio/<曲目>.ogg              音源
+      media/audio/<曲目>.ogg              音源（mcz 里的 Vorbis 转成 Opus，见 audio_opus.py）
       media/cover/<曲目>.<ext>            封面原图
       media/thumb/<曲目>.jpg              列表缩略图（96px）
       markers/...                        marker 素材
@@ -40,11 +40,17 @@ PLAYER_DIR = REPO / "铺面查看器" / "player"
 sys.path.insert(0, str(PLAYER_DIR))
 
 import config  # noqa: E402
+import audio_opus  # noqa: E402
 import library  # noqa: E402
 import markers  # noqa: E402
 import thumbs  # noqa: E402
 import version as version_mod  # noqa: E402
 from media import read_member, write_atomic  # noqa: E402
+
+# 音源转码缓存（内容哈希命名，跨构建复用；cache/ 整个目录不入库）
+AUDIO_CACHE_DIR = config.CACHE_DIR / "audio-opus"
+# 本机能不能转 Opus（没装 ffmpeg 就只能保持源格式，站点照用，包大一圈）
+WANT_OPUS = bool(audio_opus.ffmpeg())
 
 
 def stem_of(rel_id: str) -> str:
@@ -101,6 +107,10 @@ class Stats:
         # 前端会退化成一个 ♪ 占位。记下来是为了 verify_site.py 别把它们当错误，
         # 同时也让 build.json 里留有痕迹 —— 别把「真出问题」和「本来就坏」混为一谈。
         self.degraded: list[str] = []
+        # 音源转码：encoded / cached 都是「拿到了 Opus」，kept 是没转成（缺 ffmpeg 之类）
+        self.audio_encoded = 0
+        self.audio_cached = 0
+        self.audio_kept = 0
 
     def added(self, n: int) -> None:
         self.files += 1
@@ -169,21 +179,34 @@ def prune(out: Path, want: set[str]) -> int:
     return removed
 
 
-def build_song(song: dict, out: Path, force: bool, stats: Stats) -> None:
+def build_song(song: dict, out: Path, force: bool, force_audio: bool, stats: Stats) -> None:
     """展开一首歌的音频 / 封面 / 缩略图 / 谱面。"""
     mcz = config.LIBRARY / song["id"]
     mtime = mcz.stat().st_mtime
     stem = nfc(stem_of(song["id"]))
 
-    # 音源
+    # 音源：mcz 里是 Ogg Vorbis，转成 Ogg Opus 再落盘（体积砍掉三分之一左右）。
+    # 转码结果带内容哈希缓存（见 audio_opus.py），所以增量构建不会反复编码。
+    # force_audio：编码参数变了（比如换了码率）时忽视时间戳，把全库音源重写一遍。
     if song.get("audio"):
         dest = out / "media" / "audio" / f"{stem}.ogg"
-        if not fresh(dest, mtime, force):
-            data = read_member(mcz, song["audio"])
-            write_bytes_fresh(dest, data, mtime, force)
-            stats.added(len(data))
-        else:
+        # 除了时间戳，还看一眼编码：目标是 Opus 而盘上还是 Vorbis（上一版遗留、
+        # 或者中途换过编码参数）时照样重写 —— 光比 mtime 会把错的状态永久固化。
+        if fresh(dest, mtime, force or force_audio) and not (
+                WANT_OPUS and not audio_opus.file_is_opus(dest)):
             stats.skipped += 1
+        else:
+            data, how = audio_opus.encode(read_member(mcz, song["audio"]), AUDIO_CACHE_DIR)
+            if how == "encoded":
+                stats.audio_encoded += 1
+            elif how == "cached":
+                stats.audio_cached += 1
+            elif how in ("no-ffmpeg", "failed"):
+                stats.audio_kept += 1
+            # 这里已经判过「该写」了，再让 write_bytes_fresh 自己判一次时间戳，
+            # 就会因为 dest 比源新而直接返回（音源永远写不进去）。
+            write_bytes_fresh(dest, data, mtime, force=True)
+            stats.added(len(data))
 
     # 封面原图 + 缩略图
     if song.get("cover"):
@@ -302,6 +325,21 @@ def main() -> int:
     print(f"曲库: {config.LIBRARY}")
     print(f"输出: {out}")
     print(f"缩略图后端: {thumbs.backend()}" + (f" · {config.THUMB_SIZE}px" if thumbs.backend() != "none" else ""))
+    print(f"音源编码: {audio_opus.describe()}")
+    if not audio_opus.ffmpeg():
+        # 不致命的降级：站点照样能建，只是音源保持源格式（安装包会大一截）
+        print("⚠️  没找到 ffmpeg：音源原样保留（想转 Opus 先 brew install ffmpeg）")
+
+    # 编码参数变了就把音源整体重写一遍。只看 mtime 的话，改了码率重建会「全都跳过」，
+    # 站点里留的还是上一版编码的音源 —— 这种坑不该靠人记得清目录来躲。
+    prev_codec = None
+    try:
+        prev_codec = json.loads((out / "data" / "build.json").read_text(encoding="utf-8")).get("audio_codec")
+    except (OSError, ValueError):
+        prev_codec = None
+    force_audio = args.force or prev_codec != audio_opus.describe()
+    if force_audio and not args.force:
+        print(f"  音源编码从「{prev_codec}」变成「{audio_opus.describe()}」：音源全部重写")
 
     # 1) 前端文件
     stats = Stats()
@@ -356,7 +394,7 @@ def main() -> int:
     # 3) 逐首展开
     done = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        futures = {pool.submit(build_song, s, out, args.force, stats): s for s in songs}
+        futures = {pool.submit(build_song, s, out, args.force, force_audio, stats): s for s in songs}
         for fut in concurrent.futures.as_completed(futures):
             song = futures[fut]
             done += 1
@@ -393,6 +431,10 @@ def main() -> int:
         "covers": sum(1 for s in songs if s.get("cover")),
         "markers": len(marker_files),
         "se_files": len(se_files),
+        "audio_codec": audio_opus.describe(),
+        "audio_encoded": stats.audio_encoded,
+        "audio_cached": stats.audio_cached,
+        "audio_kept": stats.audio_kept,
         "thumb_backend": thumbs.backend(),
         "thumb_size": config.THUMB_SIZE,
         "files_written": stats.files,
@@ -416,6 +458,9 @@ def main() -> int:
 
     print("\n完成：")
     print(f"  曲目 {stats.songs} 首｜新写文件 {stats.files} 个（{stats.bytes/2**20:.1f} MB）｜跳过 {stats.skipped} 个")
+    if stats.audio_encoded or stats.audio_cached or stats.audio_kept:
+        print(f"  音源：新编码 {stats.audio_encoded} 首｜命中缓存 {stats.audio_cached} 首"
+              f"｜保持源格式 {stats.audio_kept} 首")
     print(f"  耗时 {elapsed:.1f}s｜输出 {out}")
     if stats.failed:
         print(f"  失败 {len(stats.failed)} 项（前 5 条）：")

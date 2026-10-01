@@ -9,8 +9,12 @@
 python3 tools/build_site.py --out site --prune
 ```
 
-- 首次 1419 首约 **50 秒**、产出 **2.9 GB**（音频 2.45 G + 封面 0.19 G + 缩略图 0.01 G + 谱面 0.28 G）
-- 之后再跑是增量的：只有新增/改过的 `.mcz` 会重新展开，几秒就跑完
+- 首次 1371 首约 **4 分钟**、产出 **2.0 GB**（音频 1.5 G + 封面 0.20 G + 缩略图 0.01 G + 谱面 0.28 G）；
+  其中约 3 分钟花在把 mcz 里的 Vorbis 音源转成 **Ogg Opus 80k** 上
+- 转码结果按内容哈希缓存在 `cache/audio-opus/`，所以**只有这一遍慢**：
+  之后再跑是增量的，几秒就跑完
+- 本机没有 `ffmpeg` 时不转码（原样复制），站点照跑，只是包大一圈；换码率用
+  `JUBEAT_OPUS_BITRATE=96k python3 tools/build_site.py`（改了参数会整库重转）
 - 删歌之后加 `--prune` 会把多余文件清掉
 
 ## 2. 上传
@@ -19,7 +23,11 @@ python3 tools/build_site.py --out site --prune
 rsync -av --delete site/ root@your-server:/www/wwwroot/jubeat/site/
 ```
 
-（或者先打包再传：`tar -C site -czf site.tar.gz .`，2.9 GB 压缩后约 2.7 GB——音频已经是 Ogg，压不动。）
+（或者先打包再传：`tar -C site -czf site.tar.gz .`，2.0 GB 压缩后约 1.9 GB——音频已经是 Ogg，压不动。）
+
+> **换了音源编码不用重传 1.5 GB**：源站上已经有整套旧音源时，宁可在服务器上就地重编码
+> （`ffmpeg -i 旧.ogg -c:a libopus -b:a 80k -vbr on -compression_level 10 -application audio -frame_duration 20 新.ogg`），
+> 转完再原子换目录。走 API 分块上传 1.5 GB 要十几万次调用，几小时都下不来。
 
 ## 3. 配置 nginx
 
@@ -51,7 +59,7 @@ curl -r 0-1023 -o /dev/null -w '%{http_code}\n' \
 | 曲库索引（一次） | **93 KB**（gzip） |
 | 列表封面 | **~9 KB/张**（96px 缩略图；未生成时退回 150 KB 原图） |
 | 选一首歌：谱面 + 封面 | ~15 KB + 150 KB |
-| 听一遍 | ~1.7 MB（120–145 kbps Vorbis） |
+| 听一遍 | ~1.2 MB（Opus 80k VBR） |
 
 典型一次试听 ≈ **2 MB**；1 TB/月流量约等于 50 万次试听，所以带宽不是瓶颈，
 真正需要控制的是「别被搜索引擎/陌生人刷」——加鉴权即可。

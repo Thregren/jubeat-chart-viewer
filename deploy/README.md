@@ -25,9 +25,32 @@ rsync -av --delete site/ root@your-server:/www/wwwroot/jubeat/site/
 
 （或者先打包再传：`tar -C site -czf site.tar.gz .`，2.0 GB 压缩后约 1.9 GB——音频已经是 Ogg，压不动。）
 
-> **换了音源编码不用重传 1.5 GB**：源站上已经有整套旧音源时，宁可在服务器上就地重编码
-> （`ffmpeg -i 旧.ogg -c:a libopus -b:a 80k -vbr on -compression_level 10 -application audio -frame_duration 20 新.ogg`），
-> 转完再原子换目录。走 API 分块上传 1.5 GB 要十几万次调用，几小时都下不来。
+### 只在服务器上换音源编码（不用重传 1.5 GB）
+
+音频换了编码格式时，本地重建只要几秒，但把新的 1.5 GB 走 API 分块上传要十几万次调用、
+几小时都下不来。源站上本来就有整套旧音源，就地重编码更快：
+
+```bash
+scp deploy/reencode-audio-opus.sh root@your-server:/www/.jubeat-encode/
+ssh root@your-server
+cd /www/.jubeat-encode && bash reencode-audio-opus.sh
+```
+
+- 参数与 `tools/audio_opus.py` 完全一致，逐首校验 codec 与时长；**转失败就原样复制源文件**，
+  宁可包大一点也不会让某首歌没声音。已经转好的文件会跳过，中断了重跑即可
+- 2 核机器上 1371 首约 **28 分钟**（`nice -n 19`，不抢站点 CPU），产物落在
+  `/www/.jubeat-audio-new`，跑完自己核对一遍再换目录
+- 换目录（原子，线上不会看到半成品）：
+
+```bash
+cd /www/wwwroot/your-site/media
+mv audio audio-old && mv /www/.jubeat-audio-new audio
+chown -R www:www audio
+find audio -type d -exec chmod 755 {} +
+find audio -type f -exec chmod 644 {} +
+```
+
+确认站点能放音（见下面「验证」）之后再删 `audio-old`。
 
 ## 3. 配置 nginx
 

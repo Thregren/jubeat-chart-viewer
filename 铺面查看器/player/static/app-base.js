@@ -72,6 +72,7 @@
     numColor: $("#numColor"),
     numCorner: $("#numCorner"),
     showChordGlow: $("#showChordGlow"),
+    chordGlowStyle: $("#chordGlowStyle"),
     phraseMult: $("#phraseMult"),
     phraseFloor: $("#phraseFloor"),
     phraseMax: $("#phraseMax"),
@@ -178,9 +179,12 @@
   // glowAlpha 默认 0.7：光晕能看清「哪几个键是一起按的」，又不会糊住底下的 marker。
   /** 序号颜色默认值：白色（和以前完全一致） */
   const DEFAULT_NUM_COLOR = "#ffffff";
+  /** 同押高亮的默认样式：光晕（和以前完全一致） */
+  const DEFAULT_CHORD_STYLE = "glow";
   const numCfg = {
     scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: false,
     color: DEFAULT_NUM_COLOR,   // 数字填充色，#rrggbb
+    style: DEFAULT_CHORD_STYLE, // 同押高亮：glow | frame | both
   };
   // localStorage 里可能存着乱七八糟的值（手改过、或老版本留下的），一律夹到合法区间
   const clampNumScale = (v) => Math.min(NUM_SCALE_MAX, Math.max(NUM_SCALE_MIN, Number(v) || 1));
@@ -196,6 +200,8 @@
     const m = /^#?([0-9a-f]{6})$/i.exec(String(v == null ? "" : v).trim());
     return m ? `#${m[1].toLowerCase()}` : DEFAULT_NUM_COLOR;
   };
+  /** 同押高亮样式：只认三个枚举值，别的（老缓存 / 手改）一律当默认的「光晕」 */
+  const normalizeChordStyle = (v) => (v === "frame" || v === "both" ? v : DEFAULT_CHORD_STYLE);
 
   // A–B 段落循环：同一个键（A）连按两次分别打 A / B 两个点，之后就在这一段里循环。
   // 时间是「谱面时间」（和进度条 / 时间显示同一套坐标），null = 还没打点。
@@ -213,6 +219,7 @@
     numCorner: "jubeat.numCorner",
     numColor: "jubeat.numColor",
     showChordGlow: "jubeat.showChordGlow",
+    chordGlowStyle: "jubeat.chordGlowStyle",
     phraseMult: "jubeat.phraseMult",
     phraseFloor: "jubeat.phraseFloor",
     phraseMax: "jubeat.phraseMax",
@@ -496,6 +503,7 @@
     clampNumAlpha,
     clampNumGlowAlpha,
     normalizeHexColor,
+    normalizeChordStyle,
     abLoop,
     STORAGE,
     versionRank,

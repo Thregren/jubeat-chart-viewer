@@ -802,9 +802,20 @@
     return lum < 110 ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.75)";
   }
 
+  /** 同押高亮画成什么样：glow（数字背后的彩色光晕）/ frame（沿格子描一圈粗框）/ both */
+  function chordStyle() {
+    const v = els.chordGlowStyle && els.chordGlowStyle.value;
+    return v === "frame" || v === "both" ? v : "glow";
+  }
+
   function drawOrderNumber(note, rect) {
-    if (!rect || !els.showNumbers || !els.showNumbers.checked) return;
+    if (!rect) return;
     const text = String(note.seq || 0);
+    const showNum = !!(els.showNumbers && els.showNumbers.checked);
+    // 同押高亮和「音符序号」是两个开关：只开高亮、不显示数字也要能看（以前两者
+    // 绑在一起，关掉数字连高亮一起没了）。
+    const chord = (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
+    if (!showNum && !chord) return;
     // 参考视频里数字几乎占满格子；但按「换气」分句之后一句可能很长，
     // 两位数、三位数要缩一点，不然会被格子裁掉。
     const FIT = { 1: 0.58, 2: 0.40, 3: 0.31 };
@@ -813,25 +824,40 @@
     const corner = numCfg.corner;
     const fit = (corner ? FIT_CORNER : FIT)[text.length] || (corner ? 0.16 : 0.25);
     const size = Math.max(corner ? 9 : 11, rect.w * fit * numCfg.scale);
-    // 同押光晕 / 波纹按「居中时的大小」算：切到右下角后数字变小了，
-    // 底色高亮不该跟着缩水（字号滑杆照常影响它）。
-    const glowSize = Math.max(11, rect.w * (FIT[text.length] || 0.25) * numCfg.scale);
-    // 光晕 / 波纹永远以格子中心为圆心（它是「同押高亮」，不属于数字本身）
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
     // 数字本身：默认居中；切到右下角后贴住格子的右下内边距
     const pad = Math.max(3, rect.w * 0.09);
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
     const x = corner ? rect.x + rect.w - pad : cx;
     const y = corner ? rect.y + rect.h - pad : cy;
-    // 同一批（一起按）的 marker 数字：可以整体关掉（同押光晕开关）
-    const chord = (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
     ctx.save();
     ctx.globalAlpha = numCfg.alpha;   // 「序号透明度」：整层（光晕 + 数字）一起淡
     ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
     ctx.textAlign = corner ? "right" : "center";
     ctx.textBaseline = corner ? "bottom" : "middle";
+
+    // 同押光晕 / 波纹的圆心与半径：跟着数字走。数字居中 = 格子中心；数字挪到右下角
+    // 之后就缩到数字自己的中心（用户要的「光晕跟着序号走」，不再占满整格）。
+    let glowSize = Math.max(11, rect.w * (FIT[text.length] || 0.25) * numCfg.scale);
+    let gx = cx;
+    let gy = cy;
+    if (corner) {
+      glowSize = Math.max(9, size * 0.8);
+      gx = x - ctx.measureText(text).width / 2;
+      gy = y - size * 0.52;
+    }
+
     // 光晕 / 数字一律裁剪在这格 marker 的范围内：光晕不许溢出到相邻格子
     const inset = Math.max(1, rect.w * 0.02);
+    // 波纹最大半径 = glowSize × 0.84，圆心先夹回来，免得角上的数字把波纹切掉一半
+    const gMax = glowSize * 0.86;
+    const loX = rect.x + inset + gMax;
+    const hiX = rect.x + rect.w - inset - gMax;
+    const loY = rect.y + inset + gMax;
+    const hiY = rect.y + rect.h - inset - gMax;
+    gx = loX < hiX ? Math.min(hiX, Math.max(loX, gx)) : cx;
+    gy = loY < hiY ? Math.min(hiY, Math.max(loY, gy)) : cy;
+
     roundRectPath(ctx,
       rect.x + inset, rect.y + inset,
       rect.w - inset * 2, rect.h - inset * 2,
@@ -839,8 +865,7 @@
     ctx.clip();
 
     if (chord) {
-      // 同押光晕：背后一大团彩色光晕 + 两圈错开半个周期往外扩的光环 + 数字本身的霓虹描边。
-      // 同一批用同一个时钟，所以整组是同步呼吸的。
+      // 同一批（一起按）的几个键共用一套呼吸时钟，所以整组同步。
       // 颜色按这一批所在位置的密度取：密的地方相邻两批在主色 / 副色之间交替。
       const rgb = glowRgb(note.glowSlot || 0);
       const period = 560;                                     // ms，一个呼吸周期（收得比之前快）
@@ -850,52 +875,78 @@
       // 「光晕透明度」只乘在这一层上：光晕、波纹、数字的霓虹描边都跟着它淡，
       // 0 的时候就只剩下面那圈白色数字（形状 / 半径都不变，只改不透明度）。
       const ga = numCfg.glowAlpha;
+      const style = chordStyle();
 
-      // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0
-      const haloR = glowSize * (0.72 + 0.12 * glow);
-      const grad = ctx.createRadialGradient(cx, cy, glowSize * 0.1, cx, cy, haloR);
-      grad.addColorStop(0, `rgba(${rgb}, ${(0.34 + 0.5 * glow) * ga})`);
-      grad.addColorStop(0.45, `rgba(${rgb}, ${(0.16 + 0.3 * glow) * ga})`);
-      grad.addColorStop(1, `rgba(${rgb}, 0)`);
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 2) 两圈外扩光环（相位差半圈，看起来是连续往外推的波纹）
-      ctx.lineCap = "round";
-      for (const offset of [0, 0.5]) {
-        const p = (phase + offset) % 1;
-        ctx.globalAlpha = numCfg.alpha * ga * Math.pow(1 - p, 1.5) * 0.85;
-        ctx.strokeStyle = `rgb(${rgb})`;
-        ctx.lineWidth = Math.max(2.5, size * 0.1);
+      if (style !== "frame") {
+        // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0
+        const haloR = glowSize * (0.72 + 0.12 * glow);
+        const grad = ctx.createRadialGradient(gx, gy, glowSize * 0.1, gx, gy, haloR);
+        grad.addColorStop(0, `rgba(${rgb}, ${(0.34 + 0.5 * glow) * ga})`);
+        grad.addColorStop(0.45, `rgba(${rgb}, ${(0.16 + 0.3 * glow) * ga})`);
+        grad.addColorStop(1, `rgba(${rgb}, 0)`);
+        ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(cx, cy, glowSize * (0.46 + 0.38 * p), 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = numCfg.alpha;   // 别把「序号透明度」冲掉
+        ctx.arc(gx, gy, haloR, 0, Math.PI * 2);
+        ctx.fill();
 
-      // 3) 数字的霓虹描边：外面一层散光、里面一层实色
-      ctx.lineJoin = "round";
-      ctx.shadowColor = `rgba(${rgb}, ${0.95 * ga})`;
-      ctx.shadowBlur = size * (0.6 + 0.65 * glow);
-      ctx.lineWidth = Math.max(5, size * 0.34);
-      ctx.strokeStyle = `rgba(${rgb}, ${(0.5 + 0.5 * glow) * ga})`;
-      ctx.strokeText(text, x, y);
-      ctx.shadowBlur = size * 0.35 * stroke;
-      ctx.globalAlpha = numCfg.alpha * ga * (0.35 + 0.65 * stroke);
-      ctx.lineWidth = Math.max(3, size * 0.2);
-      ctx.strokeStyle = `rgb(${rgb})`;
-      ctx.strokeText(text, x, y);
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = numCfg.alpha;
+        // 2) 两圈外扩光环（相位差半圈，看起来是连续往外推的波纹）
+        ctx.lineCap = "round";
+        for (const offset of [0, 0.5]) {
+          const p = (phase + offset) % 1;
+          ctx.globalAlpha = numCfg.alpha * ga * Math.pow(1 - p, 1.5) * 0.85;
+          ctx.strokeStyle = `rgb(${rgb})`;
+          ctx.lineWidth = Math.max(2.5, size * 0.1);
+          ctx.beginPath();
+          ctx.arc(gx, gy, glowSize * (0.46 + 0.38 * p), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = numCfg.alpha;   // 别把「序号透明度」冲掉
+
+        // 3) 数字的霓虹描边：外面一层散光、里面一层实色
+        ctx.lineJoin = "round";
+        ctx.shadowColor = `rgba(${rgb}, ${0.95 * ga})`;
+        ctx.shadowBlur = size * (0.6 + 0.65 * glow);
+        ctx.lineWidth = Math.max(5, size * 0.34);
+        ctx.strokeStyle = `rgba(${rgb}, ${(0.5 + 0.5 * glow) * ga})`;
+        ctx.strokeText(text, x, y);
+        ctx.shadowBlur = size * 0.35 * stroke;
+        ctx.globalAlpha = numCfg.alpha * ga * (0.35 + 0.65 * stroke);
+        ctx.lineWidth = Math.max(3, size * 0.2);
+        ctx.strokeStyle = `rgb(${rgb})`;
+        ctx.strokeText(text, x, y);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = numCfg.alpha;
+      }
+
+      if (style !== "glow") {
+        // 加粗面板框：沿这一格的内圈描一圈同色的亮框，一起呼吸。
+        // 框心往里让 lw/2，整条框都落在裁剪区里（不会被裁成半个边）。
+        const lw = Math.max(3.5, rect.w * 0.085);
+        const fi = inset + lw * 0.5 + 1;
+        ctx.lineJoin = "round";
+        ctx.globalAlpha = numCfg.alpha * ga * (0.5 + 0.5 * glow);
+        ctx.shadowColor = `rgba(${rgb}, ${0.85 * ga})`;
+        ctx.shadowBlur = lw * 1.6;
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = `rgb(${rgb})`;
+        roundRectPath(ctx,
+          rect.x + fi, rect.y + fi,
+          rect.w - fi * 2, rect.h - fi * 2,
+          Math.max(5, rect.w * 0.14));
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = numCfg.alpha;
+      }
     }
 
-    ctx.lineWidth = Math.max(2, size * 0.14);
-    ctx.strokeStyle = numOutline(numColorHex());
-    ctx.fillStyle = numColorHex();
-    ctx.strokeText(text, x, y);
-    ctx.fillText(text, x, y);
+    if (showNum) {
+      // 数字本体：永远画在最上面（压在同押高亮上），深浅色都带对比描边
+      ctx.lineWidth = Math.max(2, size * 0.14);
+      ctx.strokeStyle = numOutline(numColorHex());
+      ctx.fillStyle = numColorHex();
+      ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
+    }
     ctx.restore();
   }
 

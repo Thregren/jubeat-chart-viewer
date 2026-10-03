@@ -25,7 +25,7 @@
 
   // ── 1. 录制预设（必须早于 app.js：它一启动就读这些键）──────────────
   const PRESET = {
-    settingsVersion: "6",                 // 低于 2 时 app.js 会强制覆盖连击 / 序号开关；
+    settingsVersion: "7",                 // 低于 2 时 app.js 会强制覆盖连击 / 序号开关；
                                           // 也必须 ≥ 6，否则启动时会把 marker 键清掉
     marker: query.get("marker") || "tm0004",   // 官方设计 id（缺省 = #04 快门）
     showCombo: "1",
@@ -37,6 +37,7 @@
     numGlowAlpha: "70",                   // 与同押光晕的默认透明度保持一致（0.7）
     numCorner: "0",
     showChordGlow: "1",
+    chordGlowStyle: "glow",                // 同押高亮样式：成片固定用默认的「光晕」
     metroSound: "",                       // 录制页不出声：音轨由录制脚本离线合成
     collapsed: "1",
   };

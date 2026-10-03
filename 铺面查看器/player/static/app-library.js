@@ -442,7 +442,8 @@
         : parsed.baseBpm
           ? String(Math.round(parsed.baseBpm * 100) / 100)
           : "—";
-      els.statNotes.textContent = String(parsed.nTap + parsed.nHold);
+      // 长押头尾各算一颗 note（和实机 / 上面的 nTotal 同一口径）
+      els.statNotes.textContent = String(parsed.nTotal);
       els.statHolds.textContent = String(parsed.nHold);
       els.statTime.textContent = fmtTime(state.duration);
       els.timeTotal.textContent = fmtTime(state.duration);
@@ -523,6 +524,8 @@
     const r = Core.rebuildNoteStates(notes, state.noteCursor, state.activeNotes, chartT, {
       flash: A.FLASH,
       maxHold: (state._parsed && state._parsed.maxHold) || 0,
+      // 长押的尾判时刻表：解析谱面时就算好了，拖动时不用再扫一遍整首
+      holdEnds: state._parsed && state._parsed.holdEnds,
     });
     for (const u of r.updates) {
       u.note.state = u.state;

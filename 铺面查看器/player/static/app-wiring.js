@@ -11,7 +11,8 @@
 
   // —— 更早那层提供的接口 ——
   const { el, frontVersion, els, state, markerCfg, numCfg, clampNumScale,
-     clampNumAlpha, clampNumGlowAlpha, normalizeHexColor, abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
+     clampNumAlpha, clampNumGlowAlpha, normalizeHexColor, normalizeChordStyle,
+     abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
      fmtTime, toast, seProbe,
      playMetro, sfxReset, setPlaying, selectMarker,
      layoutCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
@@ -144,6 +145,12 @@
       els.showChordGlow.addEventListener("change", () => {
         store(STORAGE.showChordGlow, els.showChordGlow.checked ? "1" : "0");
       });
+      // 同押高亮的画法：光晕 / 加粗面板框 / 两者都要（画布每帧重画，改完立刻生效）
+      els.chordGlowStyle.addEventListener("change", () => {
+        numCfg.style = normalizeChordStyle(els.chordGlowStyle.value);
+        els.chordGlowStyle.value = numCfg.style;
+        store(STORAGE.chordGlowStyle, numCfg.style);
+      });
       els.chordGlowPair.addEventListener("change", () => {
         store(STORAGE.chordGlowPair, els.chordGlowPair.value);
         updateGlowChips();
@@ -172,6 +179,7 @@
         numCorner: store(STORAGE.numCorner),
         numColor: store(STORAGE.numColor),
         showChordGlow: store(STORAGE.showChordGlow),
+        chordGlowStyle: store(STORAGE.chordGlowStyle),
         phraseMult: store(STORAGE.phraseMult),
         phraseFloor: store(STORAGE.phraseFloor),
         phraseMax: store(STORAGE.phraseMax),
@@ -193,6 +201,8 @@
       //            命名，selectMarker 会自动回落到默认设计）。
       // 设置版本 6：marker 默认设计改成 tm0004（快门）。浏览器里存着的 id 多半是
       //            旧默认值 tm0001 —— 用户根本没挑过，只清一次让新默认露出来。
+      // 设置版本 7：新增「同押高亮样式」（光晕 / 加粗面板框 / 两者）。新增的键
+      //            没有历史包袱，缺省就是「光晕」，不需要清任何旧值。
       const savedSettingsVersion = Number(store(STORAGE.settingsVersion)) || 0;
       const useComboDefaults = savedSettingsVersion < 2;
       if (savedSettingsVersion < 5) {
@@ -212,12 +222,14 @@
       if (savedSettingsVersion < 6) {
         try { localStorage.removeItem(STORAGE.marker); } catch (_) { /* 存不了就算了 */ }
       }
-      store(STORAGE.settingsVersion, "6");
+      store(STORAGE.settingsVersion, "7");
       if (!useComboDefaults) {
         if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
       }
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
+      numCfg.style = normalizeChordStyle(saved.chordGlowStyle);
+      els.chordGlowStyle.value = numCfg.style;
       // 序号外观：字号 / 透明度 / 位置（默认 100% / 100% / 居中）
       if (saved.numScale != null) {
         els.numScale.value = saved.numScale;

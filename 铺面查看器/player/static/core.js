@@ -178,6 +178,9 @@
     let nHold = 0;
     let maxSec = 0;
     let maxHold = 0;
+    // 所有长押的「尾判时刻」（升序）。长押头尾各算一颗 note，所以重建连击时要能
+    // 快速数出「到这一刻为止已经过了几条尾巴」——见下面的 countPassed()。
+    const holdEnds = [];
 
     for (const raw of chart.note || []) {
       const type = raw.type ?? 0;
@@ -194,6 +197,8 @@
         endBeat = beatToFloat(raw.endbeat);
         endT = map.beatToSec(endBeat);
         nHold++;
+        // 尾判时刻只收有限数：脏谱面里算出 NaN 的话，二分会被它带偏
+        if (Number.isFinite(endT)) holdEnds.push(endT);
       } else {
         nTap++;
       }
@@ -218,6 +223,7 @@
       });
     }
     notes.sort((a, b) => a.t - b.t);
+    holdEnds.sort((a, b) => a - b);
 
     numberNotes(notes, map.bpmAt, opts);
 
@@ -238,7 +244,9 @@
       type1,
       nTap,
       nHold,
-      nTotal: nTap + nHold,
+      holdEnds,
+      // 总 note 数：长押算两颗（头判 + 尾判），和实机的计分 / 连击口径一致。
+      nTotal: nTap + nHold * 2,
     };
   }
 
@@ -264,6 +272,48 @@
       else hi = mid;
     }
     return lo;
+  }
+
+  /** 升序数组里「≤ sec 的元素有几个」（二分） */
+  function countAtMost(sorted, sec) {
+    let lo = 0;
+    let hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid] <= sec) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  // 「哪些长押的尾判在哪里」在整首谱面的生命周期里不会变，算一次记下就够了。
+  // 正常路径上这个数组由 parseNotes() 一起给出（见 loadChart）；这里的 WeakMap 是
+  // 兜底，让直接调 rebuildNoteStates() 的调用方（例如 node 单测）也拿到同样的结果。
+  const holdEndsCache = new WeakMap();
+  function holdEndsOf(notes) {
+    let ends = holdEndsCache.get(notes);
+    if (!ends) {
+      ends = [];
+      for (const n of notes) {
+        if (n.kind === "hold" && n.endT != null) ends.push(n.endT);
+      }
+      ends.sort((a, b) => a - b);
+      holdEndsCache.set(notes, ends);
+    }
+    return ends;
+  }
+
+  /**
+   * 到 sec 为止「已经判过的 note 数」——也就是拖动 / 跳转之后该显示的总连击。
+   *
+   * 长押头尾各算一颗（实机的 HOLD 也是头判 + 尾判两次判定、两次连击），所以
+   * = 已经开头的 note 数（cursor）+ 已经收尾的长押数。后者用尾判时刻二分，
+   * 不用管尾巴在谱面里排得多乱。
+   */
+  function countPassed(notes, sec, cursor, holdEnds) {
+    // holdEnds 是可选的加速参数（正常由 parseNotes 一起给）；给错了就自己算一遍，
+    // 不能因为一个畸形参数把连击数算崩。
+    return cursor + countAtMost(Array.isArray(holdEnds) ? holdEnds : holdEndsOf(notes), sec);
   }
 
   /**
@@ -324,7 +374,16 @@
       for (const n of prevActive) visit(n);
     }
 
-    return { cursor, passed: cursor, updates, active, padHits, padHolds };
+    // passed 里带上了「已经收尾的长押」：拖动到长押尾巴之后，总连击要跟着多算一颗
+    // （head 和 tail 各算一颗 note，见 countPassed）。
+    return {
+      cursor,
+      passed: countPassed(notes, chartT, cursor, opts.holdEnds),
+      updates,
+      active,
+      padHits,
+      padHolds,
+    };
   }
 
   /**
@@ -366,6 +425,7 @@
     parseNotes,
     pickChart,
     firstAfter,
+    countPassed,
     rebuildNoteStates,
     noteStateAt,
     abTap,

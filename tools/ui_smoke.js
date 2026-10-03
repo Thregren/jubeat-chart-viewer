@@ -184,6 +184,28 @@ async function runPage(win, errors) {
   check("滑杆数值回显到标签上", settings.label === "150%", settings.label);
   check("序号颜色取色器生效", settings.color === "#ff3366", String(settings.color));
 
+  // 同押高亮的样式：光晕 / 加粗面板框 / 两者都（畸形值要回落到默认的「光晕」）
+  const glowStyle = await js("(() => {" +
+    "const fire = (v) => { const e = document.getElementById('chordGlowStyle');" +
+    "  e.value = v; e.dispatchEvent(new Event('change', {bubbles: true})); };" +
+    "const sel = document.getElementById('chordGlowStyle');" +
+    "const opts = [...sel.options].map((o) => o.value);" +
+    "const cfg = window.__player.numCfg;" +
+    "fire('frame'); const frame = cfg.style;" +
+    "fire('both'); const both = cfg.style;" +
+    "fire('垃圾值'); const junk = cfg.style;" +
+    "const echo = sel.value;" +                  // 畸形值要回显成生效的那个（光晕）
+    "const saved = localStorage.getItem('jubeat.chordGlowStyle');" +
+    "return {opts, frame, both, junk, echo, saved};" +
+    "})()");
+  check("同押高亮样式三档都在（光晕 / 加粗面板框 / 光晕＋面板框）",
+    glowStyle.opts.join(",") === "glow,frame,both", glowStyle.opts.join("/"));
+  check("切样式立刻改画法并记住",
+    glowStyle.frame === "frame" && glowStyle.both === "both"
+      && glowStyle.junk === "glow" && glowStyle.echo === "glow"
+      && glowStyle.saved === "glow",
+    `frame=${glowStyle.frame} both=${glowStyle.both} 畸形→${glowStyle.junk} 存=${glowStyle.saved}`);
+
   const filtered = await js("(() => {" +
     "const before = document.querySelectorAll('.song-item').length;" +
     "const s = document.getElementById('search'); s.value = 'Windy';" +
@@ -225,6 +247,66 @@ async function runPage(win, errors) {
   check("marker 画布有尺寸", canvas.w > 0 && canvas.h > 0, `${canvas.w}×${canvas.h}`);
   check("marker 画布真的画了东西", canvas.lit > 20, `${canvas.lit} 个采样点非空`);
   check("物量条画布有尺寸", canvas.dw > 0 && canvas.dh > 0, `${canvas.dw}×${canvas.dh}`);
+
+  // 同押高亮：光晕真的画了、切到右下角后跟着序号走、换成「加粗面板框」画的是贴边的框。
+  // 量法是「同一时刻的前后两帧做差」：marker 底图 / 其它 note 两帧完全一样，差值里
+  // 只剩高亮那一层（数字关掉），于是可以量它的像素数、重心和贴边程度。
+  const highlight = await js("(() => {" +
+    "const p = window.__player; const cv = document.getElementById('markerCanvas');" +
+    "const g = cv.getContext('2d');" +
+    "const set = (id, v) => { const e = document.getElementById(id);" +
+    "  if (e.type === 'checkbox') { e.checked = v; e.dispatchEvent(new Event('change', {bubbles: true})); }" +
+    "  else { e.value = v; e.dispatchEvent(new Event('input', {bubbles: true}));" +
+    "    e.dispatchEvent(new Event('change', {bubbles: true})); } };" +
+    "const note = p.state.notes.find((x) => (x.groupSize || 1) > 1 && x.kind === 'tap');" +
+    "if (!note) return null;" +
+    "const T = note.t - 0.05;" +                 // 数字 / 高亮已经出现（NUM_LEAD = 0.10s）
+    "const r = p.state.padRects[note.index];" +
+    "const dpr = cv.width / (parseFloat(cv.style.width) || cv.width);" +
+    "const x0 = Math.max(0, Math.floor(r.x * dpr)), y0 = Math.max(0, Math.floor(r.y * dpr));" +
+    "const w = Math.min(cv.width - x0, Math.ceil(r.w * dpr));" +
+    "const h = Math.min(cv.height - y0, Math.ceil(r.h * dpr));" +
+    "if (w < 8 || h < 8) return null;" +
+    "const shot = () => { p.setFrameTime(T); p.paintFrame(T);" +
+    "  return g.getImageData(x0, y0, w, h).data; };" +
+    "const ink = (a, b) => { const o = {n: 0, sx: 0, sy: 0, edge: 0};" +
+    "  for (let i = 0; i < a.length; i += 4) {" +
+    "    const d = Math.abs(a[i] - b[i]) + Math.abs(a[i+1] - b[i+1])" +
+    "      + Math.abs(a[i+2] - b[i+2]) + Math.abs(a[i+3] - b[i+3]);" +
+    "    if (d < 24) continue;" +
+    "    const px = (i >> 2) % w, py = (i >> 2) / w | 0;" +
+    "    o.n++; o.sx += px; o.sy += py;" +
+    "    if (Math.min(px, py, w - 1 - px, h - 1 - py) < Math.max(3, w * 0.14)) o.edge++;" +
+    "  }" +
+    "  return {n: o.n, cx: o.sx / (o.n || 1), cy: o.sy / (o.n || 1), edge: o.edge, w, h}; };" +
+    "set('showNumbers', false); set('numScale', 100); set('numAlpha', 100);" +
+    "set('numGlowAlpha', 70); set('numCorner', false);" +
+    "set('showChordGlow', false); set('chordGlowStyle', 'glow');" +
+    "const base = shot();" +                     // 底片：marker 原样，没有任何高亮
+    "set('showChordGlow', true); const glow = ink(shot(), base);" +
+    "set('numCorner', true); const corner = ink(shot(), base);" +
+    "set('numCorner', false); set('chordGlowStyle', 'frame'); const frame = ink(shot(), base);" +
+    "set('chordGlowStyle', 'both'); const both = ink(shot(), base);" +
+    "set('chordGlowStyle', 'glow'); set('showChordGlow', true); set('showNumbers', true);" +
+    "p.setFrameTime(74.54); p.paintFrame(74.54);" +
+    "return {glow, corner, frame, both};" +
+    "})()");
+  check("同押高亮：光晕真的画出来了", !!highlight && highlight.glow.n > 30,
+    highlight ? `光晕层 ${highlight.glow.n} px` : "拿不到");
+  check("序号挪到右下角后光晕跟着走（重心右下移，不再占满整格）",
+    !!highlight && highlight.corner.n > 20
+      && highlight.corner.cx - highlight.glow.cx > highlight.glow.w * 0.08
+      && highlight.corner.cy - highlight.glow.cy > highlight.glow.h * 0.08,
+    highlight
+      ? `居中 (${highlight.glow.cx.toFixed(0)},${highlight.glow.cy.toFixed(0)})`
+        + ` → 角落 (${highlight.corner.cx.toFixed(0)},${highlight.corner.cy.toFixed(0)})，格子 ${highlight.glow.w}px`
+      : "拿不到");
+  check("同押高亮：换成「加粗面板框」画的是贴着格子边的框",
+    !!highlight && highlight.frame.n > 20 && highlight.frame.edge > highlight.glow.edge * 1.5,
+    highlight ? `框 ${highlight.frame.n} px（贴边 ${highlight.frame.edge}），光晕贴边 ${highlight.glow.edge}` : "拿不到");
+  check("同押高亮：光晕＋面板框两者同时画",
+    !!highlight && highlight.both.n > highlight.frame.n && highlight.both.n > highlight.glow.n,
+    highlight ? `两者 ${highlight.both.n} px > 光晕 ${highlight.glow.n} / 框 ${highlight.frame.n}` : "拿不到");
 
   const playback = await js("(async () => {" +
     "const p = window.__player; p.play();" +
@@ -285,6 +367,29 @@ async function runPage(win, errors) {
     " now: document.getElementById('timeNow').textContent}))()");
   check("拖动进度条清空所有打点", afterDrag.a === null && afterDrag.b === null,
     JSON.stringify(afterDrag));
+
+  // 长押的尾判也算一颗 note：总 note = tap + hold×2，跳到曲末连击要能数满。
+  // 深链接那首（Windy Fairy）三道难度都没长押，账得在真有长押的谱面上算 —— 挑一首
+  // 已知含长押的曲子（festo 1116，BSC 36 条）。这一步放最后：换谱会让音源重下，
+  // 排在后面会把「能起播」那条拖成假红。
+  const tails = await js("(async () => {" +
+    "const p = window.__player; const sleep = (ms) => new Promise((r) => setTimeout(r, ms));" +
+    "const holdSong = p.state.songs.find((s) => s.id === 'jubeat-festo/1116.mcz');" +
+    "if (!holdSong) return null;" +
+    "await p.selectSong(holdSong, 'BSC'); await sleep(200);" +
+    "const q = p.state._parsed || {};" +
+    "p.rebuildVisualState(p.state.duration); const endCombo = p.state.combo;" +
+    "return {id: holdSong.id, tap: q.nTap, hold: q.nHold, total: q.nTotal, endCombo," +
+    " stat: document.getElementById('statNotes').textContent};" +
+    "})()");
+  check("总 note 把长押尾判算进去（tap + hold×2）",
+    !!tails && tails.total === tails.tap + tails.hold * 2 && tails.hold > 0,
+    tails ? `${tails.id}：${tails.tap} tap + ${tails.hold} hold → ${tails.total}` : "拿不到");
+  check("NOTE 统计格显示的就是总 note", !!tails && tails.stat === String(tails.total),
+    tails ? `${tails.stat} / ${tails.total}` : "拿不到");
+  check("连击在曲末能数到总 note（尾判也进连击）",
+    !!tails && tails.total > 0 && tails.endCombo === tails.total,
+    tails ? `${tails.endCombo} / ${tails.total}（少算尾判的话只有 ${tails.tap + tails.hold}）` : "拿不到");
 
   return errors;
 }

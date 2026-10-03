@@ -708,10 +708,12 @@ button:focus-visible,
 .pad.hit {
   background: linear-gradient(180deg, #ffffff, #d7e6ff);
   border-color: #ffffff;
+  /* 只保留「白」这一圈：以前第三层是 48px 的蓝色散光（rgba(120,180,255,.35)），
+     而 .pad 不在任何 overflow 容器里，它会从四角的格子一路透到面板外面 ——
+     用户看到的那圈「面板周围的蓝色光晕」就是它。 */
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.4),
-    0 0 24px rgba(242, 247, 255, 0.75),
-    0 0 48px rgba(120, 180, 255, 0.35);
+    0 0 24px rgba(242, 247, 255, 0.75);
 }
 
 .pad.hit::after {

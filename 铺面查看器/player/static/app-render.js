@@ -57,6 +57,10 @@
         n.state = "flashing";
         n.flashEnd = n.endT + FLASH;
         state.hitUntil[n.index] = n.flashEnd;
+        // 长押的尾判也是一颗 note（实机里 HOLD 的头 / 尾各判定一次、各加一次连击）。
+        // 以前这里只翻状态不加连击，于是「长押多的曲子满连永远差尾巴那几十颗」。
+        bumpCombo();
+        A.pulseGlow();
       } else if (n.state === "done") {
         state.activeNotes.splice(i, 1);
       }

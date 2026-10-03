@@ -131,6 +131,8 @@ function referenceStates(notes, chartT) {
   let passed = 0;
   for (const n of notes) {
     if (n.t <= chartT) passed++;
+    // 长押头尾各算一颗 note（实机口径）：尾判过了要再多算一颗连击
+    if (n.kind === "hold" && n.endT != null && n.endT <= chartT) passed++;
     if (n.kind === "hold" && n.endT != null) {
       if (chartT >= n.t && chartT < n.endT) out.push("holding");
       else if (chartT >= n.endT) out.push("done");
@@ -218,6 +220,43 @@ test("rebuildNoteStates：连续小幅拖动只改动手边那几颗音（不整
   applyRebuild(notes, 0, [], 0, 0);                // 首次：把 [0, cursor) 全刷一遍（一次性）
   const r = applyRebuild(notes, Core.firstAfter(notes, 10), [], 10.05, 0);
   assert.ok(r.updates.length <= 2, `只该动 1~2 颗，实际 ${r.updates.length}`);
+});
+
+test("长押算两颗 note：尾判计入总 note 与连击（头判 / 尾判 / 全部）", () => {
+  // 120BPM → 1 拍 = 0.5s。hold：0s 按下、1s 松开；再过 1s 一颗 tap。
+  const parsed = Core.parseNotes(CHART([
+    { beat: [0, 0, 1], index: 0, endbeat: [2, 0, 1] },
+    { beat: [4, 0, 1], index: 5 },
+  ]));
+  assert.equal(parsed.nTap, 1);
+  assert.equal(parsed.nHold, 1);
+  assert.equal(parsed.nTotal, 3);              // tap 1 + hold(头+尾) 2
+  assert.deepEqual(parsed.holdEnds, [1]);      // 尾判时刻表（给二分用）
+
+  const notes = parsed.notes;
+  assert.equal(notes[0].endT, 1);
+  assert.equal(notes[1].t, 2);
+
+  const at = (t, prev = { cursor: 0, active: [] }) =>
+    Core.rebuildNoteStates(notes, prev.cursor, prev.active, t, {
+      flash: FLASH, maxHold: parsed.maxHold, holdEnds: parsed.holdEnds,
+    });
+  const seq = [];
+  let st = { cursor: 0, active: [] };
+  for (const t of [0.1, 0.5, 1.0, 2.1, 99]) {
+    const r = at(t, st);
+    seq.push([t, r.passed]);
+    st = { cursor: r.cursor, active: r.active };
+  }
+  // 0.1：头判过 → 1；0.5：还在长押里 → 1；1.0：尾判过 → 2；
+  // 2.1：tap 过 → 3；99：全过 → 3 = nTotal（满连就是总 note 数）
+  assert.deepEqual(seq, [[0.1, 1], [0.5, 1], [1.0, 2], [2.1, 3], [99, 3]]);
+
+  // 直接跳转到长押尾巴之后（拖动进度条）也要算上那一条尾巴
+  assert.equal(Core.countPassed(notes, 1.0, 1), 2);
+  assert.equal(Core.countPassed(notes, 0.99, 1), 1);
+  // 参数给错了（不是数组）也不能算崩，退回自己扫一遍
+  assert.equal(Core.countPassed(notes, 1.0, 1, "坏参数"), 2);
 });
 
 // ===================== A–B 段落循环打点 =====================

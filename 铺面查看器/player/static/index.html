@@ -9,8 +9,8 @@
   <title>jubeat 谱面确认</title>
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.12" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.12" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.13" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.13" />
 </head>
 <body>
   <div id="app">
@@ -40,7 +40,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.12</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.13</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -183,6 +183,7 @@
                       title="街机原版提取的逐帧贴图；本查看器按「全 PERFECT」播放，命中爆发用第 4 档（PERFECT）">
                 <option value="">无（仅面板灯）</option>
               </select>
+              <span class="ctl-hint" id="markerHint" hidden>素材载入中…</span>
             </label>
           </div>
           <div class="opt-row">
@@ -279,19 +280,19 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.12"></script>
-  <script src="static/core.js?v=0.6.12"></script>
+  <script src="static/sfx.js?v=0.6.13"></script>
+  <script src="static/core.js?v=0.6.13"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.12"></script>
+  <script src="static/record.js?v=0.6.13"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/app-base.js?v=0.6.12"></script>
-  <script src="static/app-audio.js?v=0.6.12"></script>
-  <script src="static/app-marker.js?v=0.6.12"></script>
-  <script src="static/app-density.js?v=0.6.12"></script>
-  <script src="static/app-library.js?v=0.6.12"></script>
-  <script src="static/app-player.js?v=0.6.12"></script>
-  <script src="static/app-render.js?v=0.6.12"></script>
-  <script src="static/app-wiring.js?v=0.6.12"></script>
-  <script src="static/app.js?v=0.6.12"></script>
+  <script src="static/app-base.js?v=0.6.13"></script>
+  <script src="static/app-audio.js?v=0.6.13"></script>
+  <script src="static/app-marker.js?v=0.6.13"></script>
+  <script src="static/app-density.js?v=0.6.13"></script>
+  <script src="static/app-library.js?v=0.6.13"></script>
+  <script src="static/app-player.js?v=0.6.13"></script>
+  <script src="static/app-render.js?v=0.6.13"></script>
+  <script src="static/app-wiring.js?v=0.6.13"></script>
+  <script src="static/app.js?v=0.6.13"></script>
 </body>
 </html>

@@ -99,6 +99,9 @@ async function runPage(win, errors) {
   // 列表是分块渲染的（每块 120 行），先等它铺完再数，否则数到的是中途的行数
   await waitFor(win,
     "document.querySelectorAll('.song-item').length === window.__player.state.songs.length", 15000);
+  // 换设计是「素材到齐才真正切过去」（见 app-marker.js 的 selectMarker）：本机热缓存
+  // 通常一瞬间就好，但这属于实现节奏，显式等一拍，别让这条断言跟着变脆。
+  await waitFor(win, "(window.__player.markerCfg.design || {}).id === 'tm0004'", 8000);
   const dom = await js("(() => {" +
     "const rows = document.querySelectorAll('.song-item');" +
     "const scripts = [...document.querySelectorAll('script[src*=\"static/\"]')];" +
@@ -120,6 +123,43 @@ async function runPage(win, errors) {
   check("marker 默认选中官方设计 tm0004（快门）",
     dom.markerSel === "tm0004" && dom.markerDesign === "tm0004",
     `${dom.markerSel} / ${dom.markerDesign}`);
+  // 换设计 = 「肉眼会缺的那部分素材到齐」才真正切过去（详见 app-marker.js 的 selectMarker）。
+  // 以前是「选完立刻切」，于是第一次用某套设计时头 0.5s 的接近动画整格空着 —— 用户看到
+  // 的就是「缺前半段」。命中爆发（H 通道）不挡切换，但要在随后几秒内补齐，否则命中那一瞬
+  // 会退到别的帧上。
+  const swap = await js("(async () => {" +
+    "const p = window.__player; const target = 'tm0002';" +
+    "const ready = (u) => { const img = p.markerCfg.images.get(u);" +
+    "  return !!(img && img.complete && img.naturalWidth > 0); };" +
+    "const urlsOf = (d, ch, n) => { const a = [];" +
+    "  for (let i = 0; i < n; i++) a.push('markers/' + d.dir + '/' + d.prefix" +
+    "    + '_' + ch + String(i).padStart(2, '0') + '.png'); return a; };" +
+    "const sleep = (ms) => new Promise((r) => setTimeout(r, ms));" +
+    "p.setMarker(target);" +
+    "const deadline = Date.now() + 8000;" +
+    "while ((p.markerCfg.design || {}).id !== target && Date.now() < deadline) await sleep(50);" +
+    "const d = p.markerCfg.design || {};" +
+    "const tier = Object.keys(d.h || {}).sort((a, b) => Number(b) - Number(a))[0];" +
+    "const gate = urlsOf(d, 'MA', d.ma).concat(urlsOf(d, 'FR', d.fr || 0));" +
+    "const burst = urlsOf(d, 'H' + tier, (d.h || {})[tier] || 0);" +
+    "const gateMissing = gate.filter((u) => !ready(u)).length;" +
+    "const hDeadline = Date.now() + 8000;" +
+    "while (burst.some((u) => !ready(u)) && Date.now() < hDeadline) await sleep(50);" +
+    "const burstMissing = burst.filter((u) => !ready(u)).length;" +
+    "const dir = 'markers/' + d.dir + '/';" +
+    "let cached = 0; for (const k of p.markerCfg.images.keys()) if (k.startsWith(dir)) cached++;" +
+    "return {id: d.id, tier, need: gate.length + burst.length, gateMissing, burstMissing, cached};" +
+    "})()");
+  check("切到没用过的 marker 设计：接近动画（MA）到齐才切（不会缺前半段）",
+    !!swap && swap.id === "tm0002" && swap.gateMissing === 0,
+    swap ? `切到 ${swap.id}：切换那一刻 MA+FR 缺 ${swap.gateMissing} 帧` : "拿不到");
+  check("命中爆发贴图随后补齐（命中那一格不会没素材）",
+    !!swap && swap.burstMissing === 0,
+    swap ? `等 8 秒后 H${swap.tier} 还缺 ${swap.burstMissing} 帧` : "拿不到");
+  check("marker 预载只拉真正会画的帧（3 个用不到的 H 档不拉）",
+    !!swap && swap.cached >= swap.need - 2 && swap.cached <= swap.need + 2,
+    swap ? `缓存 ${swap.cached} 张 / 需要 ${swap.need} 张（只用 H${swap.tier}）` : "拿不到");
+  await js("window.__player.setMarker('tm0004')");
   check("静态资源都带了 ?v=（缓存键）",
     dom.scripts >= 4 && dom.noVersion === 0, `${dom.scripts} 个 script / ${dom.noVersion} 个缺版本号`);
   check("样式表加载成功", dom.sheets >= 2, String(dom.sheets));

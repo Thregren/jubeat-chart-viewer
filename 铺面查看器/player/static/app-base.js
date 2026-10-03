@@ -57,6 +57,7 @@
     btnSidebarOpen: $("#btnSidebarOpen"),
     markerCanvas: $("#markerCanvas"),
     markerSelect: $("#markerSelect"),
+    markerHint: $("#markerHint"),
     metroSound: $("#metroSound"),
     metroVolume: $("#metroVolume"),
     metroVolumeLabel: $("#metroVolumeLabel"),
@@ -104,7 +105,7 @@
   };
 
   // 允许缺失的元素：真的可以没有（缺了只是少一个装饰），不算「版本对不上」。
-  const OPTIONAL_ELS = new Set(["glowPairChips"]);
+  const OPTIONAL_ELS = new Set(["glowPairChips", "markerHint"]);
 
   /**
    * 启动自检：els 里的 #id 只要有一个在 index.html 里找不到（改名 / 少写了一个），

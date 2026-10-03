@@ -40,58 +40,146 @@
     return markerUrl(`${design.dir}/${design.prefix}_${channel}${String(frame).padStart(2, "0")}.png`);
   }
 
+  // —— 帧贴图：下载 / 解码 / 失败重试 / 兜底 ——
+  //
+  // 贴图要走网络，动画却是按谱面时钟逐帧画的；这两件事速度一旦对不上，症状就是
+  // 「第一次用某套设计时，开头那几百毫秒的接近动画整格空着」。所以这里四层兜住：
+  //
+  //   1. frameImage()       同一条 URL 只建一个 Image，顺手挂 load/error 钩子 + decode()。
+  //   2. retryFrame()       一次 429 / 5xx / 断网会让这张图**永久**坏掉（浏览器不会自己
+  //                         再试，而线上是按 IP 限流的）——所以失败要退避重试。
+  //   3. whenImageSettled() 「这套设计要用的帧到齐了没」的 Promise，切设计以它为门槛。
+  //   4. frameForChannel()  真到画的时候还没齐，就退到同一通道里最近的一帧、再退到上次
+  //                         画过的那张 —— 格子不断档（退帧只差 33ms，空格看着像素材坏了）。
+  //
+  // 重试请求的 URL 上会多一个 markerRetry=N：出错的响应也可能被浏览器 / CDN 按缓存头
+  // 留下来（线上 429 就带着 30 天 Cache-Control），换个查询串才拿得到新响应。
+  const FRAME_RETRIES = 3;
+  const FRAME_RETRY_MS = [400, 1200, 3000];
+
   /**
-   * 按 URL 取贴图：同一条 URL 整个生命周期只建一个 Image，浏览器自己复用连接/解码结果。
+   * 按 URL 取贴图：同一条 URL 整个生命周期只建一个 Image，浏览器自己复用连接 / 解码结果。
    *
-   * 这里必须顺手 `decode()`：只设 `img.src` 的话，图 **下载完了也可能还没解码**，
-   * 而下面 `ready()` 认的是「已解码」——第一次播到那一帧就会被挡掉，症状就是
+   * 建的时候必须顺手 `decode()`：只设 `img.src` 的话，图 **下载完了也可能还没解码**，
+   * 而下面 `ready()` 认的是「画得出来」——第一次画到那一帧就会被挡掉，症状就是
    * 「动画缺帧 / 不完整」（网络越快越不容易碰到，慢一点必现）。
-   * decode() 是幂等的，同一张图调用多次只会复用同一个 Promise。
+   * decode() 是幂等的，同一张图调用多次只复用同一个 Promise。
    */
   function frameImage(url) {
     let img = markerCfg.images.get(url);
-    if (!img) {
-      img = new Image();
-      img.decoding = "async";      // 异步解码：不卡主线程，但必须显式预热（见上）
-      img.fetchPriority = "high";  // 素材在动画关键路径上，让它排在封面 / 缩略图前面
-      img.src = url;
-      markerCfg.images.set(url, img);
-    }
-    // 每次取图都补一刀 decode()：老浏览器没有这个方法就跳过（ready() 会兜底）
-    if (!img._decodeKicked && typeof img.decode === "function") {
-      img._decodeKicked = true;
-      img.decode().catch(() => { /* 解码失败就交给 ready() 判空，别抛到控制台 */ });
-    }
+    if (img) return img;
+    img = new Image();
+    img.decoding = "async";      // 异步解码：不卡主线程，但必须显式预热（见上）
+    img.fetchPriority = "high";  // 素材在动画关键路径上，让它排在封面 / 缩略图前面
+    img._tries = 0;
+    img.addEventListener("load", repaintSoon);
+    img.addEventListener("error", () => retryFrame(img, url));
+    img.src = url;
+    decodeFrame(img);
+    markerCfg.images.set(url, img);
     return img;
   }
 
   function ready(img) {
-    return img && img.complete && img.naturalWidth > 0;
+    return !!img && img.complete && img.naturalWidth > 0;
+  }
+
+  /** 贴图到货就补画一帧：暂停时渲染循环是停着的，不补就「下完了也不显示」。 */
+  function repaintSoon() {
+    if (typeof A.requestPaint === "function") A.requestPaint();
+  }
+
+  /** 解码预热：decode() 幂等，失败交给 ready() 判空，别抛到控制台。 */
+  function decodeFrame(img) {
+    if (typeof img.decode === "function") img.decode().catch(() => {});
+  }
+
+  /** 失败了退避重试；`markerRetry=N` 同时绕开可能被缓存下来的错误响应。 */
+  function retryFrame(img, url) {
+    if (img._tries >= FRAME_RETRIES) return;      // 放弃，绘制那边会退到别的帧
+    const delay = FRAME_RETRY_MS[img._tries] || 3000;
+    img._tries += 1;
+    window.setTimeout(() => {
+      if (markerCfg.images.get(url) !== img) return;   // 已不在缓存里，别再折腾
+      img.src = `${url}${url.includes("?") ? "&" : "?"}markerRetry=${img._tries}`;
+      decodeFrame(img);
+      repaintSoon();
+    }, delay);
   }
 
   /**
-   * 要画的帧还没解码好时，往前后各找几帧已经就绪的顶上。
+   * 这张贴图「最终能不能用」：已就绪 / 已彻底失败立刻给结果，否则等 load 或 error。
    *
-   * 一帧彻底没画出来（整格空着）比「慢半拍」难看得多，而且这种空窗只在
-   * 刚开机 / 刚切设计那几百毫秒里出现。找不到就照原样返回，让 drawFrameImage 跳过。
+   * 有重试额度时 error 不算数（继续等下一趟），否则一次 429 会让整套设计「缺帧」。
    */
-  const FRAME_FALLBACK_SPAN = 4;
-  function frameImageNear(design, channel, frame, total) {
+  function whenImageSettled(img, url) {
+    if (!img) return Promise.resolve(false);
+    if (ready(img)) return Promise.resolve(true);
+    if (img.complete && img._tries >= FRAME_RETRIES) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const onLoad = () => finish(true);
+      const onError = () => finish(false);
+      function finish(ok) {
+        img.removeEventListener("load", onLoad);
+        img.removeEventListener("error", onError);
+        if (!ok && img._tries < FRAME_RETRIES && markerCfg.images.get(url) === img) {
+          img.addEventListener("load", onLoad);      // 还有重试额度：接着等
+          img.addEventListener("error", onError);
+          return;
+        }
+        resolve(ok);
+      }
+      img.addEventListener("load", onLoad);
+      img.addEventListener("error", onError);
+    });
+  }
+
+  /** 每个「设计 + 通道」最近一次真正画出来的那张：连附近一帧都没就绪时，也还有它顶着。 */
+  const lastDrawn = new Map();
+
+  /**
+   * 要画的那一帧还没就绪时，往两边找最近的一张顶上去；一张都没有就退回这个通道
+   * 上次画过的那张，命中爆发（H）再退到同设计的 MA —— 刚切过去、爆发帧还在路上时，
+   * MA 的末帧画的就是命中那一瞬的姿势，比整格空着强得多。
+   *
+   * 一帧彻底没画出来（整格空着）比「慢半拍」难看得多：前者像素材坏了，后者只是
+   * 动作快了 33 ms。所以这里宁可退帧也不留空。
+   */
+  function frameForChannel(design, channel, frame, total) {
+    const key = `${design.id}|${channel}`;
     const want = frameImage(frameUrl(design, channel, frame));
-    if (ready(want)) return want;
-    for (let d = 1; d <= FRAME_FALLBACK_SPAN; d++) {
+    if (ready(want)) { lastDrawn.set(key, want); return want; }
+    for (let d = 1; d < total; d++) {
       const back = frame - d;
       if (back >= 0) {
         const img = frameImage(frameUrl(design, channel, back));
-        if (ready(img)) return img;
+        if (ready(img)) { lastDrawn.set(key, img); return img; }
       }
       const fwd = frame + d;
       if (fwd < total) {
         const img = frameImage(frameUrl(design, channel, fwd));
-        if (ready(img)) return img;
+        if (ready(img)) { lastDrawn.set(key, img); return img; }
       }
     }
-    return want;
+    // 同通道一张都没就绪：H 通道退到 MA 里「拍点上」的那一帧（官方规格里 MA 的第 15 帧
+    // 就是命中瞬间的姿势），拿它顶住刚切设计、爆发贴图还在路上那几百毫秒。
+    if (channel !== "MA") {
+      const hit = frameImage(frameUrl(design, "MA", maHitFrame(design)));
+      if (ready(hit)) return hit;
+      const ma = lastDrawn.get(`${design.id}|MA`);
+      if (ma) return ma;
+    }
+    return lastDrawn.get(key) || null;
+  }
+
+  /** MA 通道里对应「拍点上」的帧号（u → 0⁻ 时画的那一帧），夹在素材范围内。 */
+  function maHitFrame(design) {
+    const ma = Math.max(1, Number(design.ma) || 0);
+    const per = Number(markerCfg.unitsPerFrame) > 0 ? Number(markerCfg.unitsPerFrame) : 10;
+    const early = Number.isFinite(markerCfg.window && markerCfg.window.early)
+      ? markerCfg.window.early : -155;
+    const f = Math.floor((0 - early) / per);
+    return Math.max(0, Math.min(ma - 1, Number.isFinite(f) ? f : 0));
   }
 
   async function loadMarkers() {
@@ -134,24 +222,94 @@
   }
 
   /**
-   * 预热一套设计的全部帧：不预热的话，切设计 / 第一次画某一帧时会闪一下空白。
-   * frameImage() 里已经挂了 decode()，所以这里建完 Image 就等于「下载 + 解码」一起排队；
-   * 已经建过的设计再切回来是空操作（markerCfg.images 不淘汰，一直留着）。
+   * 一套设计要用的帧分两组 —— 切过去之前等的只有第一组：
+   *
+   *   gateFrameUrls()   MA 接近动画（24 帧）+ 面板边框 FR。这两样缺了是肉眼一眼能看出来
+   *                     的「这套 marker 缺前半段 / 整块没边框」，所以必须到齐才切设计。
+   *   burstFrameUrls()  命中爆发 H（只用得到 PERFECT 那一档，16 帧）。它只在命中那一瞬
+   *                     出现，画的时候又有退帧兜底，所以不挡切换，跟着后台补齐就行。
+   *
+   * 另外三档 H 占了整套素材一半的字节却永远不会被画出来（查看器是按全 PERFECT 播的，
+   * 见 drawMarkers），不预热它们，首次使用一套设计要拉的数据量直接减半。
    */
-  function preloadDesign(design) {
-    for (const tier of Object.keys(design.h || {})) {
-      for (let i = 0; i < design.h[tier]; i++) frameImage(frameUrl(design, `H${tier}`, i));
-    }
-    for (let i = 0; i < design.ma; i++) frameImage(frameUrl(design, "MA", i));
-    for (let i = 0; i < (design.fr || 0); i++) frameImage(frameUrl(design, "FR", i));
+  function gateFrameUrls(design) {
+    const urls = [];
+    const ma = Math.max(0, Number(design.ma) || 0);
+    for (let i = 0; i < ma; i++) urls.push(frameUrl(design, "MA", i));
+    const fr = Math.max(0, Number(design.fr) || 0);
+    for (let i = 0; i < fr; i++) urls.push(frameUrl(design, "FR", i));
+    return urls;
   }
 
+  function burstFrameUrls(design) {
+    const tier = tierOf(design, 4);
+    if (!tier) return [];
+    const urls = [];
+    const n = Math.max(0, Number(design.h && design.h[tier]) || 0);
+    for (let i = 0; i < n; i++) urls.push(frameUrl(design, `H${tier}`, i));
+    return urls;
+  }
+
+  /**
+   * 预热一组帧：建 Image 就等于「下载 + 解码」一起排队（frameImage 里挂了 decode()）。
+   * 已经建过的再拉一次是空操作（markerCfg.images 不淘汰，一直留着）。
+   * 返回的 Promise 在「每一帧都有结果（就绪或彻底失败）」时兑现。
+   */
+  function preloadUrls(urls) {
+    return Promise.all(urls.map((u) => whenImageSettled(frameImage(u), u)));
+  }
+
+  // 切设计的令牌 + 门槛：连着换两次时只让最后一次生效（先来的那套加载慢，不能把
+  // 后来选的顶掉）；要用的素材没齐就先别切过去。
+  //
+  // 这个超时是**安全网**，不是常规路径：门槛只卡 MA + FR（一套约 0.5 MB），
+  // 正常情况下零点几秒就过；真撞上「连得上但慢得没边」的网络，也不能把界面钉死。
+  // 超时兜底交出去之后，退帧策略（frameForChannel）保证格子不会开天窗。
+  let selectToken = 0;
+  const SELECT_GATE_MS = 12000;
+
+  /**
+   * 换 marker 设计。
+   *
+   * 关键在「等素材再切」：贴图是网络资源，动画按谱面时钟走 —— 一选完就切过去的话，
+   * 头 0.5 s 那几帧接近动画（MA00…MA15）往往还没下完，表现出来就是「这套 marker 缺
+   * 前半段」。所以先把上一套留着，等这套要用的帧到齐（或超时）再真正换过去。
+   *
+   * 已经缓存过的设计走上面的快路径，立刻换 —— 正常情况下用户感觉不到这个门槛。
+   */
   function selectMarker(id) {
-    markerCfg.design = markerCfg.designs.find((d) => d.id === id) || null;
-    els.markerSelect.value = markerCfg.design ? markerCfg.design.id : "";
-    store(STORAGE.marker, markerCfg.design ? markerCfg.design.id : "");
-    if (markerCfg.design) preloadDesign(markerCfg.design);
-    A.requestPaint();
+    const design = markerCfg.designs.find((d) => d.id === id) || null;
+    els.markerSelect.value = design ? design.id : "";
+    store(STORAGE.marker, design ? design.id : "");
+    const token = ++selectToken;
+    if (!design) {
+      markerCfg.design = null;
+      setMarkerBusy(false);
+      repaintSoon();
+      return;
+    }
+    const gateUrls = gateFrameUrls(design);
+    const gate = preloadUrls(gateUrls);          // 立刻开始下载 + 解码
+    preloadUrls(burstFrameUrls(design));         // 爆炸帧后台补齐，不挡切换
+    if (gateUrls.every((u) => ready(markerCfg.images.get(u)))) {
+      commitDesign(design, token);               // 已经缓存过：不给用户添等待
+      return;
+    }
+    setMarkerBusy(true);
+    Promise.race([gate, new Promise((r) => window.setTimeout(r, SELECT_GATE_MS))])
+      .then(() => commitDesign(design, token));
+  }
+
+  function commitDesign(design, token) {
+    if (token !== selectToken) return;         // 期间又换了一套，这一趟作废
+    setMarkerBusy(false);
+    markerCfg.design = design;
+    repaintSoon();
+  }
+
+  /** 素材还在下载时给个提示：不然用户以为「选了没反应」。元素可以不存在（老首页）。 */
+  function setMarkerBusy(on) {
+    if (els.markerHint) els.markerHint.hidden = !on;
   }
 
   /**
@@ -833,7 +991,7 @@
       }
 
       counts.set(n.index, count + 1);
-      drawFrameImage(frameImageNear(design, channel, frame, total), rect);
+      drawFrameImage(frameForChannel(design, channel, frame, total), rect);
     }
 
     for (const [n, rect] of numbers) drawOrderNumber(n, rect);

@@ -662,6 +662,16 @@ button:focus-visible,
 
 .ctl-wide select { min-width: 150px; }
 
+/* marker 素材还在下载时的提示：「选了没反应」和「在等贴图」要分得出来。
+   用 [hidden] 兜住 —— .ctl 是 inline-flex，直接给 display 会顶掉 hidden 行为。 */
+.ctl-hint {
+  font-size: 11px;
+  color: var(--amber, #f0b429);
+  white-space: nowrap;
+}
+
+.ctl-hint[hidden] { display: none; }
+
 .pad {
   position: relative;
   overflow: hidden;

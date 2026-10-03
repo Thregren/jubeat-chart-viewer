@@ -11,8 +11,8 @@
 
   // —— 更早那层提供的接口 ——
   const { state, markerCfg, numCfg, abLoop, buildPanel, SFX, sfxTimerSync, loadMarkers,
-     assertEls, frontVersion, toast,
-     selectMarker, selectEffect, setAnchor, layoutCanvas, drawMarkers, layoutDensity, tapAB,
+     seState, assertEls, frontVersion, toast,
+     selectMarker, layoutCanvas, drawMarkers, layoutDensity, tapAB,
      clearAB, lockZoom, isNarrow, setSidebarOpen, loadLibrary, selectSong, loadChart,
      rebuildVisualState, backend, audioLoad, loadRatio, seekTo, play, pause, paintFrame,
      requestPaint, updateFrame, urlState, buildGlowPairOptions, bindEvents, checkFrontVersion } = A;
@@ -96,8 +96,6 @@
       loadChart,
       selectSong,
       setMarker: selectMarker,
-      setEffect: selectEffect,
-      setAnchor,
       layoutCanvas,
       drawMarkers,
       paintFrame,          // 逐帧录制用：按给定时刻同步画一帧
@@ -115,9 +113,7 @@
       // 音效调试 / 自测用：可以用 OfflineAudioContext 直接渲染这几个合成音
       sfx: SFX,
       // 每个音效当前用的是真素材还是合成音（sample / synth / loading）
-      seState: () =>
-        Object.fromEntries([...seCache.entries()].map(
-          ([k, v]) => [k, v === "loading" ? "loading" : v ? "sample" : "synth"])),
+      seState,
       // 音源加载进度（自测 / 排查「切歌后要等多久」用）
       loadState: () => ({
         visible: audioLoad.visible,

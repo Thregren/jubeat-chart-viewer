@@ -4,7 +4,7 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.8`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.12`，由 `tools/set_version.py` 同步）。
 
 [![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
@@ -19,7 +19,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.8`，由 `tools/set_v
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.8** · [Release notes](docs/release-v0.6.8.md) ·
+当前版本：**v0.6.12** · [Release notes](docs/release-v0.6.12.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -117,7 +117,7 @@ site/                           ← 唯一的「运行时数据」，约 2.0 GB
 ├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（14 KB，node 可测）
 ├── static/app-base.js            前端第 1 层：DOM 句柄 / state / 常量 / 曲库元数据（17 KB）
 ├── static/app-audio.js           前端第 2 层：打点音素材 + 输出总线（9.2 KB）
-├── static/app-marker.js          前端第 3 层：marker 动画 / 锚点 / 顺序数字（22 KB）
+├── static/app-marker.js          前端第 3 层：官方逐帧 marker / 长押箭头 / 顺序数字
 ├── static/app-density.js         前端第 4 层：物量条 / 拖动定位 / 连击 / A–B 打点（10 KB）
 ├── static/app-library.js         前端第 5 层：锁缩放 / 侧栏 / 列表 / 选曲（23 KB）
 ├── static/app-player.js          前端第 6 层：播放后端 / 加载进度 / seek（27 KB）
@@ -232,7 +232,8 @@ site/                           ← 唯一的「运行时数据」，约 2.0 GB
 │   ├── markers.py             marker 清单
 │   ├── config.py              路径与环境变量
 │   └── static/                前端（index.html / 9 层 app-*.js / core.js / sfx.js / style.css / record.js / record.css）
-├── marker/jubeat_marker_frames/  marker 素材 + manifest.json + 拆帧工具
+├── marker/jubeat_official/   官方 marker 逐帧贴图 + manifest.json（查看器在用）
+├── marker/jubeat_marker_frames/  早期社区配布的 marker 素材（已不再引用，留作对照）
 ├── docs/                      README 截图、桌面版说明、各版本的 release notes
 ├── music/                     曲库（.gitignore）
 ├── se/                        可选打点音素材（.gitignore，只留说明）
@@ -261,7 +262,7 @@ site/                           ← 唯一的「运行时数据」，约 2.0 GB
 | `parseNotes`（`core.js`） | 谱面 JSON → note 列表：算每条 note 的秒数、hold 区间、`maxSec`、顺序编号 `seq`、同押分组 `group`/`groupSize`、光晕用色 `glowSlot` |
 | 面板 | 16 个 pad 的 DOM；命中 / arm 两种状态（长押不再占 pad 的 CSS 状态，改由画布层画箭头） |
 | 按键音效 | WebAudio 合成的四种音色（点击 / 拍手 / 喵 / 太鼓咚·咔）+ 素材组「比利·海灵顿」，按 note 的精确时间提前排程；往 `se/` 里放同名音频就用真素材（见[构建](#构建)） |
-| marker 动画 | 从 sprite sheet 取帧画到 canvas；PERFECT 帧对齐拍点；长押在按下 / 松开各播一次命中动画 |
+| marker 动画 | 街机原版提取的逐帧贴图（45 套设计）画到 canvas；时序按 `jubeat.dll` 反汇编出来的规格（MA 提前 155ms / H 爆发 160ms，PERFECT 档）；长押在按下 / 松开各播一次命中动画 |
 | 顺序数字 / 光晕 | 同押那一批数字加霓虹光晕 + 两圈外扩波纹；密集处相邻两批双色交替 |
 | 物量条 | 每 2 秒一根柱子的 note 密度图，**本身就是进度条**（按住拖动跳转） |
 | 音源加载 | 换歌时的下载 / 解码进度、加载途中排队的播放请求 |
@@ -331,23 +332,32 @@ site/                           ← 唯一的「运行时数据」，约 2.0 GB
 
 > 这三项在**选项区**里；桌面和手机都做成控制条上方的浮层，展开时也不会挤压铺面高度。
 
-### marker 动画怎么和判定对齐
+### marker 动画
 
-每张 marker sheet 横向固定 5 列、帧序行优先，单帧边长 = 图宽 ÷ 5（500px → 100px，800px → 160px）。
-其中有一帧是「判定完成帧」（TOUCH 完全显形），记作 **anchor**：
+marker 用的是**街机原版提取的逐帧贴图**（`marker/jubeat_official/`，45 套设计），
+时序也不是估的，是从 `jubeat.dll` 反汇编读出来的官方规格。设
+`u = 当前音乐时间 − 该 note 的命中时间`（单位是谱面计时单位，1 帧 = 10 单位）：
 
-```
-lead = (anchor + 1) / fps                        # 接近动画时长
-帧号 k = floor((t − (t_note − lead)) × fps)       # 夹在 [0, anchor]
-```
+| 通道 | 帧数 | 帧号 | 有效区间 | 命中瞬间 |
+|---|---|---|---|---|
+| `MA` 浮动 / 提示 | 24 | `floor((u + 155) / 10)` | `u ∈ [-155, +84]` | **第 15 帧** |
+| `H` 命中爆发 | 4 档 × 16 | `floor(u / 10)` | `u ∈ [0, +160)` | **第 0 帧** |
+| `FR` 面板边框 | 2 | 静态装饰 | 不随时间变化 | —— |
 
-于是 **anchor 帧正好在 `t_note`（拍点）这一瞬间显示**，t 之后继续播剩下的帧（tap）。
+单位换算为 **1 单位 = 3.3333 ms**（实机逐帧比对：动画每帧 = 10 单位，
+1 动画帧 = 1 视频帧 = 1/30 s ≈ 33.333 ms）。于是判定窗口 = 提前 516.7 ms / 延迟 533.3 ms：
+marker 在**拍点前约 0.5 s 淡入**、爆发出现在**拍点上**、约 0.53 s 内收干净。
+换算收敛在 `marker/jubeat_official/manifest.json` 的 `unit_ms`，前端只从那里读。
 
-- `PERFECT 帧`：就是 anchor，默认由 sheet 亮度曲线自动检测（上升段第一个达到峰值 92% 的帧），
-  界面上可拖帧条改，`M` 键换素材，`,/.` 微调 ±1 帧
-- `marker 速度`：整体倍率（相当于下落式音游的 HS）；默认 `0.8×`，让接近动画稍微慢一点、更容易看清
-- 每套素材可以有自己的基准帧率（manifest 里的 `fps`）：**Flower Slow** 是 46 帧的
-  「展开速度 50%」素材，按 60fps 播才和常规 marker 等速
+判定档与贴图：`H1 = POOR`、`H2 = GOOD`、`H3 = GREAT`、`H4 = PERFECT`（后 4 个名字是
+推断，美术顺序是实测的：越亮越花 = 档越高）。本查看器是「按谱面自动全 PERFECT 播放」，
+所以命中爆发**固定取第 4 档**；素材缺这一档时回落到该设计可用的最高档。
+jubeat 没有单独的「过早 / 过晚」贴图，早/晚只体现在「看到 MA 的哪一帧」和
+屏幕上那个 `+/-ms` 数字（那是 UI 贴图，不属于 marker）。
+
+- `marker（按键动画）` 下拉：45 套官方设计（默认 `#04 快门`），`M` 键轮换；选「无（仅面板灯）」就完全不画 marker
+- 长押按下（`t`）与松开（`endT`）各播一次同一套 `H4` 爆发；按住中间只有「会移动的箭头」
+- 细节与复现命令见 [`marker/jubeat_official/README.md`](marker/jubeat_official/README.md)
 
 ### hold 的表现
 
@@ -356,8 +366,8 @@ CSS 状态（0.6.4 之前是「扇形倒计时」，和实机完全不一样，�
 
 1. **提前 0.5s 起势**（`HOLD_PRE`）：走廊（起点格 → 终点格之间那串格子）淡蓝光束先亮到 **0.56**，
    终点格（被按住的那一格）浮出一枚大的 V，起点格上是那枚**很淡**的移动箭头（0.22）
-2. **到位/按下**（`t_note`）：被按住那格的 marker 接近动画照常播、anchor 落在首拍上，
-   紧跟着播一次**命中动画**（TOUCH → 爆花 → 余烬）
+2. **到位/按下**（`t_note`）：被按住那格的 marker 照官方时序走（MA 淡入到命中瞬间的第 15 帧），
+   紧跟着播一次**命中爆发**（`H4` = PERFECT：TOUCH → 爆花 → 余烬）
 3. **按住期间**：箭头从起点格出发、沿走廊匀速滑到终点格，压在哪一格就只亮哪一格，
    走过的格子立刻回到空闲外观；这一格全程是被「按亮」的样子（≈2 倍底色 + 一枚大 V）
 4. **松开/末拍**（`endbeat`）：箭头正好压到终点格，终点格**再播一次同一套命中动画**，
@@ -552,8 +562,8 @@ https://ub.thregren.world/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=74
 | `__rec.debug()` | 自检：画面到底停在哪一刻 |
 
 画面完全由时间决定（`renderAt(t)` 内部是 `setFrameTime(t)` + `seekTo(t)`，不依赖音频时钟），
-所以**录 60fps 并不需要真的跑 60fps**。另外 `?marker=` `?speed=` `?effect=` 可以在进入时覆盖
-marker 与动画速度，录制预设会写进 localStorage，保证每段画面参数一致。
+所以**录 60fps 并不需要真的跑 60fps**。另外 `?marker=` 可以在进入时覆盖 marker 设计
+（传官方设计 id，如 `tm0004`），录制预设会写进 localStorage，保证每段画面参数一致。
 
 ### 手机 / 窄屏
 
@@ -653,8 +663,10 @@ python3 tools/build_site.py --rescan           # 丢掉曲库扫描缓存，重�
 ### 缩略图、marker、打点音
 
 - **缩略图**：`thumbs.py` 用 Pillow 生成 96 px JPG；没装 Pillow 就退化（列表用原图）
-- **marker**：`marker/jubeat_marker_frames/manifest.json` 是清单，构建时复制素材并生成
-  站内相对路径的 `data/markers.json`
+- **marker**：`marker/jubeat_official/`（官方提取的逐帧贴图，45 套设计）跟着站点一起发；
+  `manifest.json` 是清单，构建时复制素材并生成站内相对路径的 `data/markers.json`。
+  动画时序从 `jubeat.dll` 反汇编读出，模型与复现命令见
+  `marker/jubeat_official/README.md`
 - **打点音素材（可选）**：打点音默认是 WebAudio 实时合成的（`static/sfx.js`，不依赖任何音频素材）。
   想要真实音效，把文件丢进仓库根目录的 `se/`，构建时会复制到 `site/media/se/`，播放器优先用它们：
 
@@ -753,21 +765,21 @@ nginx 上要保证的四件事：
 一次改完全部 `?v=` **和侧栏那枚版本号徽章**，不用手改）：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.8" />
-<link rel="stylesheet" href="static/record.css?v=0.6.8" />
-<script src="static/sfx.js?v=0.6.8"></script>
-<script src="static/core.js?v=0.6.8"></script>
-<script src="static/record.js?v=0.6.8"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.12" />
+<link rel="stylesheet" href="static/record.css?v=0.6.12" />
+<script src="static/sfx.js?v=0.6.12"></script>
+<script src="static/core.js?v=0.6.12"></script>
+<script src="static/record.js?v=0.6.12"></script>
 <!-- 下面 9 行的顺序不能改：每一层只依赖比它更早的那几层 -->
-<script src="static/app-base.js?v=0.6.8"></script>
-<script src="static/app-audio.js?v=0.6.8"></script>
-<script src="static/app-marker.js?v=0.6.8"></script>
-<script src="static/app-density.js?v=0.6.8"></script>
-<script src="static/app-library.js?v=0.6.8"></script>
-<script src="static/app-player.js?v=0.6.8"></script>
-<script src="static/app-render.js?v=0.6.8"></script>
-<script src="static/app-wiring.js?v=0.6.8"></script>
-<script src="static/app.js?v=0.6.8"></script>
+<script src="static/app-base.js?v=0.6.12"></script>
+<script src="static/app-audio.js?v=0.6.12"></script>
+<script src="static/app-marker.js?v=0.6.12"></script>
+<script src="static/app-density.js?v=0.6.12"></script>
+<script src="static/app-library.js?v=0.6.12"></script>
+<script src="static/app-player.js?v=0.6.12"></script>
+<script src="static/app-render.js?v=0.6.12"></script>
+<script src="static/app-wiring.js?v=0.6.12"></script>
+<script src="static/app.js?v=0.6.12"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -792,11 +804,11 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.8-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.8-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.8-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.12-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.12-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.12-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.8）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.12）的附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的

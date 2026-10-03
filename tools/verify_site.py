@@ -33,6 +33,7 @@ REPO = TOOLS_DIR.parent
 PLAYER_DIR = REPO / "铺面查看器" / "player"
 sys.path.insert(0, str(PLAYER_DIR))
 
+import markers as markers_mod  # noqa: E402
 import version as version_mod  # noqa: E402
 
 PASS, FAIL, WARN = "\033[32m✓\033[0m", "\033[31m✗\033[0m", "\033[33m!\033[0m"
@@ -230,7 +231,7 @@ def main() -> int:
     for song in songs:
         check_song(out, song, want, r, degraded, audio_map)
 
-    # 5) marker 素材
+    # 5) marker 素材（官方逐帧贴图：清单里的每一帧都要在盘上）
     markers_path = out / "data" / "markers.json"
     if r.check("data/markers.json 存在", markers_path.is_file()):
         try:
@@ -238,17 +239,18 @@ def main() -> int:
         except Exception as exc:
             manifest = {}
             r.check("data/markers.json 可解析", False, str(exc))
-        n = 0
-        for entry in (manifest.get("markers") or []) + (manifest.get("effects") or []):
-            for key in ("sheet", "hit"):
-                spec = entry.get(key)
-                if not spec:
-                    continue
-                rel = spec["sheet"] if key == "hit" else spec
+        designs = manifest.get("designs") or []
+        missing: list[str] = []
+        total = 0
+        for design in designs:
+            for rel in markers_mod.design_assets(design):
+                total += 1
                 want.add(f"markers/{rel}")
-                n += 1
-                r.check(f"marker 素材 {rel}", (out / "markers" / rel).is_file())
-        r.check("marker 素材数量", n > 0, str(n))
+                if not (out / "markers" / rel).is_file():
+                    missing.append(rel)
+        r.check("marker 设计数量", len(designs) >= 40, f"{len(designs)} 套")
+        r.check("marker 贴图齐全", not missing,
+                f"缺 {len(missing)}/{total} 张，例如 {missing[:2]}")
 
     # 6) 构建报告：这次构建真的失败过吗
     if report:

@@ -9,8 +9,8 @@
   <title>jubeat 谱面确认</title>
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.8" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.8" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.12" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.12" />
 </head>
 <body>
   <div id="app">
@@ -40,7 +40,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.8</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.12</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -178,28 +178,10 @@
             </label>
           </div>
           <div class="opt-row">
-            <label class="ctl ctl-wide">按键动画
-              <select id="markerSelect" aria-label="按键动画样式">
+            <label class="ctl ctl-wide">marker（按键动画）
+              <select id="markerSelect" aria-label="marker（按键动画样式）"
+                      title="街机原版提取的逐帧贴图；本查看器按「全 PERFECT」播放，命中爆发用第 4 档（PERFECT）">
                 <option value="">无（仅面板灯）</option>
-              </select>
-            </label>
-            <label class="ctl">动画对齐帧
-              <input id="anchorInput" type="number" min="0" step="1" value="0"
-                     title="动画的这一帧正好落在拍点上（默认自动识别，可手动改）" />
-            </label>
-            <label class="ctl">动画速度
-              <select id="markerSpeed" aria-label="按键动画播放速度">
-                <option value="0.6">0.6×</option>
-                <option value="0.8" selected>0.8×</option>
-                <option value="1">1.0×</option>
-                <option value="1.25">1.25×</option>
-                <option value="1.5">1.5×</option>
-                <option value="2">2.0×</option>
-              </select>
-            </label>
-            <label class="ctl">命中特效
-              <select id="effectSelect" aria-label="命中特效">
-                <option value="">无</option>
               </select>
             </label>
           </div>
@@ -272,14 +254,15 @@
                      title="只淡「同押光晕」：数字背后的光晕 + 两圈波纹 + 数字的霓虹描边；数字本身跟着「序号透明度」走" />
               <span class="unit" id="numGlowAlphaLabel">70%</span>
             </label>
+            <label class="ctl">序号颜色
+              <input id="numColor" type="color" value="#ffffff"
+                     aria-label="音符序号的颜色"
+                     title="音符序号（顺序数字）的颜色；数字边缘会自动配一圈对比色描边" />
+            </label>
             <label class="ctl checkbox">
               <input id="numCorner" type="checkbox" />
               序号放右下角
             </label>
-          </div>
-          <div class="anchor-wrap">
-            <span class="anchor-label" id="anchorLabel">动画帧</span>
-            <div class="anchor-strip" id="anchorStrip" role="listbox" aria-label="选择动画对齐帧"></div>
           </div>
         </div>
 
@@ -296,19 +279,19 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.8"></script>
-  <script src="static/core.js?v=0.6.8"></script>
+  <script src="static/sfx.js?v=0.6.12"></script>
+  <script src="static/core.js?v=0.6.12"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.8"></script>
+  <script src="static/record.js?v=0.6.12"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/app-base.js?v=0.6.8"></script>
-  <script src="static/app-audio.js?v=0.6.8"></script>
-  <script src="static/app-marker.js?v=0.6.8"></script>
-  <script src="static/app-density.js?v=0.6.8"></script>
-  <script src="static/app-library.js?v=0.6.8"></script>
-  <script src="static/app-player.js?v=0.6.8"></script>
-  <script src="static/app-render.js?v=0.6.8"></script>
-  <script src="static/app-wiring.js?v=0.6.8"></script>
-  <script src="static/app.js?v=0.6.8"></script>
+  <script src="static/app-base.js?v=0.6.12"></script>
+  <script src="static/app-audio.js?v=0.6.12"></script>
+  <script src="static/app-marker.js?v=0.6.12"></script>
+  <script src="static/app-density.js?v=0.6.12"></script>
+  <script src="static/app-library.js?v=0.6.12"></script>
+  <script src="static/app-player.js?v=0.6.12"></script>
+  <script src="static/app-render.js?v=0.6.12"></script>
+  <script src="static/app-wiring.js?v=0.6.12"></script>
+  <script src="static/app.js?v=0.6.12"></script>
 </body>
 </html>

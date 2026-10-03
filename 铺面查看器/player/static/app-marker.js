@@ -1,4 +1,4 @@
-/* jubeat 谱面确认 — 第 3 层 · marker：按键动画帧、判定锚点、顺序数字与连击叠字 */
+/* jubeat 谱面确认 — 第 3 层 · marker：官方逐帧按键动画、长押箭头、顺序数字与连击叠字 */
 //
 // 拆层顺序（见 index.html 末尾的 <script>）：app-base → app-audio → app-marker →
 // app-density → app-library → app-player → app-render → app-wiring → app.js。
@@ -10,16 +10,21 @@
   const A = (window.JubeatApp = window.JubeatApp || {});
 
   // —— 更早那层提供的接口 ——
-  const { el, els, state, LEGACY_DEFAULT_MARKER, DEFAULT_MARKER_SPEED, markerCfg, numCfg,
-     STORAGE, PATHS, encPath, FPS_FALLBACK, GLOW_PAIRS, store, toast } = A;
+  const { el, els, state, DEFAULT_MARKER_DESIGN, markerCfg, numCfg,
+     STORAGE, PATHS, encPath, GLOW_PAIRS, store, toast, normalizeHexColor } = A;
 
   // ================= marker 动画 =================
   //
-  // 每张 marker sheet 里有一帧是「判定完成帧」（TOUCH 完全显形的那一帧），
-  // 记作 anchor。播放时把 anchor 对齐到 note 时间 t：
-  //   lead = (anchor + 1) / fps      → 之前的过程帧铺在 [t - lead, t) 上
-  //   t 之后继续播剩下的帧（或独立的判定特效）
-  // 这样「marker 到位」与「判定」正好落在拍子上。
+  // 素材 = 街机 jubeat（beyond the Ave.）里逐帧解出来的官方贴图，渲染时序也照官方
+  // 反汇编出来的规格（见 marker/jubeat_official/README.md）。一套设计三个通道：
+  //
+  //   MA 浮动/提示  24 帧，帧 = floor((u + 155) / 10)，u ∈ [-155, 84]；第 15 帧 = 命中瞬间
+  //   H  命中爆发   4 档 × 16 帧，帧 = floor(u / 10)，u ∈ [0, 160)；第 0 帧 = 命中瞬间
+  //   FR 面板边框   静态装饰（只有部分设计有）
+  //
+  // u = 当前谱面时间 - 该 note 的命中时间，单位是引擎时钟单位（1 单位 = 3.3333 ms，
+  // 即每动画帧 10 单位 ≈ 33.333 ms，见 manifest.unit_ms）。
+  // 本查看器是「按谱面全 PERFECT 播放」，所以命中爆发固定取第 4 档（PERFECT）。
 
   const canvas = els.markerCanvas;
   const ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
@@ -30,14 +35,32 @@
     return PATHS.markersBase + encPath(String(rel || "").replace(/^\.?\//, ""));
   }
 
-  function sheetImage(rel) {
-    const url = markerUrl(rel);
+  /** 某一帧贴图的 URL（官方命名：<dir>/<prefix>_<通道><NN>.png，序号两位补零） */
+  function frameUrl(design, channel, frame) {
+    return markerUrl(`${design.dir}/${design.prefix}_${channel}${String(frame).padStart(2, "0")}.png`);
+  }
+
+  /**
+   * 按 URL 取贴图：同一条 URL 整个生命周期只建一个 Image，浏览器自己复用连接/解码结果。
+   *
+   * 这里必须顺手 `decode()`：只设 `img.src` 的话，图 **下载完了也可能还没解码**，
+   * 而下面 `ready()` 认的是「已解码」——第一次播到那一帧就会被挡掉，症状就是
+   * 「动画缺帧 / 不完整」（网络越快越不容易碰到，慢一点必现）。
+   * decode() 是幂等的，同一张图调用多次只会复用同一个 Promise。
+   */
+  function frameImage(url) {
     let img = markerCfg.images.get(url);
     if (!img) {
       img = new Image();
-      img.decoding = "async";
+      img.decoding = "async";      // 异步解码：不卡主线程，但必须显式预热（见上）
+      img.fetchPriority = "high";  // 素材在动画关键路径上，让它排在封面 / 缩略图前面
       img.src = url;
       markerCfg.images.set(url, img);
+    }
+    // 每次取图都补一刀 decode()：老浏览器没有这个方法就跳过（ready() 会兜底）
+    if (!img._decodeKicked && typeof img.decode === "function") {
+      img._decodeKicked = true;
+      img.decode().catch(() => { /* 解码失败就交给 ready() 判空，别抛到控制台 */ });
     }
     return img;
   }
@@ -46,149 +69,101 @@
     return img && img.complete && img.naturalWidth > 0;
   }
 
-  function currentAnchor(entry) {
-    if (!entry) return 0;
-    const manual = markerCfg.anchors[entry.id];
-    if (manual != null && manual >= 0 && manual < entry.frames) return manual;
-    if (Number(els.anchorInput.value) >= 0 && els.anchorInput.dataset.entry === entry.id) {
-      const v = Number(els.anchorInput.value);
-      if (v >= 0 && v < entry.frames) return v;
+  /**
+   * 要画的帧还没解码好时，往前后各找几帧已经就绪的顶上。
+   *
+   * 一帧彻底没画出来（整格空着）比「慢半拍」难看得多，而且这种空窗只在
+   * 刚开机 / 刚切设计那几百毫秒里出现。找不到就照原样返回，让 drawFrameImage 跳过。
+   */
+  const FRAME_FALLBACK_SPAN = 4;
+  function frameImageNear(design, channel, frame, total) {
+    const want = frameImage(frameUrl(design, channel, frame));
+    if (ready(want)) return want;
+    for (let d = 1; d <= FRAME_FALLBACK_SPAN; d++) {
+      const back = frame - d;
+      if (back >= 0) {
+        const img = frameImage(frameUrl(design, channel, back));
+        if (ready(img)) return img;
+      }
+      const fwd = frame + d;
+      if (fwd < total) {
+        const img = frameImage(frameUrl(design, channel, fwd));
+        if (ready(img)) return img;
+      }
     }
-    return Number.isFinite(entry.anchor) ? entry.anchor : entry.frames - 1;
+    return want;
   }
 
   async function loadMarkers() {
     try {
       const res = await fetch(PATHS.markers);
+      // 先看状态码再看内容：服务器挂了 / 被反代挡下时回来的是 HTML 错误页，
+      // 直接 res.json() 只会抛一句 "Unexpected token '<'"，看不出真正的原因。
+      if (!res.ok) throw new Error(`marker 清单读取失败（${res.status}）`);
       const data = await res.json();
-      markerCfg.fps = Number(data.fps) || 30;
-      markerCfg.entries = data.markers || [];
-      markerCfg.effects = data.effects || [];
+      if (data.error) throw new Error(String(data.error));
+      if (Number(data.unit_ms) > 0) markerCfg.unitMs = Number(data.unit_ms);
+      if (Number(data.units_per_frame) > 0) markerCfg.unitsPerFrame = Number(data.units_per_frame);
+      const win = data.hit_window_units || {};
+      if (Number.isFinite(Number(win.early))) markerCfg.window.early = Number(win.early);
+      if (Number.isFinite(Number(win.late))) markerCfg.window.late = Number(win.late);
+      if (data.fr && Number.isFinite(Number(data.fr.static_frame))) {
+        markerCfg.frStatic = Number(data.fr.static_frame);
+      }
+      markerCfg.designs = Array.isArray(data.designs) ? data.designs : [];
       markerCfg.loaded = true;
 
       const noMarker = el("option", null, "无（仅面板灯）");
       noMarker.value = "";
       els.markerSelect.replaceChildren(noMarker);
-      for (const m of markerCfg.entries) {
+      for (const d of markerCfg.designs) {
         const opt = document.createElement("option");
-        opt.value = m.id;
-        opt.textContent = `#${m.id.slice(0, 2)} ${m.name}（${m.frames} 帧）`;
+        opt.value = d.id;
+        const zh = d.name_zh ? `（${d.name_zh}）` : "";
+        opt.textContent = `#${String(d.num).padStart(2, "0")} ${d.name}${zh}`;
         els.markerSelect.appendChild(opt);
       }
-      const noEffect = el("option", null, "无");
-      noEffect.value = "";
-      els.effectSelect.replaceChildren(noEffect);
-      for (const e of markerCfg.effects) {
-        const opt = document.createElement("option");
-        opt.value = e.id;
-        opt.textContent = e.name;
-        els.effectSelect.appendChild(opt);
-      }
 
-      const savedMarker = store(STORAGE.marker);
-      const savedEffect = store(STORAGE.effect);
-      const savedSpeed = store(STORAGE.speed);
-      if (savedSpeed) {
-        markerCfg.speed = Number(savedSpeed) || DEFAULT_MARKER_SPEED;
-        els.markerSpeed.value = String(markerCfg.speed);
-      }
-      if (savedEffect && markerCfg.effects.some((e) => e.id === savedEffect)) {
-        els.effectSelect.value = savedEffect;
-      }
-      selectEffect(els.effectSelect.value);
-      // 默认按键动画：#04（Shutter + frame，带框那个）。
-      // 老版本存的默认是 02_shutter，这种情况跟着换成新默认；
-      // 自己挑过别的（比如 flower / kalesy）就保留自己的选择。
-      const pickMarker = () => {
-        const entries = markerCfg.entries;
-        return (entries.find((m) => m.id.startsWith("04_"))
-          || entries.find((m) => /shutter$/.test(m.id))
-          || entries[0])?.id || "";
-      };
-      const keepSaved = savedMarker
-        && savedMarker !== LEGACY_DEFAULT_MARKER
-        && markerCfg.entries.some((m) => m.id === savedMarker);
-      selectMarker(keepSaved ? savedMarker : pickMarker());
+      const saved = store(STORAGE.marker);
+      const keepSaved = saved && markerCfg.designs.some((d) => d.id === saved);
+      selectMarker(keepSaved ? saved : DEFAULT_MARKER_DESIGN);
     } catch (err) {
       console.warn("marker manifest 加载失败", err);
-      toast("按键动画素材加载失败，已退化为面板灯模式", true);
+      toast("marker 素材加载失败，已退化为面板灯模式", true);
     }
+  }
+
+  /**
+   * 预热一套设计的全部帧：不预热的话，切设计 / 第一次画某一帧时会闪一下空白。
+   * frameImage() 里已经挂了 decode()，所以这里建完 Image 就等于「下载 + 解码」一起排队；
+   * 已经建过的设计再切回来是空操作（markerCfg.images 不淘汰，一直留着）。
+   */
+  function preloadDesign(design) {
+    for (const tier of Object.keys(design.h || {})) {
+      for (let i = 0; i < design.h[tier]; i++) frameImage(frameUrl(design, `H${tier}`, i));
+    }
+    for (let i = 0; i < design.ma; i++) frameImage(frameUrl(design, "MA", i));
+    for (let i = 0; i < (design.fr || 0); i++) frameImage(frameUrl(design, "FR", i));
   }
 
   function selectMarker(id) {
-    markerCfg.entry = markerCfg.entries.find((m) => m.id === id) || null;
-    els.markerSelect.value = markerCfg.entry ? markerCfg.entry.id : "";
-    store(STORAGE.marker, markerCfg.entry ? markerCfg.entry.id : "");
-    if (markerCfg.entry) {
-      const saved = store(STORAGE.anchor(markerCfg.entry.id));
-      if (saved != null) markerCfg.anchors[markerCfg.entry.id] = Number(saved);
-      els.anchorInput.max = String(markerCfg.entry.frames - 1);
-      els.anchorInput.value = String(currentAnchor(markerCfg.entry));
-      els.anchorInput.dataset.entry = markerCfg.entry.id;
-      els.anchorInput.disabled = false;
-      sheetImage(markerCfg.entry.sheet);
-      if (markerCfg.entry.hit) sheetImage(markerCfg.entry.hit.sheet);
-    } else {
-      els.anchorInput.disabled = true;
-      els.anchorInput.value = "0";
-    }
-    renderAnchorStrip();
+    markerCfg.design = markerCfg.designs.find((d) => d.id === id) || null;
+    els.markerSelect.value = markerCfg.design ? markerCfg.design.id : "";
+    store(STORAGE.marker, markerCfg.design ? markerCfg.design.id : "");
+    if (markerCfg.design) preloadDesign(markerCfg.design);
     A.requestPaint();
   }
 
-  function selectEffect(id) {
-    markerCfg.effect = markerCfg.effects.find((e) => e.id === id) || null;
-    store(STORAGE.effect, markerCfg.effect ? markerCfg.effect.id : "");
-    if (markerCfg.effect) sheetImage(markerCfg.effect.sheet);
-    A.requestPaint();
-  }
-
-  function setAnchor(frame) {
-    const entry = markerCfg.entry;
-    if (!entry) return;
-    const f = Math.max(0, Math.min(entry.frames - 1, frame | 0));
-    markerCfg.anchors[entry.id] = f;
-    store(STORAGE.anchor(entry.id), f);
-    els.anchorInput.value = String(f);
-    renderAnchorStrip();
-    A.requestPaint();
-  }
-
-  function renderAnchorStrip() {
-    const strip = els.anchorStrip;
-    strip.replaceChildren();
-    const entry = markerCfg.entry;
-    if (!entry) {
-      const span = document.createElement("span");
-      span.className = "anchor-label";
-      span.textContent = "未选择按键动画";
-      strip.appendChild(span);
-      return;
-    }
-    const img = sheetImage(entry.sheet);
-    const anchor = currentAnchor(entry);
-    for (let i = 0; i < entry.frames; i++) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.title = `第 ${i} 帧${i === anchor ? "（当前对齐帧）" : ""}`;
-      b.dataset.frame = String(i);
-      if (i === anchor) b.classList.add("anchor");
-      const col = i % entry.cols;
-      const row = Math.floor(i / entry.cols);
-      b.style.backgroundImage = `url("${markerUrl(entry.sheet)}")`;
-      b.style.backgroundSize = `${entry.cols * 26}px ${entry.rows * 26}px`;
-      b.style.backgroundPosition = `-${col * 26}px -${row * 26}px`;
-      b.addEventListener("click", () => setAnchor(i));
-      strip.appendChild(b);
-    }
-    void img;
-    const el = strip.querySelector(".anchor");
-    // 只横向滚动这条帧条；不要用 scrollIntoView —— 它会连带把祖先容器（#app）也滚动，
-    // 手机上就会把整页往上顶掉一截（选项面板收起时尤其明显）
-    if (el) {
-      const target = el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2;
-      strip.scrollLeft = Math.max(0, target);
-    }
+  /**
+   * 命中爆发的档次。查看器是「全 PERFECT」播放，固定要第 4 档（PERFECT）；
+   * 素材包里没这一档就回落到最高可用档 —— 永远画得出来，不会因为缺贴图整格开天窗。
+   */
+  function tierOf(design, want = 4) {
+    const h = design && design.h;
+    if (!h) return null;
+    if (h[want]) return String(want);
+    const avail = Object.keys(h).sort((a, b) => Number(b) - Number(a));
+    return avail.length ? avail[0] : null;
   }
 
   function layoutCanvas() {
@@ -611,21 +586,16 @@
     }
   }
 
-  function drawSheetFrame(sheet, spec, frame, rect, alpha = 1) {
-    if (!ready(sheet) || !rect) return;
-    const cell = spec.cell;
-    const sx = (frame % spec.cols) * cell;
-    const sy = Math.floor(frame / spec.cols) * cell;
-    const inset = Math.max(1, rect.w * 0.02);
-    const x = rect.x + inset;
-    const y = rect.y + inset;
-    const w = rect.w - inset * 2;
-    const h = rect.h - inset * 2;
+  /** 把一张官方帧贴图铺满一个格子。
+   *  官方贴图是 160×160 的整幅画（整格铺满、没有额外内边距），所以直接等比铺到
+   *  pad 矩形上；再裁成和 pad 一样的圆角，免得方角盖住格子本身的圆角。 */
+  function drawFrameImage(img, rect, alpha = 1) {
+    if (!ready(img) || !rect) return;
     ctx.save();
     if (alpha < 1) ctx.globalAlpha = alpha;
-    roundRectPath(ctx, x, y, w, h, Math.max(4, w * 0.12));
+    roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, padClipRadius(rect));
     ctx.clip();
-    ctx.drawImage(sheet, sx, sy, cell, cell, x, y, w, h);
+    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
     ctx.restore();
   }
 
@@ -657,6 +627,21 @@
   function glowNow() {
     if (state.playing || glowClock == null) glowClock = performance.now();
     return glowClock;
+  }
+
+  /** 音符序号的填充色。取色器给的是 `#rrggbb`，坏值一律当白色（= 老行为）。 */
+  function numColorHex() {
+    return normalizeHexColor(numCfg.color);
+  }
+
+  /**
+   * 数字的黑描边是「白字压在花哨 marker 上还看得清」的关键；但用户把数字调成
+   * 深色时，黑描边会把数字糊成一团 —— 所以按亮度把描边翻成浅色。
+   */
+  function numOutline(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+    return lum < 110 ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.75)";
   }
 
   function drawOrderNumber(note, rect) {
@@ -749,115 +734,109 @@
     }
 
     ctx.lineWidth = Math.max(2, size * 0.14);
-    ctx.strokeStyle = "rgba(0,0,0,0.75)";
-    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = numOutline(numColorHex());
+    ctx.fillStyle = numColorHex();
     ctx.strokeText(text, x, y);
     ctx.fillText(text, x, y);
     ctx.restore();
   }
 
+  /**
+   * FR 通道 = 设计自带的面板边框（只有部分设计有，见 manifest 的 fr 字段）。
+   * 官方是垫在每格上的静态装饰、不随时间变化，所以选中有 FR 的设计时 16 格全铺一张，
+   * 让后面的 marker / 长押箭头盖在上面。
+   */
+  function drawPanelFrames() {
+    const d = markerCfg.design;
+    const n = d ? Number(d.fr) || 0 : 0;
+    if (!n || !state.padRects || state.padRects.length < 16) return;
+    const frame = Math.max(0, Math.min(n - 1, Number(markerCfg.frStatic) || 0));
+    const img = frameImage(frameUrl(d, "FR", frame));
+    for (const rect of state.padRects) drawFrameImage(img, rect);
+  }
+
+  /**
+   * 官方 marker 的逐帧渲染 —— 严格按 jubeat.dll 反汇编出来的规格
+   * （见 marker/jubeat_official/README.md 与素材包里的 ANIMATION.md）：
+   *
+   *   u = (当前时间 - 该 note 的命中时间)，单位是引擎时钟（1 单位 = 3.3333 ms，
+   *       见 manifest.unit_ms；屏幕上每个动画帧 = 10 单位 ≈ 33.333 ms）
+   *   u ∈ [early, 0)  → MA 通道：帧 = floor((u - early) / 10)；第 15 帧 = 命中瞬间
+   *   u ∈ [0, late)   → H  通道：帧 = floor(u / 10)；第 0 帧 = 命中瞬间
+   *   early = -155、late = +160（判定窗口），每帧 10 单位，MA 24 帧、H 每档 16 帧。
+   *
+   * 查看器是「全 PERFECT」播放，所以 H 固定取第 4 档（PERFECT）。
+   * 长押：按下（t）与松开（endT）各播一次同一套 H4 动画，都画在被按住的那一格；
+   * 中间那段只有「会移动的箭头」陪着你（drawHoldArrows）。
+   */
   function drawMarkers(chartT) {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
-    drawComboOverlay();     // 连击在最底层：marker 会压住它（和游戏一致）
+    drawPanelFrames();      // FR：设计自带的面板边框（最底层）
+    drawComboOverlay();     // 连击在 marker 下面：marker 会压住它（和游戏一致）
     // 长押（官方「会移动的箭头」）画在 marker 下面：它不属于任何一张 marker 素材，
-    // 就算设成「无（仅面板灯）」也要画，所以放在 entry 的早退之前。
+    // 就算设成「无（仅面板灯）」也要画，所以放在 design 的早退之前。
     drawHoldArrows(chartT);
-    const entry = markerCfg.entry;
-    if (!entry || !state.notes.length) return;
 
-    // 每个 marker 可以有自己的基准帧率（比如 flower slow 是 2 倍帧数的慢速素材，
-    // 要按 60fps 播才能和常规 marker 的时间轴一致）
-    const baseFps = Number(entry.fps) || FPS_FALLBACK[entry.id] || markerCfg.fps;
-    const fps = baseFps * (markerCfg.speed || 1);
-    const anchor = currentAnchor(entry);
-    const lead = (anchor + 1) / fps;
-    const hitSpec = entry.hit || null;
-    const effect = markerCfg.effect;
-    const tail = hitSpec
-      ? hitSpec.frames / fps
-      : Math.max((entry.frames - anchor - 1) / fps, 0.05);
-    const effectTail = effect ? effect.frames / fps : 0;
-    const windowEnd = chartT + Math.max(tail, effectTail) + 0.02;
+    const design = markerCfg.design;
+    if (!design || !state.notes.length) return;
+    const tier = tierOf(design, 4);            // PERFECT 档；缺档自动回落最高可用档
+    if (!tier) return;
+    const maFrames = Math.max(1, Number(design.ma) || 0);
+    const hFrames = Math.max(1, Number(design.h && design.h[tier]) || 0);
 
-    const sheet = sheetImage(entry.sheet);
-    const hitSheet = hitSpec ? sheetImage(hitSpec.sheet) : null;
-    const effectSheet = effect ? sheetImage(effect.sheet) : null;
-    const counts = new Map();
+    const unitMs = Number(markerCfg.unitMs) > 0 ? Number(markerCfg.unitMs) : 3.3333;
+    const per = Number(markerCfg.unitsPerFrame) > 0 ? Number(markerCfg.unitsPerFrame) : 10;
+    const win = markerCfg.window || {};
+    const early = Number.isFinite(win.early) ? win.early : -155;
+    const late = Number.isFinite(win.late) ? win.late : 160;
+    const earlySec = (early * unitMs) / 1000;
+    const lateSec = (late * unitMs) / 1000;
     const holdBack = (state._parsed && state._parsed.maxHold) || 0;
+    const counts = new Map();
+    // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
+    // 数字是压在按键动画之上的覆盖层。挤在同一趟循环里先画的话，后面那些 marker
+    // 会把先画的数字盖掉（同押的时候尤其明显）。
+    const numbers = [];
 
-    for (const n of notesInWindow(chartT - lead - holdBack, windowEnd)) {
-      // 每段 = 一个 pad 上的一次 marker 播放：
-      //   t        到位时间（anchor 帧落在这一刻）
-      //   holdEnd  若是 hold，则按下（t）与松开（holdEnd）各播一次命中动画，
-      //            [t, holdEnd) 中间只留「会移动的箭头」，不再有 marker
-      // 长押的 marker 只落在被按住的那一格（n.index）；起点格（n.tailTip）没有
-      // marker，它上面出现的是「会移动的箭头」的出发位置，由 drawHoldArrows 画。
-      const segments = [
-        { pad: n.index, t: n.t, holdEnd: n.kind === "hold" ? n.endT : null },
-      ];
-
-      for (const seg of segments) {
-        const rel = chartT - seg.t;
-        let frame = -1;
-        let spec = null;
-        let image = null;
-        let alpha = 1;
-
-        if (rel < 0) {
-          // 1) 接近动画：anchor 帧落在 rel == 0
-          const k = Math.floor((rel + lead) * fps);
-          if (k < 0) continue;
-          frame = Math.min(anchor, k);
-          spec = entry;
-          image = sheet;
-        } else {
-          // 2) 命中动画。官方长押在「按下」和「松开」两个瞬间各播一次同一套命中
-          //    动画，都画在被按住的那一格 n.index 上：按下 = 谱面的 t（起点格那枚
-          //    箭头出动的同一刻），松开 = endT（箭头正好压到终点格的同一刻）。
-          //    按住中间这段什么都不播 —— 那一格只有「会移动的箭头」陪着你。
-          //    逐帧核对（festo 实机视频，hold30 向上 3 格）：终点格 74.90 起
-          //    TOUCH、75.03 爆花、75.27 余烬；77.47 松开时又原样重播一次。
-          let after = rel;
-          if (seg.holdEnd != null) {
-            const holdDur = seg.holdEnd - seg.t;
-            if (after >= holdDur) after -= holdDur;
-          }
-          if (after >= tail) continue;
-          if (hitSpec) {
-            const k = Math.floor(after * fps);
-            if (k >= hitSpec.frames) continue;
-            frame = k;
-            spec = hitSpec;
-            image = hitSheet;
-          } else {
-            const k = anchor + 1 + Math.floor(after * fps);
-            if (k >= entry.frames) continue;
-            frame = k;
-            spec = entry;
-            image = sheet;
-          }
-        }
-
-        const count = counts.get(seg.pad) || 0;
-        if (count >= 6) continue;
-        counts.set(seg.pad, count + 1);
-        drawSheetFrame(image, spec, frame, state.padRects[seg.pad], alpha);
-        // 顺序数字：marker 一出现就跟着画会「提前一大截」，官方是拍点前 0.10s 才出现
-        // （见 NUM_LEAD），之后就跟着 marker 一起消失。
-        if (rel >= -NUM_LEAD) drawOrderNumber(n, state.padRects[seg.pad]);
-      }
-
-      // 额外的判定特效（可选）：在头拍命中后叠加
+    for (const n of notesInWindow(chartT + earlySec - holdBack, chartT + lateSec)) {
+      const rect = state.padRects[n.index];
+      if (!rect) continue;
+      // 长押在松开（endT）那一瞬重播一次同一套命中动画：把 endT 当成新的 0 点
+      const dur = n.kind === "hold" && n.endT != null ? n.endT - n.t : null;
       const rel = chartT - n.t;
-      if (effect && rel >= 0 && rel < effectTail) {
-        const k = Math.floor(rel * fps);
-        if (k < effect.frames) {
-          drawSheetFrame(effectSheet, effect, k, state.padRects[n.index]);
-        }
+      const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / unitMs;
+
+      // 顺序数字：官方是「拍点前 0.10s」才出现（见 NUM_LEAD），跟上这一段的命中动画
+      // 一起收尾；长押按住期间一直留着，松开时再跟着爆一次。这一段不属于 marker
+      // 素材，所以放在窗口早退之前，设成「无（仅面板灯）」时也就自然不画了。
+      const numEnd = (dur != null ? dur : 0) + lateSec;
+      if (rel >= -NUM_LEAD && rel <= numEnd) numbers.push([n, rect]);
+
+      if (u < early || u >= late) continue;
+      const count = counts.get(n.index) || 0;
+      if (count >= 6) continue;
+
+      let channel;
+      let frame;
+      let total;
+      if (u < 0) {
+        channel = "MA";
+        total = maFrames;
+        frame = Math.min(maFrames - 1, Math.floor((u - early) / per));
+        if (frame < 0) continue;
+      } else {
+        channel = `H${tier}`;
+        total = hFrames;
+        frame = Math.floor(u / per);
+        if (frame >= hFrames) continue;
       }
+
+      counts.set(n.index, count + 1);
+      drawFrameImage(frameImageNear(design, channel, frame, total), rect);
     }
 
+    for (const [n, rect] of numbers) drawOrderNumber(n, rect);
   }
 
   /** 总连击：半透明大字，压在面板正中（对应「总连击」开关） */
@@ -893,17 +872,15 @@
     configurable: true,
   });
   // —— 对外接口 ——
+  // 只列「别的层真的会用的」：ready() / drawHoldArrows() 是本层内部的两个函数，
+  // 以前也挂了出去，于是 app-player 顶部白解构了一个 ready（音源就绪？看着像，
+  // 其实是「图片解码好了没」的判定），既没用又容易在下一次改动里被误用。
   Object.assign(A, {
     ctx,
-    ready,
-    currentAnchor,
     loadMarkers,
     selectMarker,
-    selectEffect,
-    setAnchor,
     layoutCanvas,
     glowPair,
     drawMarkers,
-    drawHoldArrows,
   });
 })();

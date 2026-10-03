@@ -20,7 +20,7 @@
 | `JUBEAT_PORT` | `8765` | 监听端口 |
 | `JUBEAT_HOST` | `127.0.0.1` | 想直接对外（不推荐）才改 `0.0.0.0` |
 | `JUBEAT_LIBRARY` | `<repo>/music` | 曲库目录 |
-| `JUBEAT_MARKERS` | `<repo>/marker/jubeat_marker_frames` | marker 素材目录 |
+| `JUBEAT_MARKERS` | `<repo>/marker/jubeat_official` | 官方 marker 素材目录（逐帧 PNG + manifest.json） |
 | `JUBEAT_CACHE` | `<repo>/cache` | 解包缓存（可随时删） |
 | `JUBEAT_X_ACCEL` | 空 | 设成 `/_audio/` 且 nginx 配好 alias 后，音频交给 nginx 发（省 Python 线程） |
 | `JUBEAT_THUMB_SIZE` | `96` | 列表缩略图边长 |

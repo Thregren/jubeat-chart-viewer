@@ -49,10 +49,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # —— 基础输出 ——
     def log_message(self, fmt: str, *args) -> None:
-        first = args[0] if args else ""
-        if "/api/library" in str(first) or "/api/health" in str(first):
+        # args[0] 是格式化模板（'"%s" %s %s'），请求行在 self.path 上 ——
+        # 以前拿 args[0] 去匹配路径，永远匹配不上，等于这段过滤根本没生效。
+        path = self.path or ""
+        if "/api/library" in path or "/api/health" in path:
             return
         super().log_message(fmt, *args)
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        # 只要开始写响应头，这条连接上就不能再发第二个响应了（HTTP/1.1 会把两个
+        # 响应拼在一起，客户端解析成乱码）。do_GET 的异常兜底靠这个标志决定
+        # 「回一个 JSON 错误」还是「只能断开连接」。
+        self._responded = True
+        super().send_response(code, message)
 
     def _accepts_gzip(self) -> bool:
         return "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
@@ -93,6 +102,18 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, message: str, code: int = 400) -> None:
         self._json({"error": message}, code)
 
+    def _fail(self, message: object, code: int) -> None:
+        """出错时回一个 JSON 错误 —— 但仅限于「还没开始写响应」的时候。
+
+        响应已经发出去（文件传到一半断了 / 缓存文件在 stat 之后被删掉），再补一个
+        404/500 就是把两个响应叠在同一条 keep-alive 连接上。这种情况只能把连接
+        关掉，让客户端自己重试。
+        """
+        if getattr(self, "_responded", False):
+            self.close_connection = True
+            return
+        self._error(str(message) or "error", code)
+
     def _hdr(self, extra: dict | None = None) -> dict:
         """给要用 media.stream_file 直接发文件的响应凑一份带头（含安全头）。"""
         headers = dict(self.BASE_HEADERS)
@@ -110,9 +131,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._route(urlparse(self.path))
         except FileNotFoundError as exc:
-            self._error(str(exc) or "not found", 404)
+            self._fail(exc, 404)
         except (ValueError, KeyError) as exc:
-            self._error(str(exc), 400)
+            self._fail(exc, 400)
         except (BrokenPipeError, ConnectionResetError):
             pass  # 客户端提前断开（拖进度条时很常见）
         except Exception:  # 兜底：别因为单个请求把线程打挂
@@ -122,7 +143,10 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             try:
                 print(f"[500 {ref}] {self.command} {self.path}", file=sys.stderr)
-                self._json({"error": "internal error", "ref": ref}, 500, cache="no-store")
+                if getattr(self, "_responded", False):
+                    self.close_connection = True
+                else:
+                    self._json({"error": "internal error", "ref": ref}, 500, cache="no-store")
             except Exception:
                 pass
 
@@ -177,7 +201,9 @@ class Handler(BaseHTTPRequestHandler):
             "thumb_backend": thumbs.backend(),
             "thumb_size": config.THUMB_SIZE,
             "x_accel": config.X_ACCEL_PREFIX or None,
-            "markers": len(markers.manifest().get("markers") or []),
+            # 清单是「一套设计一个入口」（designs）；旧字段 "markers" 在改版后就一直
+            # 是 0，健康检查会把「45 套素材都在」误报成「一套都没有」。
+            "markers": len(markers.manifest().get("designs") or []),
         })
 
     def _data_library(self) -> None:

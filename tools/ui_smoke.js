@@ -106,7 +106,8 @@ async function runPage(win, errors) {
     " diffBtns: document.querySelectorAll('#diffRow .diff-btn').length," +
     " activeDiff: (document.querySelector('#diffRow .diff-btn.active') || {}).dataset?.code," +
     " markers: document.getElementById('markerSelect').options.length," +
-    " effects: document.getElementById('effectSelect').options.length," +
+    " markerSel: (document.getElementById('markerSelect').selectedOptions[0] || {}).value," +
+    " markerDesign: (window.__player.markerCfg.design || {}).id," +
     " scripts: scripts.length," +
     " noVersion: scripts.filter((s) => !/\\?v=/.test(s.getAttribute('src'))).length," +
     " sheets: document.styleSheets.length};" +
@@ -115,8 +116,10 @@ async function runPage(win, errors) {
   check("4×4 面板 16 格都在", dom.pads === 16, String(dom.pads));
   check("难度按钮数 = 这首的难度数", dom.diffBtns >= 2, `${dom.diffBtns} 个`);
   check("当前难度按钮高亮正确", dom.activeDiff === "EXT", String(dom.activeDiff));
-  check("marker 下拉有选项", dom.markers > 1, `${dom.markers} 项`);
-  check("特效下拉有选项", dom.effects > 1, `${dom.effects} 项`);
+  check("marker 下拉有全部官方设计", dom.markers >= 40, `${dom.markers} 项`);
+  check("marker 默认选中官方设计 tm0004（快门）",
+    dom.markerSel === "tm0004" && dom.markerDesign === "tm0004",
+    `${dom.markerSel} / ${dom.markerDesign}`);
   check("静态资源都带了 ?v=（缓存键）",
     dom.scripts >= 4 && dom.noVersion === 0, `${dom.scripts} 个 script / ${dom.noVersion} 个缺版本号`);
   check("样式表加载成功", dom.sheets >= 2, String(dom.sheets));
@@ -126,17 +129,20 @@ async function runPage(win, errors) {
     "  if (value !== undefined) { if (el.type === 'checkbox') el.checked = value; else el.value = value; }" +
     "  el.dispatchEvent(new Event(type, {bubbles: true})); };" +
     "fire('numScale', 'input', 150); fire('numAlpha', 'input', 40); fire('numCorner', 'change', true);" +
+    "fire('numColor', 'input', '#ff3366'); fire('numColor', 'change', '#ff3366');" +
     "fire('showNumbers', 'change', true); fire('showCombo', 'change', true);" +
     "const cfg = window.__player.numCfg;" +
-    "const r = {scale: cfg.scale, alpha: cfg.alpha, corner: cfg.corner," +
+    "const r = {scale: cfg.scale, alpha: cfg.alpha, corner: cfg.corner, color: cfg.color," +
     " label: document.getElementById('numScaleLabel').textContent};" +
     "fire('numScale', 'input', 100); fire('numAlpha', 'input', 100); fire('numCorner', 'change', false);" +
+    "fire('numColor', 'input', '#ffffff'); fire('numColor', 'change', '#ffffff');" +
     "return r;" +
     "})()");
   check("序号字号滑杆生效", settings.scale === 1.5, String(settings.scale));
   check("序号透明度滑杆生效", Math.abs(settings.alpha - 0.4) < 1e-6, String(settings.alpha));
   check("序号右下角开关生效", settings.corner === true);
   check("滑杆数值回显到标签上", settings.label === "150%", settings.label);
+  check("序号颜色取色器生效", settings.color === "#ff3366", String(settings.color));
 
   const filtered = await js("(() => {" +
     "const before = document.querySelectorAll('.song-item').length;" +
@@ -268,6 +274,66 @@ function js2(win, code) {
   return win.webContents.executeJavaScript(code, true);
 }
 
+/**
+ * __player 契约扫描：把暴露出去的每个函数都真调一遍。
+ *
+ * 为什么要单独来一趟：拆分之后「某一层把函数搬走了 / 接口忘了导出」这类错，
+ * 语法检查和其它用例都可能放过去 —— 只有当那条路径真的被走到才炸。上一版
+ * `__player.seState()` 引用了 app-audio 的私有变量，任何页面加载都不会报错，
+ * 只有去调它才会 ReferenceError（自测里没人调，就这么漏了很久）。
+ *
+ * 放在录制模式之后重新载入一次页面：这一步会拨动播放器状态（调用 play / tapAB…），
+ * 顺序放在最后，前面的结论就不受影响。
+ */
+async function runContractSweep(win) {
+  console.log("\n▸ __player 契约扫描");
+  await win.loadURL(base + DEEP_LINK);
+  const up = await waitFor(win, "!!(window.__player && window.__player.state.notes.length)");
+  check("重新载入后 __player 仍然就绪", !!up);
+  if (!up) return;
+
+  const out = await js2(win, `(async () => {
+    // 「跨层名字没了」这一类错误长这样，单独挑出来当失败；
+    // 其它参数不合法导致的报错只记录（那是喂进去的参数不对，不是接口坏了）。
+    const HARD = /is not defined|is not a function|Cannot read propert|Cannot destructure|of null/;
+    const p = window.__player;
+    // 需要参数才问得通的，给真实值，别拿 undefined 去喂
+    const ARGS = {
+      selectSong: () => [p.state.song],
+      loadChart: () => [p.state.chartMeta.code],
+      seekTo: () => [1],
+    };
+    const bad = [];
+    const soft = [];
+    let called = 0;
+    for (const key of Object.keys(p)) {
+      const fn = p[key];
+      if (typeof fn !== "function") continue;
+      called += 1;
+      try {
+        const r = fn(...(ARGS[key] ? ARGS[key]() : []));
+        if (r && typeof r.then === "function") await r;
+      } catch (err) {
+        const msg = (err && err.message) || String(err);
+        (HARD.test(msg) ? bad : soft).push(key + " → " + msg);
+      }
+    }
+    let se = null;
+    try { se = p.seState(); } catch (err) { se = { __err: (err && err.message) || String(err) }; }
+    return { called, total: Object.keys(p).length, bad, soft, se };
+  })()`);
+
+  check("__player 上的函数都能调用（没有跨层名字丢失）",
+    !!out && out.bad.length === 0,
+    out ? out.bad.slice(0, 3).join(" ｜ ") || `${out.called} 个函数` : "扫描本身失败");
+  check("__player.seState() 给出每个音效的来源",
+    !!out && out.se && !out.se.__err && typeof out.se === "object",
+    out && out.se ? JSON.stringify(out.se) : "不可用");
+  if (out && out.soft.length) {
+    console.log(`  \x1b[2m（${out.soft.length} 个函数对空参数报错，属正常：${out.soft.slice(0, 2).join(" ｜ ")}）\x1b[0m`);
+  }
+}
+
 app.whenReady().then(async () => {
   const serving = await srv.serve(SITE);
   base = serving.url;
@@ -299,6 +365,7 @@ app.whenReady().then(async () => {
     console.log(`站点目录：${SITE}\n前端地址：${base}`);
     await runPage(win, errors);
     await runRecMode(win);
+    await runContractSweep(win);
     console.log("\n▸ 控制台");
     check("页面没有 JS 报错（console error / 未捕获异常）", errors.length === 0,
       errors.slice(0, 3).join(" ｜ "));

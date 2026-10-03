@@ -11,7 +11,7 @@
 
   // —— 更早那层提供的接口 ——
   const { els, state, audioUrl, fmtTime, fmtBytes, computeDuration, toast, sfxReset, setPlaying,
-     ready, density, buildDensity, drawDensity, rebuildVisualState } = A;
+     density, buildDensity, drawDensity, rebuildVisualState } = A;
 
   // —— transport ——
   //

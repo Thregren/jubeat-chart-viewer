@@ -249,24 +249,30 @@ def build_song(song: dict, out: Path, force: bool, force_audio: bool, stats: Sta
 
 
 def build_markers(out: Path, force: bool, stats: Stats) -> list[str]:
-    """复制 marker 素材 + 生成站内路径的 data/markers.json。"""
+    """复制官方 marker 逐帧贴图 + 生成站内 data/markers.json。"""
     src_root = config.MARKERS_ROOT
-    manifest = json.loads((src_root / "manifest.json").read_text(encoding="utf-8"))
-    manifest = markers._normalize(manifest)
+    manifest = markers.manifest()          # 已裁剪 / 缓存过的干净清单
+    if manifest.get("error"):
+        raise RuntimeError(f"marker 清单不可用：{manifest['error']}")
     copied: list[str] = []
-    for entry in manifest.get("markers", []) + manifest.get("effects", []):
-        for key in ("sheet", "hit"):
-            spec = entry.get(key)
-            if not spec:
+    missing: list[str] = []
+    for design in manifest["designs"]:
+        for rel in markers.design_assets(design):
+            src = src_root / rel
+            if not src.is_file():
+                # 清单说有、盘上没有：别让整个构建挂掉，但也别装作没事
+                missing.append(rel)
                 continue
-            rel = spec["sheet"] if key == "hit" else spec
             copied.append(rel)
-            path = src_root / rel
             dest = out / "markers" / rel
-            if copy_fresh(path, dest, force):
+            if copy_fresh(src, dest, force):
                 stats.added(dest.stat().st_size)
             else:
                 stats.skipped += 1
+    if missing:
+        print(f"⚠️  marker 素材缺 {len(missing)} 张（清单有、盘上没有），"
+              f"例如 {missing[0]}", file=sys.stderr)
+    print(f"  marker 贴图 {len(copied)} 张 / {len(manifest['designs'])} 套设计")
     write_atomic(out / "data" / "markers.json",
                  json.dumps(manifest, ensure_ascii=False, indent=1).encode("utf-8"))
     return copied
@@ -346,7 +352,12 @@ def main() -> int:
     for src in static_files():
         name = src.name
         dest = out / (name if name == "index.html" else f"static/{name}")
-        if copy_fresh(src, dest, args.force):
+        # index.html 每次都重写：它带着一整排 ?v=，而 tools/set_version.py 是**就地**
+        # 改 site/index.html 的版本号（改完 mtime 比源文件还新）。增量规则本来只看
+        # mtime，于是「源 HTML 改了结构」会被当成「产物已是最新」跳过，线上就变成
+        # 「新 JS + 老 HTML」——本轮新增 #numColor 时就踩了这个坑。它只有十几 KB，
+        # 每次都复制最省心。
+        if copy_fresh(src, dest, args.force or name == "index.html"):
             stats.added(src.stat().st_size)
 
     # robots.txt：曲库 / marker 素材没必要被搜索引擎收录（既费流量也是版权暴露面）

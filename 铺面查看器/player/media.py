@@ -220,8 +220,16 @@ def stream_file(handler, path: Path, ctype: str, extra: dict | None = None) -> N
 
     if handler.command == "HEAD":
         return
+    # stat 与 open 之间文件可能被删掉 / 换掉（缓存清理、曲库重读）：这时响应头
+    # 已经发出去了，补不了 404，只能断开连接让客户端重来。异常要是冒到
+    # server.py 的兜底里，就会变成「一条连接上两个响应」。
     try:
-        with open(path, "rb") as fh:
+        fh = open(path, "rb")
+    except OSError:
+        handler.close_connection = True
+        return
+    try:
+        with fh:
             fh.seek(start)
             out = handler.wfile
             remaining = length
@@ -233,3 +241,6 @@ def stream_file(handler, path: Path, ctype: str, extra: dict | None = None) -> N
                 remaining -= len(data)
     except (BrokenPipeError, ConnectionResetError):
         pass  # 客户端提前断开（拖进度条时很常见）
+    except OSError:
+        # 读到一半磁盘出错（外接盘掉了之类）：同理，只能断流
+        handler.close_connection = True

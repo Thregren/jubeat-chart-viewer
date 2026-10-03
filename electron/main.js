@@ -61,6 +61,18 @@ function messageBox(text) {
   dialog.showMessageBox(win, { message: text, buttons: ["好"] });
 }
 
+/** 启动链 / 菜单回调里的 await 统一兜底：出错要让用户看见，不能变成一条静默的
+ *  未处理 Promise 拒绝（窗口一片空白，也不说为什么）。 */
+function reportError(what, err) {
+  console.error(what, err);
+  const detail = err && err.message ? err.message : String(err);
+  try {
+    messageBox(`${what}：${detail}`);
+  } catch {
+    /* 连对话框都弹不出来（app 已经在退出）就算了，堆栈已经进 stderr */
+  }
+}
+
 function buildMenu() {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -70,17 +82,21 @@ function buildMenu() {
           {
             label: "选择站点目录（site/）…",
             click: async () => {
-              const res = await dialog.showOpenDialog(win, {
-                title: "选择 site 目录",
-                properties: ["openDirectory"],
-              });
-              if (res.canceled || !res.filePaths.length) return;
-              const dir = res.filePaths[0];
-              if (!fs.existsSync(path.join(dir, "index.html"))) {
-                messageBox("这个目录里没有 index.html，请选择用 tools/build_site.py 生成的 site 目录。");
-                return;
+              try {
+                const res = await dialog.showOpenDialog(win, {
+                  title: "选择 site 目录",
+                  properties: ["openDirectory"],
+                });
+                if (res.canceled || !res.filePaths.length) return;
+                const dir = res.filePaths[0];
+                if (!fs.existsSync(path.join(dir, "index.html"))) {
+                  messageBox("这个目录里没有 index.html，请选择用 tools/build_site.py 生成的 site 目录。");
+                  return;
+                }
+                await openSite(dir);
+              } catch (err) {
+                reportError("打开站点失败", err);
               }
-              await openSite(dir);
             },
           },
           { type: "separator" },
@@ -106,11 +122,15 @@ function buildMenu() {
           {
             label: "曲库与站点怎么准备",
             click: () => {
-              const readme = process.resourcesPath
-                ? path.join(process.resourcesPath, "README-electron.txt")
-                : path.join(__dirname, "..", "docs", "README-electron.txt");
-              if (fs.existsSync(readme)) shell.openPath(readme);
-              else messageBox("把 .mcz 放进 music/，跑 python3 tools/build_site.py 生成 site/，再选择该目录。");
+              try {
+                const readme = process.resourcesPath
+                  ? path.join(process.resourcesPath, "README-electron.txt")
+                  : path.join(__dirname, "..", "docs", "README-electron.txt");
+                if (fs.existsSync(readme)) shell.openPath(readme);
+                else messageBox("把 .mcz 放进 music/，跑 python3 tools/build_site.py 生成 site/，再选择该目录。");
+              } catch (err) {
+                reportError("打开说明失败", err);
+              }
             },
           },
           { label: "当前站点目录", click: () => messageBox(siteDir || "（未设置）") },
@@ -166,7 +186,18 @@ async function createWindow() {
     await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(NO_SITE_HTML));
     return;
   }
-  await openSite(dir);
+  try {
+    await openSite(dir);
+  } catch (err) {
+    // 站点目录读不动（权限 / 磁盘）或本地端口起不来：给一份能看懂的页面，
+    // 而不是留在空白窗口 + 一条没人看的未处理拒绝。
+    reportError("打开站点失败", err);
+    if (!win.isDestroyed()) {
+      await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(
+        NO_SITE_HTML.replace("还没有找到站点数据", "站点打不开"),
+      )).catch(() => {});
+    }
+  }
 }
 
 app.whenReady().then(() => {
@@ -179,13 +210,17 @@ app.whenReady().then(() => {
     console.error("permission handler 设置失败", err);
   }
   buildMenu();
-  createWindow();
+  createWindow().catch((err) => reportError("启动窗口失败", err));
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow().catch((err) => reportError("启动窗口失败", err));
+    }
   });
 });
 
 app.on("window-all-closed", async () => {
-  if (server) await server.close();
+  // close() 失败（端口已经关了 / 句柄泄漏）不该拦住退出：兜一下，别让
+  // 「关不掉的 Promise」把 quit 卡住。
+  if (server) await server.close().catch(() => {});
   if (process.platform !== "darwin") app.quit();
 });

@@ -72,7 +72,7 @@
    */
   function paintFrame(mediaT) {
     // arm upcoming (pending within ARM window)
-    const markerMode = !!markerCfg.entry;
+    const markerMode = !!markerCfg.design;
     state.armed.fill(false);
     if (!markerMode) {
       // 没有 marker 时用「落点前微亮」代替接近动画。
@@ -89,6 +89,11 @@
     }
 
     // paint pads
+    //
+    // 选中 marker 设计时**不**打「命中闪灯 / 面板高亮」（就是上面的 markerMode）：
+    // 这两样会把 pad 刷成近白色，而官方 marker 贴图（MA / H 通道）本身是半透明的
+    // —— 白底会透上来把贴图冲淡，看着就像「marker 被糊了一层高亮」。有 marker 时
+    // 命中反馈交给 marker 自己的动画；「无（仅面板灯）」时照旧，那两样就是唯一反馈。
     let anyHit = false;
     for (let i = 0; i < 16; i++) {
       const pad = state.padEls[i];
@@ -96,7 +101,7 @@
 
       // 长押不再占用 pad 的 CSS 状态（以前是蓝色底 + 扇形倒计时，官方没有这个）：
       // 它由 canvas 上的「会移动的箭头」表现，这里只管「命中闪灯」和「落点前微亮」。
-      const hit = state.hitUntil[i] > 0 && mediaT <= state.hitUntil[i];
+      const hit = !markerMode && state.hitUntil[i] > 0 && mediaT <= state.hitUntil[i];
       const armed = !hit && state.armed[i];
       if (hit) anyHit = true;
 

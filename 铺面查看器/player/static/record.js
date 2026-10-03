@@ -25,15 +25,15 @@
 
   // ── 1. 录制预设（必须早于 app.js：它一启动就读这些键）──────────────
   const PRESET = {
-    settingsVersion: "4",                 // 低于 2 时 app.js 会强制覆盖连击 / 序号开关
-    marker: query.get("marker") || "04_shutter_with_frame",
-    markerSpeed: query.get("speed") || "0.8",
-    effect: query.get("effect") || "",
+    settingsVersion: "6",                 // 低于 2 时 app.js 会强制覆盖连击 / 序号开关；
+                                          // 也必须 ≥ 6，否则启动时会把 marker 键清掉
+    marker: query.get("marker") || "tm0004",   // 官方设计 id（缺省 = #04 快门）
     showCombo: "1",
     showNumbers: "1",
     // 序号外观固定成默认值：录制机器上残留的滑杆设置不能影响成片
     numScale: "100",
     numAlpha: "100",
+    numColor: "#ffffff",                  // 序号颜色也钉死，成片不受录制机历史设置影响
     numGlowAlpha: "70",                   // 与同押光晕的默认透明度保持一致（0.7）
     numCorner: "0",
     showChordGlow: "1",
@@ -102,10 +102,10 @@
     return card;
   }
 
-  /** marker 素材（sprite sheet）是否全部解码完 —— 没完就录会缺 marker */
+  /** 当前 marker 设计的逐帧贴图是否全部解码完 —— 没完就录会缺 marker */
   function markerImagesReady() {
     const player = window.__player;
-    if (!player || !player.markerCfg || !player.markerCfg.entry) return false;
+    if (!player || !player.markerCfg || !player.markerCfg.design) return false;
     const images = [...player.markerCfg.images.values()];
     return images.length > 0 && images.every((img) => img.complete && img.naturalWidth > 0);
   }
@@ -116,7 +116,7 @@
     await waitUntil("谱面", () => {
       const player = window.__player;
       return !!(player && player.state.notes.length && player.state.duration > 0
-        && player.markerCfg.entry);
+        && player.markerCfg.design);
     }, timeoutMs);
 
     if (!buildCard()) throw new Error("页面结构不对：找不到 .now-playing / .panel-stage");
@@ -175,8 +175,7 @@
       duration: state.duration,
       baseOffset: state.baseOffset || 0,
       hits,
-      marker: player.markerCfg.entry ? player.markerCfg.entry.id : null,
-      markerSpeed: player.markerCfg.speed,
+      marker: player.markerCfg.design ? player.markerCfg.design.id : null,
       clip: {
         x: rect.left + window.scrollX,
         y: rect.top + window.scrollY,
@@ -247,7 +246,7 @@
       playing: !!player.state.playing,
       backend: load.mode,
       hasBuffer: !!load.hasBuffer,
-      marker: player.markerCfg.entry ? player.markerCfg.entry.id : null,
+      marker: player.markerCfg.design ? player.markerCfg.design.id : null,
       canvas: canvas
         ? { cssW: canvas.style.width, cssH: canvas.style.height, w: canvas.width, h: canvas.height }
         : null,

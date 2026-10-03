@@ -100,7 +100,9 @@ def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool) -> dict:
     status, _, body = fetch(base + "/data/markers.json")
     n_markers = 0
     try:
-        n_markers = len(json.loads(body).get("markers") or [])
+        # 清单是「一套设计一个入口」（designs），不是老版本那种「一张 sheet」。
+        # 这里以前读的还是旧字段，于是这一项从 marker 改版起就一直报 0 个。
+        n_markers = len(json.loads(body).get("designs") or [])
     except Exception:
         pass
     c.check("marker 清单", status == 200 and n_markers > 0, f"{status} {n_markers} 个")

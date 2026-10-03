@@ -1,0 +1,894 @@
+{
+ "format": "jubeat-official",
+ "game": "jubeat (beyond the ave., tex_l44)",
+ "unit_ms": 3.3333,
+ "units_per_frame": 10,
+ "hit_window_units": {
+  "early": -155,
+  "late": 160
+ },
+ "ma": {
+  "frames": 24,
+  "hit_frame": 15,
+  "start_units": -155,
+  "end_units": 84
+ },
+ "h": {
+  "tiers": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "frames_per_tier": 16,
+  "hit_frame": 0,
+  "end_units": 160
+ },
+ "fr": {
+  "frames": 2,
+  "static_frame": 1
+ },
+ "judge_tiers": {
+  "POOR": 1,
+  "GOOD": 2,
+  "GREAT": 3,
+  "PERFECT": 4
+ },
+ "designs": [
+  {
+   "id": "tm0001",
+   "num": 1,
+   "dir": "tex_l44_tm0001",
+   "prefix": "TM0001",
+   "name": "Cyber",
+   "name_ja": "サイバー",
+   "name_zh": "赛博 / 电子网络",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0002",
+   "num": 2,
+   "dir": "tex_l44_tm0002",
+   "prefix": "TM0002",
+   "name": "Flower",
+   "name_ja": "フラワー",
+   "name_zh": "花朵",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0003",
+   "num": 3,
+   "dir": "tex_l44_tm0003",
+   "prefix": "TM0003",
+   "name": "Afro",
+   "name_ja": "アフロ",
+   "name_zh": "爆炸头",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0004",
+   "num": 4,
+   "dir": "tex_l44_tm0004",
+   "prefix": "TM0004",
+   "name": "Shutter",
+   "name_ja": "シャッター",
+   "name_zh": "快门",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0005",
+   "num": 5,
+   "dir": "tex_l44_tm0005",
+   "prefix": "TM0005",
+   "name": "Blue Ring",
+   "name_ja": "ブルーリング",
+   "name_zh": "蓝环",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0006",
+   "num": 6,
+   "dir": "tex_l44_tm0006",
+   "prefix": "TM0006",
+   "name": "Fireworks",
+   "name_ja": "花火",
+   "name_zh": "烟花",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0007",
+   "num": 7,
+   "dir": "tex_l44_tm0007",
+   "prefix": "TM0007",
+   "name": "Target",
+   "name_ja": "ターゲット",
+   "name_zh": "靶心",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0008",
+   "num": 8,
+   "dir": "tex_l44_tm0008",
+   "prefix": "TM0008",
+   "name": "Egg",
+   "name_ja": "たまご",
+   "name_zh": "蛋",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0009",
+   "num": 9,
+   "dir": "tex_l44_tm0009",
+   "prefix": "TM0009",
+   "name": "Gauge",
+   "name_ja": "ゲージ",
+   "name_zh": "计量条",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0010",
+   "num": 10,
+   "dir": "tex_l44_tm0010",
+   "prefix": "TM0010",
+   "name": "Ice",
+   "name_ja": "アイス",
+   "name_zh": "冰",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0011",
+   "num": 11,
+   "dir": "tex_l44_tm0011",
+   "prefix": "TM0011",
+   "name": "Volcano",
+   "name_ja": "火山",
+   "name_zh": "火山",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0012",
+   "num": 12,
+   "dir": "tex_l44_tm0012",
+   "prefix": "TM0012",
+   "name": "Digital Block",
+   "name_ja": "デジタルブロック",
+   "name_zh": "数字方块",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0013",
+   "num": 13,
+   "dir": "tex_l44_tm0013",
+   "prefix": "TM0013",
+   "name": "Sand Art",
+   "name_ja": "サンドアート",
+   "name_zh": "沙画",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0014",
+   "num": 14,
+   "dir": "tex_l44_tm0014",
+   "prefix": "TM0014",
+   "name": "Soap Ball",
+   "name_ja": "シャボン玉",
+   "name_zh": "肥皂泡",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0015",
+   "num": 15,
+   "dir": "tex_l44_tm0015",
+   "prefix": "TM0015",
+   "name": "Okojo",
+   "name_ja": "オコジョ",
+   "name_zh": "伶鼬",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0016",
+   "num": 16,
+   "dir": "tex_l44_tm0016",
+   "prefix": "TM0016",
+   "name": "Mirror Ball",
+   "name_ja": "ミラーボール",
+   "name_zh": "镜面球",
+   "release": "jubeat（2008-07-24）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0017",
+   "num": 17,
+   "dir": "tex_l44_tm0017",
+   "prefix": "TM0017",
+   "name": "ripples",
+   "name_ja": "リプルズ",
+   "name_zh": "涟漪",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0018",
+   "num": 18,
+   "dir": "tex_l44_tm0018",
+   "prefix": "TM0018",
+   "name": "Torus",
+   "name_ja": "トーラス",
+   "name_zh": "圆环体",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0019",
+   "num": 19,
+   "dir": "tex_l44_tm0019",
+   "prefix": "TM0019",
+   "name": "Blur",
+   "name_ja": "ブラー",
+   "name_zh": "模糊",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0020",
+   "num": 20,
+   "dir": "tex_l44_tm0020",
+   "prefix": "TM0020",
+   "name": "Touch",
+   "name_ja": "触",
+   "name_zh": "触",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0021",
+   "num": 21,
+   "dir": "tex_l44_tm0021",
+   "prefix": "TM0021",
+   "name": "Banana",
+   "name_ja": "バナナ",
+   "name_zh": "香蕉",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0022",
+   "num": 22,
+   "dir": "tex_l44_tm0022",
+   "prefix": "TM0022",
+   "name": "Fusuma",
+   "name_ja": "襖",
+   "name_zh": "拉门（襖）",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0023",
+   "num": 23,
+   "dir": "tex_l44_tm0023",
+   "prefix": "TM0023",
+   "name": "Picture",
+   "name_ja": "絵画",
+   "name_zh": "绘画",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0024",
+   "num": 24,
+   "dir": "tex_l44_tm0024",
+   "prefix": "TM0024",
+   "name": "Yubiko",
+   "name_ja": "ユビ子",
+   "name_zh": "尤比子（ユビ=手指）",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0025",
+   "num": 25,
+   "dir": "tex_l44_tm0025",
+   "prefix": "TM0025",
+   "name": "Stealth",
+   "name_ja": "ステルス",
+   "name_zh": "潜行",
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0026",
+   "num": 26,
+   "dir": "tex_l44_tm0026",
+   "prefix": "TM0026",
+   "name": "knit",
+   "name_ja": "ニット",
+   "name_zh": "针织",
+   "release": "jubeat knit（2010-07-29）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0027",
+   "num": 27,
+   "dir": "tex_l44_tm0027",
+   "prefix": "TM0027",
+   "name": "Concierge",
+   "name_ja": "コンシェルジュ",
+   "name_zh": "礼宾员",
+   "release": "jubeat knit（2010-07-29）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0028",
+   "num": 28,
+   "dir": "tex_l44_tm0028",
+   "prefix": "TM0028",
+   "name": "jubeat-kun",
+   "name_ja": "jubeatくん",
+   "name_zh": "jubeat 君",
+   "release": "jubeat knit（2010-07-29）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0029",
+   "num": 29,
+   "dir": "tex_l44_tm0029",
+   "prefix": "TM0029",
+   "name": "Color Composition",
+   "name_ja": "色彩構成",
+   "name_zh": "色彩构成",
+   "release": "jubeat knit（2010-07-29）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0030",
+   "num": 30,
+   "dir": "tex_l44_tm0030",
+   "prefix": "TM0030",
+   "name": "Stopwatch",
+   "name_ja": "ストップウォッチ",
+   "name_zh": "秒表",
+   "release": "jubeat knit（2010-07-29）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0031",
+   "num": 31,
+   "dir": "tex_l44_tm0031",
+   "prefix": "TM0031",
+   "name": "Nengoro Neko",
+   "name_ja": "ねんごろねこ",
+   "name_zh": "亲昵猫",
+   "release": "jubeat knit（2010-07-29）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0032",
+   "num": 32,
+   "dir": "tex_l44_tm0032",
+   "prefix": "TM0032",
+   "name": "copious",
+   "name_ja": "コピオス",
+   "name_zh": "copious（丰富）",
+   "release": "jubeat copious（2011-09-15）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 2
+  },
+  {
+   "id": "tm0033",
+   "num": 33,
+   "dir": "tex_l44_tm0033",
+   "prefix": "TM0033",
+   "name": "Circus",
+   "name_ja": "サーカス",
+   "name_zh": "马戏团",
+   "release": "jubeat copious（2011-09-15）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0034",
+   "num": 34,
+   "dir": "tex_l44_tm0034",
+   "prefix": "TM0034",
+   "name": "Kobi Fukurou",
+   "name_ja": "こびふくろう",
+   "name_zh": "小猫头鹰",
+   "release": "jubeat copious（2011-09-15）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0035",
+   "num": 35,
+   "dir": "tex_l44_tm0035",
+   "prefix": "TM0035",
+   "name": "Natural Block",
+   "name_ja": "ナチュラルブロック",
+   "name_zh": "自然方块",
+   "release": "jubeat copious（2011-09-15）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0036",
+   "num": 36,
+   "dir": "tex_l44_tm0036",
+   "prefix": "TM0036",
+   "name": "saucer",
+   "name_ja": "ソーサー",
+   "name_zh": "saucer（碟）",
+   "release": "jubeat saucer（2012-09-25）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 2
+  },
+  {
+   "id": "tm0037",
+   "num": 37,
+   "dir": "tex_l44_tm0037",
+   "prefix": "TM0037",
+   "name": "SHOT-CYO-U (S-C-U)",
+   "name_ja": "ショッチョー",
+   "name_zh": "ショッチョー（S-C-U）",
+   "release": "jubeat saucer（2012-09-25）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0038",
+   "num": 38,
+   "dir": "tex_l44_tm0038",
+   "prefix": "TM0038",
+   "name": "QMA/CPU Sharon",
+   "name_ja": "QMA/CPUシャロン",
+   "name_zh": "QMA/CPU 莎伦",
+   "release": "jubeat saucer（2012-09-25）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0039",
+   "num": 39,
+   "dir": "tex_l44_tm0039",
+   "prefix": "TM0039",
+   "name": "prop",
+   "name_ja": "プロップ",
+   "name_zh": "prop（道具）",
+   "release": "jubeat prop（2015-02-20）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 2
+  },
+  {
+   "id": "tm0040",
+   "num": 40,
+   "dir": "tex_l44_tm0040",
+   "prefix": "TM0040",
+   "name": "Qubell",
+   "name_ja": "キューベル",
+   "name_zh": "Qubell（库贝尔）",
+   "release": "jubeat Qubell（2016-03-30）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 2
+  },
+  {
+   "id": "tm0045",
+   "num": 45,
+   "dir": "tex_l44_tm0045",
+   "prefix": "TM0045",
+   "name": "clan",
+   "name_ja": "クラン",
+   "name_zh": "clan（氏族）",
+   "release": "jubeat clan（2017-07-26）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 2
+  },
+  {
+   "id": "tm0046",
+   "num": 46,
+   "dir": "tex_l44_tm0046",
+   "prefix": "TM0046",
+   "name": "festo",
+   "name_ja": "フェスト",
+   "name_zh": "festo（节庆）",
+   "release": "jubeat festo（2018-09-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 2
+  },
+  {
+   "id": "tm0047",
+   "num": 47,
+   "dir": "tex_l44_tm0047",
+   "prefix": "TM0047",
+   "name": "HinaBitter♪",
+   "name_ja": "ひなビタ♪",
+   "name_zh": "雏 BIT♪（HinaBitter♪）",
+   "release": "jubeat festo（2018-09-05）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0048",
+   "num": 48,
+   "dir": "tex_l44_tm0048",
+   "prefix": "TM0048",
+   "name": "Square",
+   "name_ja": "スクエア",
+   "name_zh": "Square（方块）",
+   "release": "jubeat Ave.（2022-08-03）/ beyond the Ave.（2023-09-20）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
+   "id": "tm0049",
+   "num": 49,
+   "dir": "tex_l44_tm0049",
+   "prefix": "TM0049",
+   "name": "Avenue",
+   "name_ja": "アベニュー",
+   "name_zh": "Avenue（大道）",
+   "release": "jubeat Ave.（2022-08-03）/ beyond the Ave.（2023-09-20）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 2
+  }
+ ]
+}

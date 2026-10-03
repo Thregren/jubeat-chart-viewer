@@ -86,6 +86,22 @@ function resolveSafe(root, urlPath) {
   return target;
 }
 
+/**
+ * 把文件发出去（200 整文件 / 206 一段）。
+ *
+ * createReadStream 的 'error' 必须接住：stat 与 open 之间文件被删掉、或读到一半
+ * 磁盘出错时，没有监听器的 'error' 事件不是「这一个请求失败」，而是直接掀掉
+ * Electron 主进程（整个应用退出）。此时响应头已经发出去了，补不了 404，
+ * 只能 destroy 掉这条响应，让客户端自己重试。
+ */
+function sendFile(req, res, target, headers, code, opts = null) {
+  res.writeHead(code, headers);
+  if (req.method === "HEAD") return res.end();
+  const stream = opts ? fs.createReadStream(target, opts) : fs.createReadStream(target);
+  stream.on("error", () => res.destroy());
+  return stream.pipe(res);
+}
+
 /** 启动静态服务，返回 { url, close } */
 function serve(rootDir) {
   const root = path.resolve(rootDir);
@@ -117,18 +133,14 @@ function serve(rootDir) {
       };
       const range = parseRange(req.headers.range, stat.size);
       if (!range) {
-        res.writeHead(200, { ...headers, "Content-Length": stat.size });
-        if (req.method === "HEAD") return res.end();
-        return fs.createReadStream(target).pipe(res);
+        return sendFile(req, res, target, { ...headers, "Content-Length": stat.size }, 200);
       }
       const [start, end] = range;
-      res.writeHead(206, {
+      return sendFile(req, res, target, {
         ...headers,
         "Content-Range": `bytes ${start}-${end}/${stat.size}`,
         "Content-Length": end - start + 1,
-      });
-      if (req.method === "HEAD") return res.end();
-      fs.createReadStream(target, { start, end }).pipe(res);
+      }, 206, { start, end });
     });
   });
   return new Promise((resolve) => {

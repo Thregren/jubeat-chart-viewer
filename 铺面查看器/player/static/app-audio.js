@@ -199,6 +199,18 @@
     if (on) A.requestPaint();
   }
 
+  /**
+   * 每个音效素材此刻用的是真素材还是合成音（"sample" / "synth" / "loading"）。
+   *
+   * seCache 是本层的私有状态，外面（__player 的调试接口）只看得到这个函数。
+   * 以前 app.js 直接写 `[...seCache.entries()]`，跨了 IIFE 的作用域 —— 调用必抛
+   * ReferenceError，而语法检查和页面启动都发现不了（只有真去调它才炸）。
+   */
+  function seState() {
+    return Object.fromEntries([...seCache.entries()].map(
+      ([name, buf]) => [name, buf === "loading" ? "loading" : buf ? "sample" : "synth"]));
+  }
+
   function sfxTick() {
     if (!state.playing || !state.notes.length || !els.metroSound.value) return;
     if (metroGain(1) <= 0) return;
@@ -230,6 +242,7 @@
   Object.assign(A, {
     SFX,
     seProbe,
+    seState,
     playMetro,
     sfxReset,
     sfxTimerSync,

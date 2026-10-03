@@ -247,6 +247,10 @@ class Library:
             raw = json.loads(config.INDEX_CACHE.read_text(encoding="utf-8"))
         except Exception:
             return None
+        # 缓存文件合法 JSON 但内容不是对象（被别的程序覆盖成 []、"x"、null…）：
+        # 当没缓存处理、老老实实重扫，别让 .get 抛出把请求打成 500。
+        if not isinstance(raw, dict):
+            return None
         if raw.get("version") != config.INDEX_VERSION:
             return None
         if raw.get("library") != str(self.root):

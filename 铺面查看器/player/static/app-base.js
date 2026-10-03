@@ -57,10 +57,6 @@
     btnSidebarOpen: $("#btnSidebarOpen"),
     markerCanvas: $("#markerCanvas"),
     markerSelect: $("#markerSelect"),
-    anchorInput: $("#anchorInput"),
-    anchorStrip: $("#anchorStrip"),
-    markerSpeed: $("#markerSpeed"),
-    effectSelect: $("#effectSelect"),
     metroSound: $("#metroSound"),
     metroVolume: $("#metroVolume"),
     metroVolumeLabel: $("#metroVolumeLabel"),
@@ -72,6 +68,7 @@
     numAlphaLabel: $("#numAlphaLabel"),
     numGlowAlpha: $("#numGlowAlpha"),
     numGlowAlphaLabel: $("#numGlowAlphaLabel"),
+    numColor: $("#numColor"),
     numCorner: $("#numCorner"),
     showChordGlow: $("#showChordGlow"),
     phraseMult: $("#phraseMult"),
@@ -151,23 +148,22 @@
     lastTimeText: "",
   };
 
-  // 早期版本的默认按键动画是 02_shutter；现在默认改成 #04（Shutter + frame）。
-  // 老浏览器里存的如果还是这个旧默认值，就跟着换新的；自己挑过别的则保留。
-  const LEGACY_DEFAULT_MARKER = "02_shutter";
-
-  // 默认动画速度改为 0.8×，接近动画会比 1.0× 慢一点、更容易看清。
-  // 这是新默认值；用户之后在「动画速度」里手动改过的选择仍会继续记住。
-  const DEFAULT_MARKER_SPEED = 0.8;
-
+  // marker：官方提取的逐帧贴图（见 marker/jubeat_official/README.md）。
+  // 每套设计三个通道，时间模型来自反汇编出来的官方规格：
+  //   MA 浮动/提示  24 帧，每帧 10 单位，第 15 帧 = 命中瞬间
+  //   H  命中爆发   4 档 × 16 帧，第 0 帧 = 命中瞬间
+  //   FR 面板边框   静态装饰
+  // 默认设计 = tm0004「シャッター / Shutter」——铜色快门 + 橙色 TOUCH，实机最常见的那套。
+  const DEFAULT_MARKER_DESIGN = "tm0004";
   const markerCfg = {
-    fps: 30,
-    entries: [], // 所有可选 marker
-    effects: [],
-    entry: null, // 当前 marker
-    effect: null, // 当前判定特效
-    speed: DEFAULT_MARKER_SPEED,
-    anchors: {}, // id -> 手动指定的 PERFECT 帧
-    images: new Map(),
+    unitMs: 3.3333,      // 1 引擎单位 = 3.3333 ms：1 动画帧 = 10 单位 ≈ 33.333 ms（30 fps 实机
+                         // 录像逐帧比对，见 marker/jubeat_official/README.md；服务端 manifest 可覆盖）
+    unitsPerFrame: 10,   // 每帧 10 单位（官方规格）
+    window: { early: -155, late: 160 },   // 判定窗口（单位）：MA 最早出现 … H 最晚结束
+    frStatic: 1,         // FR 通道里「画出来的那一帧」（官方 FR00 是全透明）
+    designs: [],         // 所有可选设计
+    design: null,        // 当前设计
+    images: new Map(),   // url -> Image（逐帧贴图，按需加载）
     loaded: false,
   };
 
@@ -179,7 +175,12 @@
   /** 「光晕透明度」的默认值：滑杆 / 代码里只有这一份来源 */
   const DEFAULT_NUM_GLOW_ALPHA = 0.7;
   // glowAlpha 默认 0.7：光晕能看清「哪几个键是一起按的」，又不会糊住底下的 marker。
-  const numCfg = { scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: false };
+  /** 序号颜色默认值：白色（和以前完全一致） */
+  const DEFAULT_NUM_COLOR = "#ffffff";
+  const numCfg = {
+    scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: false,
+    color: DEFAULT_NUM_COLOR,   // 数字填充色，#rrggbb
+  };
   // localStorage 里可能存着乱七八糟的值（手改过、或老版本留下的），一律夹到合法区间
   const clampNumScale = (v) => Math.min(NUM_SCALE_MAX, Math.max(NUM_SCALE_MIN, Number(v) || 1));
   const clampNumAlpha = (v) => Math.min(1, Math.max(0.1, Number(v) || 1));
@@ -189,16 +190,18 @@
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : DEFAULT_NUM_GLOW_ALPHA;
   };
+  // 序号颜色：只认 `#rrggbb`（取色器给的就是这个），认不出来就退回默认白。
+  const normalizeHexColor = (v) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(v == null ? "" : v).trim());
+    return m ? `#${m[1].toLowerCase()}` : DEFAULT_NUM_COLOR;
+  };
 
   // A–B 段落循环：同一个键（A）连按两次分别打 A / B 两个点，之后就在这一段里循环。
   // 时间是「谱面时间」（和进度条 / 时间显示同一套坐标），null = 还没打点。
   const abLoop = { a: null, b: null };
 
   const STORAGE = {
-    marker: "jubeat.marker",
-    effect: "jubeat.effect",
-    speed: "jubeat.markerSpeed",
-    anchor: (id) => `jubeat.anchor.${id}`,
+    marker: "jubeat.marker",   // 选中的 marker 设计 id（如 tm0001）
     metroSound: "jubeat.metroSound",
     metroVolume: "jubeat.metroVolume",
     showCombo: "jubeat.showCombo",
@@ -207,6 +210,7 @@
     numAlpha: "jubeat.numAlpha",
     numGlowAlpha: "jubeat.numGlowAlpha",
     numCorner: "jubeat.numCorner",
+    numColor: "jubeat.numColor",
     showChordGlow: "jubeat.showChordGlow",
     phraseMult: "jubeat.phraseMult",
     phraseFloor: "jubeat.phraseFloor",
@@ -312,7 +316,7 @@
   //   media/audio/<曲目>.ogg                音源
   //   media/cover/<曲目>.<ext>              封面原图
   //   media/thumb/<曲目>.jpg                列表缩略图
-  //   markers/<sheet>                       marker 素材
+  //   markers/<设计目录>/<前缀>_<通道><帧>.png   marker 素材（见 marker/jubeat_official/README.md）
   const PATHS = {
     library: "data/library.json",
     markers: "data/markers.json",
@@ -349,12 +353,6 @@
   function thumbUrl(song) {
     return `${PATHS.thumb}${encPath(stemOf(song.id))}.jpg`;
   }
-
-  // marker 的基准帧率以服务端 manifest.json 的 fps 字段为准；这张表只是兜底，
-  // 用于服务端进程还没重启（manifest 缓存是旧的）时也能按正确速度播放。
-  const FPS_FALLBACK = {
-    "07_flower_slow": 60, // 「展开速度 50%」素材是 2 倍帧数，按 60fps 播才和常规 marker 等速
-  };
 
   /**
    * 同押光晕的配色对（主色 / 副色）。
@@ -484,21 +482,19 @@
 
   // —— 对外接口 ——
   Object.assign(A, {
-    $,
     Core,
     el,
     assertEls,
     frontVersion,
     els,
     state,
-    LEGACY_DEFAULT_MARKER,
-    DEFAULT_MARKER_SPEED,
+    DEFAULT_MARKER_DESIGN,
     markerCfg,
     numCfg,
     clampNumScale,
     clampNumAlpha,
     clampNumGlowAlpha,
-    DEFAULT_NUM_GLOW_ALPHA,
+    normalizeHexColor,
     abLoop,
     STORAGE,
     versionRank,
@@ -513,7 +509,6 @@
     audioUrl,
     coverUrl,
     thumbUrl,
-    FPS_FALLBACK,
     GLOW_PAIRS,
     store,
     renumberCurrent,

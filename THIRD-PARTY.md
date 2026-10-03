@@ -10,6 +10,7 @@ HTML/CSS/JS）、`tools/`、`deploy/`、`electron/` 里的脚本、配置与应�
 
 | 路径 | 内容 | 出处 / 说明 |
 |---|---|---|
+| `marker/jubeat_official/` | **官方** marker 逐帧 PNG（45 套设计 × MA/H1–H4/FR 三通道，3974 张 160×160） | 从街机 jubeat（beyond the ave.，l44）的 `contents/data/d3/model/*.bin` 里逐帧解出；渲染时序从 `jubeat.dll` 反汇编读出，见 `marker/jubeat_official/README.md` |
 | `marker/jubeat_marker_frames/` | marker 逐帧 PNG、判定爆花特效、preview、filmstrip | 社区公开配布（yuisin、Amy、jujube / Stepland、jubeat analyser 等），逐条出处记在 `marker/jubeat_marker_frames/README.md` 与各素材的 `meta.json` |
 | `marker/jubeat_marker_banners/` | 各版本 banner | 官方素材整理 |
 | `marker/jubeat_official_markers.png` / `.csv` / `.md` | 官方 marker 一览（缩略图 + 清单） | 从游戏内 OPTION → マーカー选择画面整理（RemyWiki / jubeat@Wiki / BEMANIWiki 三方对照） |

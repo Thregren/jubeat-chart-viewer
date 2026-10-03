@@ -344,11 +344,6 @@ button:focus-visible,
   white-space: nowrap;
 }
 
-.song-item .sm .ch {
-  margin-left: auto;
-  white-space: nowrap;
-}
-
 /* —— stage —— */
 .stage {
   display: grid;
@@ -468,14 +463,6 @@ button:focus-visible,
   letter-spacing: 0.14em;
   color: var(--amber);
   text-transform: uppercase;
-}
-
-.np-info h2 {
-  margin: 4px 0 2px;
-  font-size: clamp(20px, 2.6vw, 28px);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.15;
 }
 
 .np-artist {
@@ -599,18 +586,6 @@ button:focus-visible,
   border-radius: 14px;
 }
 
-/* —— marker 控制条 —— */
-.marker-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  min-width: 0;
-  padding-bottom: 10px;
-  margin-bottom: 10px;
-  border-bottom: 1px dashed var(--line);
-}
-
 /* —— 选项区（可折叠）——
    桌面端也做成控制条上方的浮层：选项在正常流里时，展开/收起会让控制条
    高度差约 200px，中间的铺面跟着一高一矮，矮窗口下还会把面板挤到没地方放。 */
@@ -686,56 +661,6 @@ button:focus-visible,
 .sidebar-toggle { display: none; }
 
 .ctl-wide select { min-width: 150px; }
-
-.anchor-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1 1 200px;
-  min-width: 0;
-}
-
-.anchor-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.anchor-strip {
-  display: flex;
-  gap: 3px;
-  max-width: 100%;
-  min-width: 0;
-  overflow-x: auto;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--void);
-  scrollbar-width: thin;
-}
-
-.anchor-strip button {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background-repeat: no-repeat;
-  background-color: #0a0d14;
-  cursor: pointer;
-  opacity: 0.55;
-}
-
-.anchor-strip button:hover { opacity: 0.85; }
-
-.anchor-strip button.anchor {
-  opacity: 1;
-  border-color: var(--amber);
-  box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.5), 0 0 10px rgba(255, 176, 32, 0.35);
-}
-
 
 .pad {
   position: relative;
@@ -1042,10 +967,6 @@ button:focus-visible,
   cursor: pointer;
 }
 
-.seek-row {
-  margin-top: 10px;
-}
-
 input[type="range"] {
   width: 100%;
   accent-color: var(--amber);
@@ -1245,7 +1166,6 @@ input[type="range"] {
   .cover-wrap { width: 52px; height: 52px; }
   .np-main h2 { font-size: 15px; }
   .panel-inner { width: min(96vw, 380px); }
-  .anchor-wrap { flex-basis: 100%; }
   #densityCanvas { height: 84px; }
 }
 

@@ -10,10 +10,10 @@
   const A = (window.JubeatApp = window.JubeatApp || {});
 
   // —— 更早那层提供的接口 ——
-  const { el, frontVersion, els, state, DEFAULT_MARKER_SPEED, markerCfg, numCfg, clampNumScale,
-     clampNumAlpha, clampNumGlowAlpha, abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
+  const { el, frontVersion, els, state, markerCfg, numCfg, clampNumScale,
+     clampNumAlpha, clampNumGlowAlpha, normalizeHexColor, abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
      fmtTime, toast, seProbe,
-     playMetro, sfxReset, setPlaying, currentAnchor, selectMarker, selectEffect, setAnchor,
+     playMetro, sfxReset, setPlaying, selectMarker,
      layoutCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
      updateComboDisplay, bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
      setSidebarOpen, loadLibrary, renderList, loadChart, backend, bindLoadEvents, startBufferAt,
@@ -21,6 +21,9 @@
      resumeAfterSeek, settleAfterSeek, stop, requestPaint } = A;
 
   function pulseGlow() {
+    // 有 marker 设计时面板不亮：白底会透过 marker 贴图的透明部分，把贴图冲淡
+    // （见 app-render.js 的 paintFrame：markerMode 下 hit / armed 两条反馈都不打）。
+    if (markerCfg.design) return;
     els.panelGlow.classList.add("on");
   }
 
@@ -77,12 +80,6 @@
     document.addEventListener("keydown", requestPaint, true);
     if (els.markerSelect) {
       els.markerSelect.addEventListener("change", () => selectMarker(els.markerSelect.value));
-      els.effectSelect.addEventListener("change", () => selectEffect(els.effectSelect.value));
-      els.markerSpeed.addEventListener("change", () => {
-        markerCfg.speed = Number(els.markerSpeed.value) || 1;
-        store(STORAGE.speed, markerCfg.speed);
-      });
-      els.anchorInput.addEventListener("change", () => setAnchor(Number(els.anchorInput.value) || 0));
       els.metroSound.addEventListener("change", () => {
         store(STORAGE.metroSound, els.metroSound.value);
         // 选了拍手/猫娘/太鼓就把对应的真素材预热一下（没有素材就静默回落合成音）
@@ -129,6 +126,16 @@
         els.numGlowAlphaLabel.textContent = els.numGlowAlpha.value + "%";
       });
       els.numGlowAlpha.addEventListener("change", () => store(STORAGE.numGlowAlpha, els.numGlowAlpha.value));
+      // 「序号颜色」：拖动取色器时只改内存（画布每帧重画，立刻见效），
+      // 松手（change）才落 localStorage —— 免得拖一下写几十遍。
+      els.numColor.addEventListener("input", () => {
+        numCfg.color = normalizeHexColor(els.numColor.value);
+      });
+      els.numColor.addEventListener("change", () => {
+        numCfg.color = normalizeHexColor(els.numColor.value);
+        els.numColor.value = numCfg.color;
+        store(STORAGE.numColor, numCfg.color);
+      });
       els.numCorner.addEventListener("change", () => {
         numCfg.corner = els.numCorner.checked;
         store(STORAGE.numCorner, els.numCorner.checked ? "1" : "0");
@@ -163,6 +170,7 @@
         numAlpha: store(STORAGE.numAlpha),
         numGlowAlpha: store(STORAGE.numGlowAlpha),
         numCorner: store(STORAGE.numCorner),
+        numColor: store(STORAGE.numColor),
         showChordGlow: store(STORAGE.showChordGlow),
         phraseMult: store(STORAGE.phraseMult),
         phraseFloor: store(STORAGE.phraseFloor),
@@ -180,20 +188,34 @@
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
       // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
       // 设置版本 4：marker 默认动画速度改为 0.8×。
-      // 版本 2 的「总连击 / 顺序数字」默认值只在 <2 时吃一次新默认；
-      // 动画速度只在 <4 时吃一次新默认，之后继续尊重用户的选择。
+      // 设置版本 5：marker 换成官方逐帧贴图，动画对齐帧 / 动画速度 / 命中特效三个
+      //            老控件连同它们的 localStorage 键一起作废（各人存的设计 id 也是老
+      //            命名，selectMarker 会自动回落到默认设计）。
+      // 设置版本 6：marker 默认设计改成 tm0004（快门）。浏览器里存着的 id 多半是
+      //            旧默认值 tm0001 —— 用户根本没挑过，只清一次让新默认露出来。
       const savedSettingsVersion = Number(store(STORAGE.settingsVersion)) || 0;
       const useComboDefaults = savedSettingsVersion < 2;
-      const useMarkerSpeedDefaults = savedSettingsVersion < 4;
-      store(STORAGE.settingsVersion, "4");
+      if (savedSettingsVersion < 5) {
+        // 老版本的遗留键：动画对齐帧是「每个设计一个键」（jubeat.anchor.<id>），
+        // 所以按前缀扫一遍，别漏。留着只会让下一版的人以为它们还有用。
+        try {
+          const doomed = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key) continue;
+            if (key === "jubeat.markerSpeed" || key === "jubeat.effect"
+                || key.startsWith("jubeat.anchor")) doomed.push(key);
+          }
+          for (const key of doomed) localStorage.removeItem(key);
+        } catch (_) { /* 隐私模式 / 禁用存储：删不掉也无所谓 */ }
+      }
+      if (savedSettingsVersion < 6) {
+        try { localStorage.removeItem(STORAGE.marker); } catch (_) { /* 存不了就算了 */ }
+      }
+      store(STORAGE.settingsVersion, "6");
       if (!useComboDefaults) {
         if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
-      }
-      if (useMarkerSpeedDefaults) {
-        markerCfg.speed = DEFAULT_MARKER_SPEED;
-        els.markerSpeed.value = String(DEFAULT_MARKER_SPEED);
-        store(STORAGE.speed, DEFAULT_MARKER_SPEED);
       }
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       // 序号外观：字号 / 透明度 / 位置（默认 100% / 100% / 居中）
@@ -216,6 +238,9 @@
         els.numCorner.checked = saved.numCorner === "1";
         numCfg.corner = els.numCorner.checked;
       }
+      // 序号颜色：老版本没存过 → 保持默认白（取色器里显示的也是 #ffffff）
+      numCfg.color = normalizeHexColor(saved.numColor);
+      els.numColor.value = numCfg.color;
       if (saved.phraseMult != null) els.phraseMult.value = saved.phraseMult;
       if (saved.phraseFloor != null) els.phraseFloor.value = saved.phraseFloor;
       if (saved.phraseMax != null) els.phraseMax.value = saved.phraseMax;
@@ -411,17 +436,11 @@
         const c = state.song.charts[idx];
         if (c) loadChart(c.code);
       } else if (e.key === "m" || e.key === "M") {
-        if (markerCfg.entries.length) {
-          const cur = markerCfg.entries.findIndex((m) => m.id === markerCfg.entry?.id);
-          const next = markerCfg.entries[(cur + 1) % markerCfg.entries.length];
+        if (markerCfg.designs.length) {
+          const cur = markerCfg.designs.findIndex((m) => m.id === markerCfg.design?.id);
+          const next = markerCfg.designs[(cur + 1) % markerCfg.designs.length];
           selectMarker(next.id);
-          toast(`按键动画：${next.name}`);
-        }
-      } else if (e.key === "," || e.key === ".") {
-        // 微调 PERFECT 锚点帧
-        if (markerCfg.entry) {
-          const delta = e.key === "," ? -1 : 1;
-          setAnchor(currentAnchor(markerCfg.entry) + delta);
+          toast(`marker：${next.name}`);
         }
       }
     });

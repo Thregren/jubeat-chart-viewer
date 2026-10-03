@@ -5,7 +5,7 @@
     JUBEAT_HOST        监听地址（默认 127.0.0.1，用 nginx 反代时不用改）
     JUBEAT_PORT        监听端口（默认 8765）
     JUBEAT_LIBRARY     曲库目录（默认 <repo>/music）
-    JUBEAT_MARKERS     marker 素材目录（默认 <repo>/marker/jubeat_marker_frames）
+    JUBEAT_MARKERS     marker 素材目录（默认 <repo>/marker/jubeat_official）
     JUBEAT_CACHE       缓存目录（默认 <repo>/cache）：音频/封面/缩略图/索引
     JUBEAT_X_ACCEL     设成 nginx 内部 location（例如 /_audio/）后，音频走 X-Accel-Redirect
                        交给 nginx 直接 sendfile，Python 不参与传输
@@ -35,7 +35,8 @@ APP_VERSION = version_mod.read_version()       # 唯一来源：仓库根的 VER
 
 LIBRARY_NAME = "music"
 LEGACY_LIBRARY_NAMES = ("Jubeat2Malody-GUI-mcz-releases",)
-MARKERS_NAME = "jubeat_marker_frames"
+# 官方提取的 marker 素材（逐帧 PNG + manifest.json，见 marker/jubeat_official/README.md）
+MARKERS_NAME = "jubeat_official"
 # 可选音效素材目录（clap/nyan/don/ka 等 .ogg/.mp3/.wav/.m4a），不入库；没有就用合成音
 SE_NAME = "se"
 SE_DIR = REPO / SE_NAME

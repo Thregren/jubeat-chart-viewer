@@ -4,7 +4,7 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.13`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.14`，由 `tools/set_version.py` 同步）。
 
 [![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
@@ -19,7 +19,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.13`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.13** · [Release notes](docs/release-v0.6.13.md) ·
+当前版本：**v0.6.14** · [Release notes](docs/release-v0.6.14.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -112,7 +112,7 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
         │
         │  tools/build_site.py   展开 + 生成索引；增量（按 mtime 跳过已是最新的），--prune 清理删掉的曲
         ▼
-site/                           ← 唯一的「运行时数据」，约 2.0 GB
+site/                           ← 唯一的「运行时数据」，约 2.2 GB
 ├── index.html                    前端页面（15 KB）
 ├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（14 KB，node 可测）
 ├── static/app-base.js            前端第 1 层：DOM 句柄 / state / 常量 / 曲库元数据（17 KB）
@@ -128,18 +128,18 @@ site/                           ← 唯一的「运行时数据」，约 2.0 GB
 ├── static/sfx.js                 打点音合成（7 KB）
 ├── static/record.js              录制模式 `?rec=1`：预设 + 卡片 + `__rec` 接口（10 KB）
 ├── static/record.css             录制模式版面：整页只剩一张卡片（3 KB）
-├── data/library.json             曲库索引（428 KB，gzip 后约 63 KB）
-├── data/markers.json             marker 清单（12 套 + 1 种判定特效）
-├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 4103 个）
-├── media/audio/<曲目>.ogg        音源（Ogg Opus 80k，1.5 GB）
-├── media/cover/<曲目>.<ext>      封面原图（202 MB）
+├── data/library.json             曲库索引（460 KB，gzip 后约 70 KB）
+├── data/markers.json             marker 清单（45 套 + 1 种判定特效）
+├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 4427 个）
+├── media/audio/<曲目>.ogg        音源（Ogg Opus 80k，1.6 GB）
+├── media/cover/<曲目>.<ext>      封面原图（218 MB）
 ├── media/thumb/<曲目>.jpg        列表缩略图 96px（11 MB）
-└── markers/                     marker 逐帧素材（4.6 MB）
+└── markers/                     marker 逐帧素材（85 MB，45 套）
 ```
 
 - **一次展开，到处跑**：构建做两件事 —— 解 zip 改名，加索引；音源顺手从 mcz 里的
   **Vorbis 转成 Ogg Opus 80k**（体积砍掉三分之一，听感基本一样，见 `tools/audio_opus.py`）。
-  当前曲库（1371 首）首次约 4 分钟（其中转码约 3 分钟，之后有内容哈希缓存），增量 3 秒左右；
+  当前曲库（1479 首）首次约 4 分钟（其中转码约 3 分钟，之后有内容哈希缓存），增量 30 秒左右；
   本机没装 `ffmpeg` 时不转码、原样复制，站点照跑，只是包大一圈
 - **索引里就带 note / hold 数**，列表排序、筛选、物量条都不用再读谱面
 - 曲库（`music/`）和产物（`site/` 等）都**不入库**，仓库里只有代码和 marker 素材
@@ -165,7 +165,7 @@ site/                           ← 唯一的「运行时数据」，约 2.0 GB
 /                        前端页面（index.html）
 /static/*                前端 js / css
 /data/library.json       曲库索引（一次拉全量，搜索筛选在浏览器本地做）
-/data/markers.json       marker 清单（12 套 + 每套的帧数 / PERFECT 帧）
+/data/markers.json       marker 清单（45 套 + 每套的帧数 / PERFECT 帧）
 /data/charts/<曲目>/<难度>.json
 /media/audio/<曲目>.ogg   音源，必须支持 Range（否则进度条拖不动）
 /media/cover/<曲目>.<ext>
@@ -200,6 +200,9 @@ site/                           ← 唯一的「运行时数据」，约 2.0 GB
 │   ├── release.py             发版：校验六份产物 + sha256 清单 +（--run）推 GitHub Release
 │   ├── set_version.py         把 VERSION 同步到 index.html 的 ?v= 与 electron 包版本
 │   ├── verify_site.py         检查已有 site/ 是否完整（索引里的每一项都要在磁盘上）
+│   ├── official_import.py     从官方解包补齐曲目 / 谱面 / 封面（对照 music/ 找差异）
+│   ├── fix_covers.py          源包里坏掉的封面从官方素材重取并换掉
+│   ├── official_songs.json    官方曲目清单（等级 / 版本，供上面两个脚本比对）
 │   ├── build_php_package.py   构建：site/ → dist-php/jubeat-site-php.zip（含曲库的 PHP 整包）
 │   ├── pack_zip.py            打 zip 的公共实现（非 ASCII 文件名带 UTF-8 标记）
 │   ├── serve.py               本地预览静态站点（Range + keep-alive）
@@ -765,21 +768,21 @@ nginx 上要保证的四件事：
 一次改完全部 `?v=` **和侧栏那枚版本号徽章**，不用手改）：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.13" />
-<link rel="stylesheet" href="static/record.css?v=0.6.13" />
-<script src="static/sfx.js?v=0.6.13"></script>
-<script src="static/core.js?v=0.6.13"></script>
-<script src="static/record.js?v=0.6.13"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.14" />
+<link rel="stylesheet" href="static/record.css?v=0.6.14" />
+<script src="static/sfx.js?v=0.6.14"></script>
+<script src="static/core.js?v=0.6.14"></script>
+<script src="static/record.js?v=0.6.14"></script>
 <!-- 下面 9 行的顺序不能改：每一层只依赖比它更早的那几层 -->
-<script src="static/app-base.js?v=0.6.13"></script>
-<script src="static/app-audio.js?v=0.6.13"></script>
-<script src="static/app-marker.js?v=0.6.13"></script>
-<script src="static/app-density.js?v=0.6.13"></script>
-<script src="static/app-library.js?v=0.6.13"></script>
-<script src="static/app-player.js?v=0.6.13"></script>
-<script src="static/app-render.js?v=0.6.13"></script>
-<script src="static/app-wiring.js?v=0.6.13"></script>
-<script src="static/app.js?v=0.6.13"></script>
+<script src="static/app-base.js?v=0.6.14"></script>
+<script src="static/app-audio.js?v=0.6.14"></script>
+<script src="static/app-marker.js?v=0.6.14"></script>
+<script src="static/app-density.js?v=0.6.14"></script>
+<script src="static/app-library.js?v=0.6.14"></script>
+<script src="static/app-player.js?v=0.6.14"></script>
+<script src="static/app-render.js?v=0.6.14"></script>
+<script src="static/app-wiring.js?v=0.6.14"></script>
+<script src="static/app.js?v=0.6.14"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -804,11 +807,11 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.13-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.13-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.13-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.14-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.14-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.14-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.13）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.14）的附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
@@ -887,7 +890,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
    ```
 
    附件必须是 `electron/dist/` 里那几个 zip / AppImage（**不带曲库**的轻量包）。
-   `release.py` 会拦住体积超过 400 MB 的包（带曲库的包有 2.7 GB，GitHub 单文件上限是 2 GB）。
+   `release.py` 会拦住体积超过 400 MB 的包（带曲库的包 2 GB 以上，GitHub 单文件上限是 2 GB）。
 7. 服务器同步：只传 `index.html` + `static/` 下的前端文件（`app-*.js` 九个 + `core.js` + `sfx.js` + `style.css`；
    要用录制模式再加 `record.js` + `record.css`）。曲库（`media/` `markers/` `data/`）一个字都不用重传
 
@@ -895,11 +898,11 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 
 | 项 | 做法 |
 |---|---|
-| 体积 | 2.0 GB 里 1.5 GB 是音源（**Ogg Opus 80k**，比原来的 Vorbis 128k 小三成半且听感相当）；封面原图按需加载，列表只用 96px 缩略图（11 MB） |
-| 带宽 | 一首歌 ≈ 1.2 MB，听一遍 ≈ 1.2 MB；索引 gzip 后 63 KB，只拉一次 |
+| 体积 | 2.2 GB 里 1.6 GB 是音源（**Ogg Opus 80k**，比原来的 Vorbis 128k 小三成半且听感相当）；封面原图按需加载，列表只用 96px 缩略图（11 MB） |
+| 带宽 | 一首歌 ≈ 1.2 MB，听一遍 ≈ 1.2 MB；索引 gzip 后 70 KB，只拉一次 |
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
 | 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
-| 首屏 | 只拉 `index.html` + 前端（合计约 223 KB，gzip 后约 83 KB）+ 索引（gzip 后约 63 KB）和当前可见行的缩略图 |
+| 首屏 | 只拉 `index.html` + 前端（合计约 223 KB，gzip 后约 83 KB）+ 索引（gzip 后约 70 KB）和当前可见行的缩略图 |
 | 重复下载 | WebAudio 路径同一首歌只 fetch 一次并解码；切难度复用 AudioBuffer，解码失败才回落 `<audio>` |
 
 ## 已知限制
@@ -907,10 +910,8 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 - **音源是 Ogg Opus**：Chrome / Edge / Firefox / 各安卓浏览器都没问题；Safari 要 **18.4** 以上
   才认 Ogg 容器，而桌面 Safari 还得 **macOS 15.4（Sequoia）**以上才带 Opus 解码器 ——
   够不上时页面会弹一条提示让人换 Chrome / Edge / Firefox；另外浏览器要求先有一次页面交互才允许播放
-- **曲库里有 48 个包没被索引**：它们的谱面文件名是 `曲名_难度.mc`（缺 `Lv<等级>`），
-  目前只认 `曲名_难度 Lv<等级>.mc`。需要的话可以放开这条规则（等级改从谱面 JSON 里读）
-- **5 个封面在源包里就是坏的 PNG**（HEKIREKI、こどなの階段、となりのトトロ feat_sayurina、マスターピース、女々しくて），
-  列表里退化成 ♪ 占位，没有别的影响
+- **57 首在现有官方素材里确实找不到封面**（例如 A Dance & A Beer、Are U Ready?、BRANDNEW DAYS），
+  列表里退化成 ♪ 占位；其余 1422 首都有封面。补齐得等新的素材来源，脚本侧已经跑不出更多了
 - **同押「密集」只看时间间隔**（相邻两批 ≤ 0.35 s），不看你个人手感；阈值写在 `GLOW_DENSE_GAP`
 - 前端没有构建步骤，所以**没有类型检查 / 压缩**，改 `app-*.js` / `core.js` 要自己保证语法
   （`node --check` 能挡一部分；纯逻辑尽量往 `core.js` 放，有单测兜着）。九个前端文件靠

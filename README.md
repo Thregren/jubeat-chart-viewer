@@ -4,7 +4,7 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.14`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.15`，由 `tools/set_version.py` 同步）。
 
 [![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
@@ -19,7 +19,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.14`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.14** · [Release notes](docs/release-v0.6.14.md) ·
+当前版本：**v0.6.15** · [Release notes](docs/release-v0.6.15.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -203,6 +203,7 @@ site/                           ← 唯一的「运行时数据」，约 2.2 GB
 │   ├── official_import.py     从官方解包补齐曲目 / 谱面 / 封面（对照 music/ 找差异）
 │   ├── fix_covers.py          源包里坏掉的封面从官方素材重取并换掉
 │   ├── official_songs.json    官方曲目清单（等级 / 版本，供上面两个脚本比对）
+│   ├── make_don.py            重新合成打点音的「咚」（se/don.wav，调参后重跑）
 │   ├── build_php_package.py   构建：site/ → dist-php/jubeat-site-php.zip（含曲库的 PHP 整包）
 │   ├── pack_zip.py            打 zip 的公共实现（非 ASCII 文件名带 UTF-8 标记）
 │   ├── serve.py               本地预览静态站点（Range + keep-alive）
@@ -472,6 +473,11 @@ tap 命中后同样播 marker 的收尾帧 / 判定特效。
 点击 / 拍手 / 猫娘 nyan / 太鼓（咚·咔）。另外 **「比利·海灵顿」** 是一组两个素材
 （重音拍 / 其他拍，和太鼓 don·ka 一个套路），素材放在 `se/` 里就会用到，
 没放则回落到一声音高不同的点击。音量 0–200%。
+
+「咚」在 0.6.15 重做过一版：老的合成音能量 84% 压在 120 Hz 以下，手机 / 笔记本的小喇叭
+根本放不出来，只有音量拉大才勉强听得见。现在保留低频鼓皮的同时补上了击打瞬态、二～四次
+谐波和 560 Hz 鼓身层，按「小喇叭模拟 + A 计权」量大约 **+11 dB**，听感上亮了不少但仍然是鼓。
+想再调就改 `tools/make_don.py` 重新生成 `se/don.wav`（`sfx.js` 里的合成回落音是同一套参数）。
 
 它是**提前排程**的：渲染帧率再抖，响铃时刻也只跟音频时钟走（见[播放后端](#播放后端)）。
 想换成真素材见[构建](#构建)。
@@ -768,21 +774,21 @@ nginx 上要保证的四件事：
 一次改完全部 `?v=` **和侧栏那枚版本号徽章**，不用手改）：
 
 ```html
-<link rel="stylesheet" href="static/style.css?v=0.6.14" />
-<link rel="stylesheet" href="static/record.css?v=0.6.14" />
-<script src="static/sfx.js?v=0.6.14"></script>
-<script src="static/core.js?v=0.6.14"></script>
-<script src="static/record.js?v=0.6.14"></script>
+<link rel="stylesheet" href="static/style.css?v=0.6.15" />
+<link rel="stylesheet" href="static/record.css?v=0.6.15" />
+<script src="static/sfx.js?v=0.6.15"></script>
+<script src="static/core.js?v=0.6.15"></script>
+<script src="static/record.js?v=0.6.15"></script>
 <!-- 下面 9 行的顺序不能改：每一层只依赖比它更早的那几层 -->
-<script src="static/app-base.js?v=0.6.14"></script>
-<script src="static/app-audio.js?v=0.6.14"></script>
-<script src="static/app-marker.js?v=0.6.14"></script>
-<script src="static/app-density.js?v=0.6.14"></script>
-<script src="static/app-library.js?v=0.6.14"></script>
-<script src="static/app-player.js?v=0.6.14"></script>
-<script src="static/app-render.js?v=0.6.14"></script>
-<script src="static/app-wiring.js?v=0.6.14"></script>
-<script src="static/app.js?v=0.6.14"></script>
+<script src="static/app-base.js?v=0.6.15"></script>
+<script src="static/app-audio.js?v=0.6.15"></script>
+<script src="static/app-marker.js?v=0.6.15"></script>
+<script src="static/app-density.js?v=0.6.15"></script>
+<script src="static/app-library.js?v=0.6.15"></script>
+<script src="static/app-player.js?v=0.6.15"></script>
+<script src="static/app-render.js?v=0.6.15"></script>
+<script src="static/app-wiring.js?v=0.6.15"></script>
+<script src="static/app.js?v=0.6.15"></script>
 ```
 
 nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一直用缓存里的旧文件
@@ -807,11 +813,11 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.14-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.14-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.14-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.15-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.15-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.15-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.14）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.15）的附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的

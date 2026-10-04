@@ -322,6 +322,56 @@ async function runPage(win, errors) {
   check("暂停能停住", playback.afterPause === false);
   check("音源加载进度有值", typeof playback.ratio === "number", String(playback.ratio));
 
+  // 同押（同一时刻一起按的一批 note）的打点音只准发一发：以前是按 note 发，
+  // 4 押就叠 4 下，音量直接顶穿。这里数「真排进音频图的 don/ka 采样源」——
+  // 素材解码好之后，一次打点音恰好对应一个 buffer source（时长 0.12 / 0.24 秒，
+  // 拿时长把 BGM 的长 buffer 滤掉）。
+  const chordSfx = await js("(async () => {" +
+    "const p = window.__player; const sleep = (ms) => new Promise((r) => setTimeout(r, ms));" +
+    "document.getElementById('metroSound').value = 'taiko';" +
+    "document.getElementById('metroVolume').value = '100';" +
+    // 挑这首谱面里最密的那个同押，往前后留一点余量，测的就是「有同押」的那一段
+    "const times = p.state.notes.map((n) => n.t).sort((a, b) => a - b);" +
+    "if (!times.length) return null;" +
+    "let best = times[0], bestN = 1;" +
+    "for (let i = 0, j = 0; i < times.length; i++) {" +
+    "  while (times[i] - times[j] >= 1e-4) j++;" +
+    "  if (i - j + 1 > bestN) { bestN = i - j + 1; best = times[i]; }" +
+    "}" +
+    "const base = Math.max(0, best - 1.0);" +
+    // 等素材解码完，不然走的是合成音回退，数出来的不是一回事
+    "for (let i = 0; i < 60; i++) {" +
+    "  const st = p.seState();" +
+    "  if (st.don === 'sample' && st.ka === 'sample') break;" +
+    "  await sleep(250);" +
+    "}" +
+    "const AC = window.AudioContext || window.webkitAudioContext;" +
+    "const orig = AC.prototype.createBufferSource;" +
+    "const hits = [];" +
+    "AC.prototype.createBufferSource = function () {" +
+    "  const s = orig.call(this); const st = s.start.bind(s);" +
+    "  s.start = function (...a) { const d = s.buffer ? s.buffer.duration : 0;" +
+    "    if (d > 0.06 && d < 0.4) hits.push(a[0]);" +
+    "    return st(...a); };" +
+    "  return s; };" +
+    "p.seekTo(base); p.play(); await sleep(2400); p.pause();" +
+    "AC.prototype.createBufferSource = orig;" +
+    // 排程会提前 horizon 排一点，末尾多算 0.5 秒的窗口
+    "const win = p.state.notes.filter((n) => n.t >= base - 1e-6 && n.t <= base + 2.9)" +
+    "  .map((n) => n.t).sort((a, b) => a - b);" +
+    "let groups = 0, last = -Infinity;" +
+    "for (const t of win) { if (t - last >= 1e-4) { groups++; } last = t; }" +
+    "document.getElementById('metroSound').value = '';" +
+    "return {hits: hits.length, groups, notes: win.length, chord: bestN, base};" +
+    "})()");
+  check("同押打点音只发一发（不再按 note 叠加）",
+    !!chordSfx && chordSfx.notes > chordSfx.groups && chordSfx.hits >= chordSfx.groups - 1
+      && chordSfx.hits <= chordSfx.groups + 1,
+    chordSfx
+      ? `窗口内 ${chordSfx.notes} 个 note / ${chordSfx.groups} 批 → 响了 ${chordSfx.hits} 发`
+        + `（最大同押 ${chordSfx.chord} 押，少了就会偏大）`
+      : "拿不到");
+
   const seek = await js("(async () => {" +
     "const p = window.__player; p.seekTo(30);" +
     "p.setFrameTime(30); p.paintFrame(30);" +

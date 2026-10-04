@@ -221,9 +221,15 @@
     const now = A.currentMediaTime();
     const rate = Number(els.rate.value) || 1;
     const horizon = now + sfxSched.horizon;
+    // 同押（同一时刻一起按的一批 note）只发一发：
+    // 以前是按 note 发，4 押就叠 4 下，音量直接顶穿。判定阈值和 core.numberNotes()
+    // 分「同一批」用的 1e-4 秒保持一致 —— 数字 / 光晕算作一批的，打点音也只响一下。
+    let lastT = -Infinity;
     while (sfxSched.idx < state.notes.length && state.notes[sfxSched.idx].t <= horizon) {
       const note = state.notes[sfxSched.idx++];
       if (note.t < now - 0.04) continue;                 // 已经过去的就别补了
+      if (note.t - lastT < 1e-4) continue;               // 和上一发是同一批（同押）
+      lastT = note.t;
       playHitSound(note, audioCtx.currentTime + (note.t - now) / rate, bus);
     }
   }

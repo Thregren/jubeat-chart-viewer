@@ -1,9 +1,14 @@
 /* 录制模式（?rec=1）—— 把界面收成一张固定像素的「卡片」：
-   歌曲信息 + 4×4 面板 + 底部说明，其余元素（曲库、控制条、物量条、
-   加载进度、窄屏抽屉）全部不参与录制。
+   歌曲信息 + 4×4 面板，其余元素（曲库、控制条、物量条、加载进度、
+   窄屏抽屉）全部不参与录制。
 
-   逐帧录制时由 tools/rec 按 #recCard 的包围盒截图，所以这里所有尺寸
-   都写成固定 px，不跟窗口大小走 —— 换台机器录出来的构图必须一样。 */
+   构图是「类横屏」：整卡 1830 × 1372（≈ 4:3 宽扁），顶部一条信息栏，
+   4×4 面板在下方居中。逐帧录制时由 tools/rec 按 #recCard 的包围盒截图，
+   所以这里所有尺寸都写成固定 px，不跟窗口大小走 —— 换台机器录出来的
+   构图必须一样。
+
+   卡内的字号 / 间距取播放器样式的 2 倍（播放器 26px 的曲名 → 52px），
+   用 1 倍设备像素比截出来就等价于「播放器在 2 倍屏上」的清晰度。 */
 
 html.rec, html.rec body {
   overflow: hidden;
@@ -19,59 +24,61 @@ html.rec #app { display: none !important; }
   top: 0;
   display: flex;
   flex-direction: column;
-  padding: 22px 57px 16px;
+  padding: 0;
   background: var(--void);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 28px;
 }
 
 /* —— 歌曲信息 —— */
 #recCard .now-playing {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 296px;
-  gap: 22px;
+  grid-template-columns: 264px minmax(0, 1fr) minmax(560px, 840px);
+  gap: 36px;
   align-items: center;
-  padding: 0 0 20px;
+  padding: 28px 46px 20px;
 }
 
 #recCard .cover-wrap {
-  width: 92px;
-  height: 92px;
-  border-radius: 10px;
+  width: 264px;
+  height: 264px;
+  border-width: 2px;
+  border-radius: 24px;
   align-self: center;
 }
 
 #recCard .np-main {
-  gap: 7px;
+  gap: 12px;
   justify-content: center;
 }
 
 #recCard .np-kicker {
-  font-size: 14px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: 0.16em;
 }
 
 #recCard .np-main h2 {
-  font-size: 40px;
+  font-size: 52px;
   font-weight: 700;
   line-height: 1.15;
 }
 
 #recCard .np-artist {
-  font-size: 15px;
-  margin-bottom: 4px;
+  font-size: 26px;
+  margin-bottom: 8px;
 }
 
 #recCard .diff-row {
-  gap: 10px;
+  gap: 20px;
   margin-bottom: 0;
 }
 
 #recCard .diff-btn {
-  padding: 9px 20px;
-  font-size: 19px;
+  padding: 12px 28px;
+  font-size: 24px;
+  border-width: 2px;
   border-radius: 999px;
 }
 
@@ -80,56 +87,62 @@ html.rec #app { display: none !important; }
 }
 
 #recCard .stat-row {
-  gap: 10px 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px 28px;
 }
 
 #recCard .stat label {
-  font-size: 12px;
+  font-size: 20px;
 }
 
 #recCard .stat value {
-  font-size: 27px;
+  font-size: 36px;
   font-weight: 700;
 }
 
-/* —— 面板 —— */
+/* —— 面板：吃掉卡片剩下的高度，水平居中 —— */
 #recCard .panel-stage {
-  display: block;
-  padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 46px 16px;
 }
 
 #recCard .panel-bezel {
-  padding: 14px;
-  border-radius: 22px;
+  padding: 28px;
+  border-width: 2px;
+  border-radius: 40px;
 }
 
 #recCard .panel-inner {
-  width: 938px !important;
-  height: 938px !important;
-  gap: 9px;
-  padding: 11px;
-  border-radius: 16px;
+  width: 962px !important;
+  height: 962px !important;
+  gap: 16px;
+  padding: 20px;
+  border-width: 2px;
+  border-radius: 28px;
 }
 
+#recCard .pad { border-radius: 16px; }
+
 #recCard .marker-canvas {
-  border-radius: 16px;
+  border-radius: 28px;
 }
 
 #recCard .panel-glow {
-  border-radius: 26px;
+  border-radius: 52px;
 }
 
 #recCard .pad .idx {
-  right: 8px;
-  bottom: 6px;
-  font-size: 12px;
+  right: 12px;
+  bottom: 8px;
+  font-size: 18px;
 }
 
-#recCard .panel-caption {
-  width: 966px !important;
-  margin-top: 12px;
-  font-size: 13px;
-}
+/* 成片不带底部说明条（参考构图里没有它） */
+#recCard .panel-caption { display: none; }
 
 /* 逐帧截图时页面时钟是「定格」的，CSS 过渡 / 动画跟的是真实时间，
    留着它们只会让某一帧捕捉到过度中的中间状态。判定态本身就够显眼，

@@ -20,8 +20,10 @@
   /** app.js 启动时读这个标记：录制模式不加载音源（画面时间由录制脚本给定） */
   window.__recActive = true;
 
-  const CARD_W = Number(query.get("rw")) || 1080;
-  const CARD_H = Number(query.get("rh")) || 1256;
+  // 成片构图：类横屏（4:3 宽扁），尺寸由录制脚本通过 rw / rh 传进来，缺省与
+  // tools/rec/record.mjs 的 --card-w / --card-h 一致。
+  const CARD_W = Number(query.get("rw")) || 1830;
+  const CARD_H = Number(query.get("rh")) || 1372;
 
   // ── 1. 录制预设（必须早于 app.js：它一启动就读这些键）──────────────
   const PRESET = {
@@ -34,10 +36,11 @@
     numScale: "100",
     numAlpha: "100",
     numColor: "#ffffff",                  // 序号颜色也钉死，成片不受录制机历史设置影响
-    numGlowAlpha: "70",                   // 与同押光晕的默认透明度保持一致（0.7）
-    numCorner: "0",
+    numGlowAlpha: "80",                   // 光晕透明度 80%
+    numCorner: "1",                       // 序号放右下角
     showChordGlow: "1",
-    chordGlowStyle: "glow",                // 同押高亮样式：成片固定用默认的「光晕」
+    chordGlowStyle: "frame",              // 同押高亮样式：加粗面板框
+    chordGlowPair: "4",                   // 高亮配色：天蓝 / 玫红（GLOW_PAIRS[4]）
     metroSound: "",                       // 录制页不出声：音轨由录制脚本离线合成
     collapsed: "1",
   };
@@ -143,6 +146,7 @@
    *
    * hits 里每个 note 带 accent —— 判定规则和播放器里的打点音一致（整数拍且 4 的倍数
    * 是「咚」，其余是「咔」），离线合成音轨时直接照抄，不用自己再推一遍拍位。
+   * 同押（同一时刻一起按的一批）只出一发，和播放器一致：不然 4 押会叠 4 下。
    */
   function info() {
     const player = window.__player;
@@ -152,14 +156,18 @@
       ? cardEl.getBoundingClientRect()
       : { left: 0, top: 0, width: CARD_W, height: CARD_H };
 
-    const hits = state.notes.map((note) => {
+    const hits = [];
+    let lastT = -Infinity;
+    for (const note of state.notes) {
+      if (note.t - lastT < 1e-4) continue;      // 同一批同押，只留一发（阈值同 core.numberNotes）
+      lastT = note.t;
       let accent = false;
       if (parsed && parsed.secToBeat) {
         const beat = parsed.secToBeat(note.t);
         accent = Math.abs(beat - Math.round(beat)) < 1e-6 && Math.round(beat) % 4 === 0;
       }
-      return { t: note.t, a: accent ? 1 : 0 };
-    });
+      hits.push({ t: note.t, a: accent ? 1 : 0 });
+    }
 
     const song = state.song || {};
     return {

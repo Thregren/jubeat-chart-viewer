@@ -18,6 +18,50 @@ from media import read_member, safe_join, write_atomic, zip_name
 DIFF_RE = re.compile(r"_([A-Z]{3})\s*Lv([0-9]+(?:\.[0-9]+)?)", re.I)
 DIFF_ORDER = {"BSC": 0, "BAS": 0, "ADV": 1, "EXT": 2}
 
+# 少数老谱面（jubeat / ripples / ripples-append / knit / copious 的版权曲）成员名里
+# 根本没写 `Lv`：`全力少年_BSC.mc` 而不是 `全力少年_BSC Lv2.mc`，meta.level 也是空的。
+# 这类文件以前整首会被丢掉（解析不出难度 → 没有 charts → scan_song 返回 None），
+# 曲库里 1479 首只索引出 1431 首。现在用结尾的难度码认出来，等级查 official_levels.json。
+CODE_TAIL_RE = re.compile(r"(?:^|_)(BSC|BAS|ADV|EXT)\s*\.mc$", re.I)
+OFFICIAL_LEVELS_FILE = Path(__file__).resolve().parent / "official_levels.json"
+
+_fallback_lock = threading.Lock()
+_fallback_levels: dict[str, dict[str, str]] | None = None
+
+
+def official_levels() -> dict[str, dict[str, str]]:
+    """成员名没写等级的谱面查这张兜底表：NFC 归一化后的「版本目录/曲名」→ {难度: 等级}。
+
+    数据来源写在文件里（_source）：atwiki 的全曲表，含官方已下架、游戏数据里已经没有的曲子。
+    表读不到（打包漏带、文件写坏）就当空表：这类谱面照常收录，只是等级显示为空，
+    宁可少一个数字，也不要因为一个数据文件整首歌消失。
+    """
+    global _fallback_levels
+    if _fallback_levels is not None:
+        return _fallback_levels
+    with _fallback_lock:
+        if _fallback_levels is not None:
+            return _fallback_levels
+        table: dict[str, dict[str, str]] = {}
+        try:
+            raw = json.loads(OFFICIAL_LEVELS_FILE.read_text(encoding="utf-8"))
+            for key, levels in raw.items():
+                if not isinstance(levels, dict) or key.startswith("_"):
+                    continue
+                table[stem_key(key)] = {str(k).upper(): str(v) for k, v in levels.items()}
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            print(f"[index] 等级兜底表不可用（忽略）：{exc}", file=sys.stderr)
+        _fallback_levels = table
+        return table
+
+
+def parse_chart_code(filename: str) -> str | None:
+    """从成员名末尾认出难度码（`..._BSC.mc` / `NEU__EXT.mc`），用于没写 Lv 的老谱面。"""
+    m = CODE_TAIL_RE.search(filename)
+    return m.group(1).upper() if m else None
+
 
 def stem_key(text: str) -> str:
     """曲目 stem 的比对键。
@@ -28,6 +72,11 @@ def stem_key(text: str) -> str:
     折成 NFC 再比。
     """
     return unicodedata.normalize("NFC", text)
+
+
+def _song_id(rel_id: str) -> str:
+    """曲目 id（相对路径，含 .mcz 后缀）→ 去后缀的键，跟 build_site.stem_of 一致。"""
+    return rel_id[:-4] if rel_id.lower().endswith(".mcz") else rel_id
 
 
 def parse_chart_name(filename: str) -> tuple[str, str, float] | None:
@@ -108,6 +157,9 @@ def _song_meta_of(data: dict) -> tuple[str, str]:
 def scan_song(mcz_path: Path, root: Path) -> dict | None:
     """读一个 .mcz 的元信息（不加载完整谱面）。"""
     try:
+        rel = mcz_path.relative_to(root).as_posix()
+        # 等级兜底表只在这首歌真的缺等级时才查（绝大多数曲子成员名里就有 Lv）
+        fallback: dict[str, str] | None = None
         with zipfile.ZipFile(mcz_path) as zf:
             names = [zip_name(i) for i in zf.infolist() if not i.is_dir()]
             charts = []
@@ -118,11 +170,22 @@ def scan_song(mcz_path: Path, root: Path) -> dict | None:
                 if not name.lower().endswith(".mc"):
                     continue
                 parsed = parse_chart_name(base)
-                if not parsed:
-                    continue
-                code, level_str, level = parsed
+                if parsed:
+                    code, level_str, level = parsed
+                else:
+                    code = parse_chart_code(base)
+                    if not code:
+                        continue
+                    if fallback is None:
+                        fallback = official_levels().get(stem_key(_song_id(rel)), {})
+                    level_str = fallback.get(code, "")
+                    try:
+                        level = float(level_str)
+                    except ValueError:
+                        level = 0.0
                 entry = {"file": name, "code": code, "level": level_str,
-                         "levelNum": level, "label": f"{code} Lv{level_str}"}
+                         "levelNum": level,
+                         "label": f"{code} Lv{level_str}" if level_str else code}
                 # note / hold 数量：排序和物量显示都要用，顺手读一次完整谱面
                 try:
                     data = json.loads(zf.read(name).decode("utf-8"))
@@ -150,7 +213,6 @@ def scan_song(mcz_path: Path, root: Path) -> dict | None:
             if not covers:
                 covers = [n for n in names if n.lower().endswith((".png", ".jpg", ".jpeg"))]
 
-            rel = mcz_path.relative_to(root).as_posix()
             return {
                 "id": rel,
                 "path": rel,

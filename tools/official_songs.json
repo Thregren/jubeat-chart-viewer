@@ -1,0 +1,418 @@
+[
+ {
+  "mid": "11000004",
+  "version": "jubeat-ave",
+  "title": "†渚のリベンジΣ脈あり!?バケェ～ション†",
+  "artist": "とろピカるサマー☆Prim",
+  "levels": {
+   "BSC": "4",
+   "ADV": "7",
+   "EXT": "10.3"
+  }
+ },
+ {
+  "mid": "11000010",
+  "version": "jubeat-ave",
+  "title": "ZIGZAG COWBOY",
+  "artist": "BEMANI Sound Team \"劇団レコード\"",
+  "levels": {
+   "BSC": "3",
+   "ADV": "7",
+   "EXT": "9.8"
+  }
+ },
+ {
+  "mid": "11000011",
+  "version": "jubeat-ave",
+  "title": "Explore Every Ave.",
+  "artist": "BEMANI Sound Team \"SYUNN\"",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "9.4"
+  }
+ },
+ {
+  "mid": "11000019",
+  "version": "jubeat-ave",
+  "title": "和beat",
+  "artist": "Flash back Dominant",
+  "levels": {
+   "BSC": "4",
+   "ADV": "8",
+   "EXT": "10.4"
+  }
+ },
+ {
+  "mid": "11000036",
+  "version": "jubeat-ave",
+  "title": "satfinal",
+  "artist": "RAM",
+  "levels": {
+   "BSC": "3",
+   "ADV": "7",
+   "EXT": "9.2"
+  }
+ },
+ {
+  "mid": "11000043",
+  "version": "jubeat-ave",
+  "title": "La libertad",
+  "artist": "Cheryl Horrocks",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "9.6"
+  }
+ },
+ {
+  "mid": "11000045",
+  "version": "jubeat-ave",
+  "title": "Blew My Mind",
+  "artist": "Sota F.",
+  "levels": {
+   "BSC": "5",
+   "ADV": "8",
+   "EXT": "10.4"
+  }
+ },
+ {
+  "mid": "11000048",
+  "version": "jubeat-ave",
+  "title": "HAPPY☆LUCKY☆YEAPPY",
+  "artist": "DJ ミラクル☆ストーン",
+  "levels": {
+   "BSC": "5",
+   "ADV": "8",
+   "EXT": "10.3"
+  }
+ },
+ {
+  "mid": "11000050",
+  "version": "jubeat-ave",
+  "title": "ハウリング",
+  "artist": "Liz Triangle",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "8"
+  }
+ },
+ {
+  "mid": "11000059",
+  "version": "jubeat-ave",
+  "title": "Reach The Sky",
+  "artist": "YUKIYANAGI",
+  "levels": {
+   "BSC": "5",
+   "ADV": "8",
+   "EXT": "10.5"
+  }
+ },
+ {
+  "mid": "11000067",
+  "version": "jubeat-ave",
+  "title": "Awakening Wings",
+  "artist": "伊達朱里紗",
+  "levels": {
+   "BSC": "4",
+   "ADV": "6",
+   "EXT": "8"
+  }
+ },
+ {
+ "mid": "11000074",
+ "version": "jubeat-beyond-ave",
+ "title": "Magical electrica",
+ "artist": "こふ",
+ "overwrite": true,
+ "levels": {
+   "BSC": "5",
+   "ADV": "8",
+   "EXT": "9.6"
+  }
+ },
+ {
+  "mid": "11000075",
+  "version": "jubeat-beyond-ave",
+  "title": "Sparkle Justice",
+  "artist": "VALLEYSTONE&udouddo",
+  "levels": {
+   "BSC": "3",
+   "ADV": "7",
+   "EXT": "9.7"
+  }
+ },
+ {
+  "mid": "11000090",
+  "version": "jubeat-beyond-ave",
+  "title": "天鈴少女",
+  "artist": "駄々子",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "9.3"
+  }
+ },
+ {
+  "mid": "11000095",
+  "version": "jubeat-beyond-ave",
+  "title": "Music-U",
+  "artist": "Qrispy Joybox feat.mao",
+  "levels": {
+   "BSC": "3",
+   "ADV": "5",
+   "EXT": "8"
+  }
+ },
+ {
+  "mid": "11000096",
+  "version": "jubeat-beyond-ave",
+  "title": "Fate",
+  "artist": "BEMANI Sound Team \"TATSUYA\"",
+  "levels": {
+   "BSC": "4",
+   "ADV": "8",
+   "EXT": "10.4"
+  }
+ },
+ {
+  "mid": "11000117",
+  "version": "jubeat-beyond-ave",
+  "title": "Krack Your Soul",
+  "artist": "Daisuke Ohnuma",
+  "levels": {
+   "BSC": "3",
+   "ADV": "7",
+   "EXT": "9.7"
+  }
+ },
+ {
+  "mid": "11000122",
+  "version": "jubeat-beyond-ave",
+  "title": "Kilonova",
+  "artist": "BEMANI Sound Team \"Yvya\"",
+  "levels": {
+   "BSC": "4",
+   "ADV": "7",
+   "EXT": "9.7"
+  }
+ },
+ {
+  "mid": "11000127",
+  "version": "jubeat-beyond-ave",
+  "title": "ポラリスノウタ",
+  "artist": "ここなつ2.0",
+  "levels": {
+   "BSC": "4",
+   "ADV": "6",
+   "EXT": "8"
+  }
+ },
+ {
+  "mid": "11000129",
+  "version": "jubeat-beyond-ave",
+  "title": "めうめうぺったんたん！！ (ZAQUVA Remix)",
+  "artist": "Remixed by BEMANI Sound Team \"ZAQUVA\"",
+  "levels": {
+   "BSC": "5",
+   "ADV": "8",
+   "EXT": "10.5"
+  }
+ },
+ {
+  "mid": "11000132",
+  "version": "jubeat-beyond-ave",
+  "title": "ハートシェイプ・スピカ",
+  "artist": "ここなつ2.0",
+  "levels": {
+   "BSC": "3",
+   "ADV": "5",
+   "EXT": "8"
+  }
+ },
+ {
+  "mid": "11000138",
+  "version": "jubeat-beyond-ave",
+  "title": "cosmic agenda ～一舞 edition～",
+  "artist": "日向美ビタースイーツ♪",
+  "levels": {
+   "BSC": "2",
+   "ADV": "5",
+   "EXT": "8"
+  }
+ },
+ {
+  "mid": "11000143",
+  "version": "jubeat-beyond-ave",
+  "title": "寂寞たる世界の終末は",
+  "artist": "日向美ビタースイーツ♪",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "8"
+  }
+ },
+ {
+  "mid": "11000148",
+  "version": "jubeat-beyond-ave",
+  "title": "累乗のカルマ",
+  "artist": "めと（Metomate）",
+  "levels": {
+   "BSC": "3",
+   "ADV": "7",
+   "EXT": "9.3"
+  }
+ },
+ {
+  "mid": "11000159",
+  "version": "jubeat-beyond-ave",
+  "title": "Beyond The Earth",
+  "artist": "猫叉Master",
+  "levels": {
+   "BSC": "2",
+   "ADV": "5",
+   "EXT": "8"
+  }
+ },
+ {
+  "mid": "11000164",
+  "version": "jubeat-beyond-ave",
+  "title": "◎holic◎",
+  "artist": "山本真央樹 feat.くりむ",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "9.4"
+  }
+ },
+ {
+  "mid": "11000174",
+  "version": "jubeat-beyond-ave",
+  "title": "ロマンシングエスケープ",
+  "artist": "ここなつ2.0",
+  "levels": {
+   "BSC": "2",
+   "ADV": "5",
+   "EXT": "7"
+  }
+ },
+ {
+  "mid": "80000047",
+  "version": "jubeat-clan",
+  "title": "シノビシノノメ",
+  "artist": "東雲心菜",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "9"
+  }
+ },
+ {
+  "mid": "90000189",
+  "version": "jubeat-festo",
+  "title": "斑咲花",
+  "artist": "mami,駄々子 by BEMANI Sound Team \"Akhuta Works\"",
+  "levels": {
+   "BSC": "4",
+   "ADV": "6",
+   "EXT": "9.3"
+  }
+ },
+ {
+  "mid": "50000128",
+  "version": "jubeat-saucer",
+  "title": "ストレイ・マーチ",
+  "artist": "少年ゾディアック",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "8"
+  }
+ },
+ {
+ "mid": "50000177",
+ "version": "jubeat-saucer",
+ "title": "黒髪乱れし修羅となりて",
+ "artist": "村正クオリア",
+ "overwrite": true,
+ "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "9.1"
+  }
+ },
+ {
+ "mid": "50000239",
+ "version": "jubeat-saucer",
+ "title": "ZED",
+ "artist": "USAO",
+ "overwrite": true,
+ "levels": {
+   "BSC": "4",
+   "ADV": "8",
+   "EXT": "9.6"
+  }
+ },
+ {
+  "mid": "11000102",
+  "version": "jubeat-beyond-ave",
+  "title": "PON☆PON☆PARADE",
+  "artist": "キノシタ",
+  "levels": {
+   "BSC": "2",
+   "ADV": "5",
+   "EXT": "9.3"
+  }
+ },
+ {
+  "mid": "90000203",
+  "version": "jubeat-festo",
+  "title": "天空の夜明け (BEMANI SYMPHONY Arr.)",
+  "artist": "Cuvelia × Nagiha + gaQdan",
+  "levels": {
+   "BSC": "3",
+   "ADV": "6",
+   "EXT": "9.1"
+  }
+ },
+ {
+  "mid": "90000245",
+  "version": "jubeat-festo",
+  "title": "Chippin Break",
+  "artist": "あるふぁ",
+  "levels": {
+   "BSC": "4",
+   "ADV": "8",
+   "EXT": "9.6"
+  }
+ },
+ {"mid": "10000042", "version": "jubeat", "title": "Polaris", "artist": "Mutsuhiko Izumi", "levels": {"BSC": "2", "ADV": "5", "EXT": "8"}, "_kana": "ホラリス", "_bpm": "180", "_src": "官网(难度吻合)"},
+ {"mid": "11000030", "version": "jubeat-ave", "title": "Fly Above", "artist": "Sota Fujimori", "levels": {"BSC": "3", "ADV": "6", "EXT": "9.3"}, "_kana": "フライアハアフ", "_bpm": "150", "_src": "官网(难度吻合)"},
+ {"mid": "11000044", "version": "jubeat-ave", "title": "Pierce The Sky", "artist": "JAKAZiD feat. K.N.", "levels": {"BSC": "4", "ADV": "6", "EXT": "9.7"}, "_kana": "ヒアアスサスカイ", "_bpm": "170", "_src": "官网(难度吻合)"},
+ {"mid": "11000155", "version": "jubeat-beyond-ave", "title": "voxel star arise", "artist": "ああああ", "levels": {"BSC": "5", "ADV": "8", "EXT": "10.4"}, "_kana": "ホクセルスタアアライス", "_bpm": "200", "_src": "手工订正"},
+ {"mid": "11001002", "version": "jubeat-beyond-ave", "title": "カラフルミニッツ [ 2 ]", "artist": "Qrispy Joybox feat.mao", "levels": {"BSC": "3", "ADV": "6", "EXT": "8"}, "_kana": "カラフルミニツツ", "_bpm": "152", "_src": "手工订正"},
+ {"mid": "11001003", "version": "jubeat-beyond-ave", "title": "New Decade [ 2 ]", "artist": "Sota F.", "levels": {"BSC": "4", "ADV": "8", "EXT": "10.4"}, "_kana": "ニユウテイケイト", "_bpm": "200", "_src": "手工订正"},
+ {"mid": "11001005", "version": "jubeat-beyond-ave", "title": "蒼空に舞え、墨染の桜 [ 2 ]", "artist": "Silver Forest feat. さゆり", "levels": {"BSC": "3", "ADV": "6", "EXT": "9.4"}, "_kana": "ソラニマエスミソメノサクラ", "_bpm": "150", "_src": "手工订正"},
+ {"mid": "11001009", "version": "jubeat-beyond-ave", "title": "ケッペキショウ [ 2 ]", "artist": "すこっぷ feat.GUMI", "levels": {"BSC": "4", "ADV": "7", "EXT": "10.4"}, "_kana": "ケツヘキシヨウ", "_bpm": "190", "_src": "手工订正"},
+ {"mid": "80001011", "version": "jubeat-clan", "title": "月に叢雲華に風 [ 2 ]", "artist": "幽閉サテライト feat. senya", "levels": {"BSC": "3", "ADV": "6", "EXT": "8"}, "_kana": "ツキニムラクモハナニカセ", "_bpm": "160", "_src": "官网(难度吻合)"},
+ {"mid": "40000015", "version": "jubeat-copious", "title": "Love at First Sight", "artist": "Fear, and Loathing in Las Vegas", "levels": {"BSC": "3", "ADV": "7", "EXT": "9.7"}, "_kana": "ラフアツトフアアストサイト", "_bpm": "160", "_src": "官网(难度吻合)"},
+ {"mid": "40000044", "version": "jubeat-copious", "title": "陽炎", "artist": "星野奏子", "levels": {"BSC": "3", "ADV": "6", "EXT": "8"}, "_kana": "カケロウ", "_bpm": "140", "_src": "官网(难度吻合)"},
+ {"mid": "30000103", "version": "jubeat-knit", "title": "LISTEN TO THE STEREO!!", "artist": "GOING UNDER GROUND", "levels": {"BSC": "3", "ADV": "6", "EXT": "8"}, "_kana": "リツスントウウサステレオ", "_bpm": "182", "_src": "官网(难度吻合)"},
+ {"mid": "60000010", "version": "jubeat-prop", "title": "アガット [ 2 ]", "artist": "Bazole", "levels": {"BSC": "5", "ADV": "8", "EXT": "10.6"}, "_kana": "アカツト", "_bpm": "200", "_src": "官网(难度吻合)"},
+ {"mid": "60000049", "version": "jubeat-prop", "title": "BEAT-NEW-WORLD", "artist": "ビートまりお（COOL&CREATE）", "levels": {"BSC": "5", "ADV": "8", "EXT": "10.5"}, "_kana": "ヒイトニユウワアルト", "_bpm": "190", "_src": "官网(难度吻合)"},
+ {"mid": "70000003", "version": "jubeat-qubell", "title": "変じゃない!!", "artist": "good-cool ft. すわひでお", "levels": {"BSC": "2", "ADV": "6", "EXT": "8"}, "_kana": "ヘンシヤナイ", "_bpm": "116", "_src": "官网(难度吻合)"},
+ {"mid": "70000042", "version": "jubeat-qubell", "title": "paranoia", "artist": "つなまる", "levels": {"BSC": "3", "ADV": "6", "EXT": "8"}, "_kana": "ハラノイア", "_bpm": "150", "_src": "官网(难度吻合)"},
+ {"mid": "20000031", "version": "jubeat-ripples", "title": "空色デイズ", "artist": "-", "levels": {"BSC": "3", "ADV": "6", "EXT": "8"}, "_kana": "ソライロテイス", "_bpm": "174", "_src": "官网(难度吻合)"},
+ {"mid": "50000037", "version": "jubeat-saucer", "title": "亡国のヒストリア", "artist": "劇団レコード", "levels": {"BSC": "4", "ADV": "6", "EXT": "8"}, "_kana": "ホウコクノヒストリア", "_bpm": "140", "_src": "官网(难度吻合)"},
+ {"mid": "50000139", "version": "jubeat-saucer", "title": "お米の美味しい炊き方、そしてお米を食べることによるその効果。", "artist": "大日本鉄倶楽部【あさき＆９６】", "levels": {"BSC": "3", "ADV": "7", "EXT": "10.1"}, "_kana": "オコメノオイシイタキカタソシテオコメヲタヘルコトニヨルソノコウカ", "_bpm": "190", "_src": "官网(难度吻合)"},
+ {"mid": "50000189", "version": "jubeat-saucer", "title": "Straight Oath", "artist": "矢鴇つかさ feat. 三澤秋", "levels": {"BSC": "2", "ADV": "5", "EXT": "8"}, "_kana": "ストレエトオオス", "_bpm": "182", "_src": "官网(难度吻合)"},
+ {"mid": "50000250", "version": "jubeat-saucer", "title": "Unicorn tail Dustboxxxx RMX", "artist": "Dustboxxxx", "levels": {"BSC": "4", "ADV": "8", "EXT": "10.2"}, "_kana": "ユニコオンテイルタストホツクスリミツクス", "_bpm": "200", "_src": "官网(难度吻合)"},
+ {"mid": "50000259", "version": "jubeat-saucer", "title": "デッドボヲルdeホームラン", "artist": "猫叉Masterβ2", "levels": {"BSC": "4", "ADV": "6", "EXT": "9.6"}, "_kana": "テツトホオルテホオムラン", "_bpm": "145", "_src": "官网(难度吻合)"},
+ {"mid": "50000267", "version": "jubeat-saucer", "title": "いーあるふぁんくらぶ", "artist": "みきとP", "levels": {"BSC": "2", "ADV": "5", "EXT": "8"}, "_kana": "イイアルフアンクラフ", "_bpm": "145", "_src": "官网(难度吻合)"},
+ {"mid": "50000269", "version": "jubeat-saucer", "title": "smooooch・∀・", "artist": "kors k", "levels": {"BSC": "3", "ADV": "8", "EXT": "10.1"}, "_kana": "スムウチ", "_bpm": "177", "_src": "官网(难度吻合)"},
+ {"mid": "50000203", "version": "jubeat-saucer-fulfill", "title": "encounter", "artist": "猫叉Master+", "levels": {"BSC": "5", "ADV": "8", "EXT": "10.4"}, "_kana": "エンカウンタア", "_bpm": "190", "_src": "官网(难度吻合)"},
+ {"mid": "50000323", "version": "jubeat-saucer-fulfill", "title": "ドーパミン", "artist": "U1 overground", "levels": {"BSC": "5", "ADV": "8", "EXT": "10.7"}, "_kana": "トオハミン", "_bpm": "200", "_src": "官网(难度吻合)"},
+ {"mid": "50000350", "version": "jubeat-saucer-fulfill", "title": "Resurrection", "artist": "Dormir", "levels": {"BSC": "2", "ADV": "5", "EXT": "8"}, "_kana": "レサレクシヨン", "_bpm": "140", "_src": "官网(难度吻合)"},
+ {"mid": "50000387", "version": "jubeat-saucer-fulfill", "title": "まるでマトリョーシカ", "artist": "seiya-murai feat. ALT", "levels": {"BSC": "3", "ADV": "6", "EXT": "8"}, "_kana": "マルテマトリヨオシカ", "_bpm": "155", "_src": "官网(难度吻合)"}
+]

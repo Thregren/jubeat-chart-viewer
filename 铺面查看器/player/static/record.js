@@ -209,12 +209,23 @@
    * setFrameTime(t) 把画面时间钉在 t（不看音频时钟），seekTo(t) 顺带把连击 / 闪灯 /
    * 长押状态重建一遍，渲染循环下一帧就按 t 画出来。等这一帧画完再返回，
    * 外部截图拿到的就是「暂停在 t 那一刻」的画面。
+   *
+   * 返回 true = 这一帧真的画出去了（screencast 会推一张新图）；
+   * 返回 false = 页面判定画面没变、这一帧没画，调用方直接沿用上一帧即可。
+   * 只有 `?pg=1`（按需重画）下才可能出现 false。
    */
   async function renderAt(t) {
+    const app = window.JubeatApp;
+    const c0 = app && app.paintCount != null ? app.paintCount : null;
     window.__player.setFrameTime(Number(t));
     window.__player.seekTo(Number(t));
     await raf();
-    return true;
+    if (c0 == null) return true;          // 老页面没有计数：按「已经画了」处理
+    // 极端情况下这一帧可能被合并掉（同一个 vsync 里又排了一次 updateFrame）。
+    // 再等两帧确认；确实是「本来就该静止」才回 false，让录制端直接沿用上一帧，
+    // 而不是白等 grabScreencast 的超时。
+    for (let k = 0; k < 2 && app.paintCount === c0; k++) await raf();
+    return app.paintCount !== c0;
   }
 
   /**
@@ -270,7 +281,8 @@
    *
    *   ready()      等页面就绪（谱面 / marker / 字体 / 封面），返回 info()
    *   info()       本段录制需要的信息：曲目、时长、打点音、截图区域、信息栏数值
-   *   renderAt(t)  把画面定格到谱面时间 t，画完一帧才返回
+   *   renderAt(t)  把画面定格到谱面时间 t，画完一帧才返回；
+   *                返回值表示这一帧画没画（false = 沿用上一帧）
    *   freeze()     停掉播放器 rAF 循环（只用于逐帧录制，刷新页面即恢复）
    *   debug()      自检：画面到底停在哪一刻
    */

@@ -17,6 +17,12 @@
   // —— frame render ——
 
   const DEBUG_TIMELINE = new URLSearchParams(location.search).get("debug") === "1";
+  // 逐帧录制（?rec=1）的「按需重画」开关：URL 带 pg=1 才开。细节见 updateFrame。
+  const PAINT_GUARD = new URLSearchParams(location.search).get("pg") === "1";
+  // 逐帧录制的「降频保活」：URL 带 pn=N 时，帧时间没变的那些 rAF 里只每 N 帧补画
+  // 一张一模一样的内容，纯粹让合成器 / 编码器别冷下来（冷启动一次要 ~300ms）。
+  const PAINT_EVERY = Math.max(1, Math.floor(Number(new URLSearchParams(location.search).get("pn")) || 1));
+  let warmTick = 0;
   let dbgEl = null;
 
   const FLASH = 0.14; // seconds pad stays lit after hit
@@ -128,6 +134,10 @@
   // 兜底：设置区任何控件（滑杆 / 下拉 / 复选框）变动都会触发的 input/change
   // 监听，见 bindEvents —— 所以不会有「改了设置但暂停时看不到效果」的情况。
   let paintDirty = true;
+  // 外部（录制脚本）把画面时间钉住时，最近一次真的画出去的那个时刻。
+  let lastPaintedForced = NaN;
+  // 真的画出去的帧数（含暂停时手动拖动那种），录制脚本靠它判断这一帧画没画。
+  let paintCount = 0;
   function requestPaint() {
     paintDirty = true;
     if (!state.raf) state.raf = requestAnimationFrame(updateFrame);
@@ -140,6 +150,29 @@
     if (!paintDirty && !state.playing && !state.scrubbing
       && A.forcedMediaTime == null && !DEBUG_TIMELINE) {
       return;
+    }
+    // 录制模式（pg=1）下的「按需重画」：
+    // 录制脚本用 setFrameTime(t) 把时间钉在某一刻，录一帧大约只要 10 帧/秒，
+    // 而这行守卫不加时 forcedMediaTime 全程非空 → 页面 60fps 一路重画，
+    // 浏览器每合成一帧就要把 1830×1372 的整屏 JPEG 编码一遍推给录制端
+    // （screencast），9 路并行时合成器直接被压满，九成算力白烧。
+    // 现在帧时间没变就不画（seekTo 会 requestPaint，所以每个新时刻照样画一帧）。
+    // 只跳过「画」，rAF 循环本身继续排着：2026-10-05 试过连循环一起停，
+    // 合成器冷下来之后光唤醒就要 ~400ms，部分实例掉到 1 fps，整机吞吐反而更差。
+    if (PAINT_GUARD && !paintDirty && !state.playing && !state.scrubbing
+      && A.forcedMediaTime != null && A.forcedMediaTime === lastPaintedForced) {
+      state.raf = requestAnimationFrame(updateFrame);
+      return;
+    }
+    // 降频保活（pn=N）：帧时间没变时不每帧都画，只隔 N 帧补一张（内容完全一样），
+    // 目的在于把「浏览器 60fps 重画 + 每帧整屏 JPEG」降到 60/N，同时不让管线冷掉。
+    // 时间一变（seekTo 会置 paintDirty）立刻照画，所以录制端要的那一帧永远是最新的。
+    if (PAINT_EVERY > 1 && !paintDirty && !state.playing && !state.scrubbing
+      && A.forcedMediaTime != null && A.forcedMediaTime === lastPaintedForced) {
+      if ((++warmTick) % PAINT_EVERY !== 0) {
+        state.raf = requestAnimationFrame(updateFrame);
+        return;
+      }
     }
     paintDirty = false;
     state.raf = requestAnimationFrame(updateFrame);
@@ -183,6 +216,8 @@
 
     // 面板灯 / 长押 / marker / 连击 / 物量条全在这一步（和逐帧录制共用）
     paintFrame(mediaT);
+    paintCount++;
+    lastPaintedForced = A.forcedMediaTime == null ? NaN : A.forcedMediaTime;
 
     // A–B 段落循环：播放头一越过 B 就跳回 A（优先于整首循环和收尾）
     if (state.playing && abLoop.b != null && mediaT >= abLoop.b) {
@@ -206,5 +241,11 @@
     paintFrame,
     requestPaint,
     updateFrame,
+  });
+  // 活绑定（不能走 Object.assign：那是取一次值拷过去的快照，录制脚本要靠它
+  // 逐帧读到最新计数，见 record.js 的 renderAt）。
+  Object.defineProperty(A, "paintCount", {
+    get() { return paintCount; },
+    configurable: true,
   });
 })();

@@ -233,7 +233,7 @@
   // 按稼働日开始日的版本顺序（jubeat 2008-07 → 音乐魔方 2025-12）
   const VERSION_ORDER = [
     "jubeat", "jubeat-ripples", "jubeat-ripples-append", "jubeat-knit",
-    "jubeat-plus", "jubeat-copious", "jubeat-copious-append", "jubeat-saucer",
+    "jubeat-plus", "jukebeat", "jubeat-copious", "jubeat-copious-append", "jubeat-saucer",
     "jubeat-saucer-fulfill", "jubeat-prop", "jubeat-qubell", "jubeat-clan",
     "jubeat-festo", "jubeat-ave", "jubeat-beyond-ave", "音乐魔方",
   ];
@@ -243,6 +243,7 @@
     "jubeat-ripples-append": "jubeat ripples APPEND（2010-03）",
     "jubeat-knit": "jubeat knit（2010-07）",
     "jubeat-plus": "jubeat plus（手机版 2010-11）",
+    "jukebeat": "jukebeat（海外版 2011-08）",
     "jubeat-copious": "jubeat copious（2011-09）",
     "jubeat-copious-append": "jubeat copious APPEND（2012-03）",
     "jubeat-saucer": "jubeat saucer（2012-09）",

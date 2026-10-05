@@ -209,9 +209,11 @@ def parse_chart(ifs: Path, code: str) -> tuple[list, list, Fraction]:
             endx, endy = x + dx * length, y + dy * length
             notes.append((beat, index, beat + endbeat, endx + 4 * endy))
 
-    # 退化长押（终点不晚于起点）降级成单点，与曲库既有谱面一致
-    notes = [(b, i, None, None) if (e is not None and e <= b) else (b, i, e, ei)
-             for (b, i, e, ei) in notes]
+    # 这里**不**把「终点不晚于起点」的长押降级成单点。
+    # 实机的物量口径是「单点 ×1 + 长押 ×2」，退化的长押照样算头、尾两颗：
+    # 灼熱 Beach Side Bunny EXT 有 655 条 1 tick（≈3ms）的长押，官方物量
+    # 1606 = 272 单点 + 667 长押 ×2；降级成单点的话本地只有 951，整整少 655 颗。
+    # 前端对 endbeat == beat 的长押有兜底（不画箭头，其余同普通 note）。
     notes.sort(key=lambda n: (n[0], n[1]))
     timing = [(_round_beats(beat), bpm) for _, beat, bpm in tm.changes]
     return notes, timing, tm.seconds_at(Fraction(0))

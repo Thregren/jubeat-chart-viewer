@@ -186,12 +186,16 @@ def scan_song(mcz_path: Path, root: Path) -> dict | None:
                 entry = {"file": name, "code": code, "level": level_str,
                          "levelNum": level,
                          "label": f"{code} Lv{level_str}" if level_str else code}
-                # note / hold 数量：排序和物量显示都要用，顺手读一次完整谱面
+                # 物量 / 长押数：排序和物量显示都要用，顺手读一次完整谱面。
+                # 物量口径和实机一致 = 单点 ×1 + 长押 ×2（头判、尾判各一颗），
+                # 所以 notes 要把长押的尾巴也加进去。以前只数头判，长押多的谱面
+                # （袖手旁棺、iris 这种整首都是长押的）按物量排序时会少掉一半。
                 try:
                     data = json.loads(zf.read(name).decode("utf-8"))
                     notes = [n for n in (data.get("note") or []) if n.get("index") is not None]
-                    entry["notes"] = len(notes)
-                    entry["holds"] = sum(1 for n in notes if n.get("endbeat") is not None)
+                    holds = sum(1 for n in notes if n.get("endbeat") is not None)
+                    entry["notes"] = len(notes) + holds
+                    entry["holds"] = holds
                     entry["notesKnown"] = True
                     if not title:
                         title, artist = _song_meta_of(data)

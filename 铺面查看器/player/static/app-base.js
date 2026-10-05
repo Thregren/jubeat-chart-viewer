@@ -182,7 +182,7 @@
   /** 同押高亮的默认样式：光晕（和以前完全一致） */
   const DEFAULT_CHORD_STYLE = "glow";
   const numCfg = {
-    scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: false,
+    scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: true,
     color: DEFAULT_NUM_COLOR,   // 数字填充色，#rrggbb
     style: DEFAULT_CHORD_STYLE, // 同押高亮：glow | frame | both
   };

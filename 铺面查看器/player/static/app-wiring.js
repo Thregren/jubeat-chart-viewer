@@ -203,8 +203,11 @@
       //            旧默认值 tm0001 —— 用户根本没挑过，只清一次让新默认露出来。
       // 设置版本 7：新增「同押高亮样式」（光晕 / 加粗面板框 / 两者）。新增的键
       //            没有历史包袱，缺省就是「光晕」，不需要清任何旧值。
+      // 设置版本 8：「序号放右下角」改为默认打开（角落里不挡 marker 动画）。存着的值
+      //            多半是旧默认「居中」——用户根本没动过，只清一次让新默认露出来。
       const savedSettingsVersion = Number(store(STORAGE.settingsVersion)) || 0;
       const useComboDefaults = savedSettingsVersion < 2;
+      const useCornerDefault = savedSettingsVersion < 8;
       if (savedSettingsVersion < 5) {
         // 老版本的遗留键：动画对齐帧是「每个设计一个键」（jubeat.anchor.<id>），
         // 所以按前缀扫一遍，别漏。留着只会让下一版的人以为它们还有用。
@@ -222,7 +225,10 @@
       if (savedSettingsVersion < 6) {
         try { localStorage.removeItem(STORAGE.marker); } catch (_) { /* 存不了就算了 */ }
       }
-      store(STORAGE.settingsVersion, "7");
+      if (useCornerDefault) {
+        try { localStorage.removeItem(STORAGE.numCorner); } catch (_) { /* 存不了就算了 */ }
+      }
+      store(STORAGE.settingsVersion, "8");
       if (!useComboDefaults) {
         if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
@@ -230,7 +236,7 @@
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       numCfg.style = normalizeChordStyle(saved.chordGlowStyle);
       els.chordGlowStyle.value = numCfg.style;
-      // 序号外观：字号 / 透明度 / 位置（默认 100% / 100% / 居中）
+      // 序号外观：字号 / 透明度 / 位置（默认 100% / 100% / 右下角）
       if (saved.numScale != null) {
         els.numScale.value = saved.numScale;
         numCfg.scale = clampNumScale((Number(saved.numScale) || 100) / 100);
@@ -246,7 +252,7 @@
         numCfg.glowAlpha = clampNumGlowAlpha((Number(saved.numGlowAlpha) || 0) / 100);
         els.numGlowAlphaLabel.textContent = els.numGlowAlpha.value + "%";
       }
-      if (saved.numCorner != null) {
+      if (!useCornerDefault && saved.numCorner != null) {
         els.numCorner.checked = saved.numCorner === "1";
         numCfg.corner = els.numCorner.checked;
       }

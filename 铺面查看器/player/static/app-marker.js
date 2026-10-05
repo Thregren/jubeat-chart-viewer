@@ -824,7 +824,7 @@
     const corner = numCfg.corner;
     const fit = (corner ? FIT_CORNER : FIT)[text.length] || (corner ? 0.16 : 0.25);
     const size = Math.max(corner ? 9 : 11, rect.w * fit * numCfg.scale);
-    // 数字本身：默认居中；切到右下角后贴住格子的右下内边距
+    // 数字本身：默认贴右下角（角落标签），关掉开关才回到格子正中
     const pad = Math.max(3, rect.w * 0.09);
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;

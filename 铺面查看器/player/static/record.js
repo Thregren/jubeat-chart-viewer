@@ -27,8 +27,9 @@
 
   // ── 1. 录制预设（必须早于 app.js：它一启动就读这些键）──────────────
   const PRESET = {
-    settingsVersion: "7",                 // 低于 2 时 app.js 会强制覆盖连击 / 序号开关；
-                                          // 也必须 ≥ 6，否则启动时会把 marker 键清掉
+    settingsVersion: "8",                 // 低于 2 时 app.js 会强制覆盖连击 / 序号开关；
+                                          // 也必须 ≥ 8，否则启动时会把 marker 键清掉、
+                                          // 并把下面钉死的 numCorner 当成「旧默认」忽略
     marker: query.get("marker") || "tm0004",   // 官方设计 id（缺省 = #04 快门）
     showCombo: "1",
     showNumbers: "1",

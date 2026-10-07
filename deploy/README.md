@@ -15,13 +15,16 @@ python3 tools/build_site.py --out site --prune
   之后再跑是增量的，几秒就跑完
 - 本机没有 `ffmpeg` 时不转码（原样复制），站点照跑，只是包大一圈；换码率用
   `JUBEAT_OPUS_BITRATE=96k python3 tools/build_site.py`（改了参数会整库重转）
-- 删歌之后加 `--prune` 会把多余文件清掉
+- 删歌之后加 `--prune` 清理已不需要的普通文件；旧内容哈希资源保留以支持已打开的页面。`--limit` 不能与 `--prune` 同时使用。
+- 构建使用同目录暂存与互斥锁，失败不发布；生产服务器仍需先验证新资源，最后切换入口。
 
 ## 2. 上传
 
 ```bash
-rsync -av --delete site/ root@your-server:/www/wwwroot/jubeat/site/
+rsync -av site/ root@your-server:/www/.jubeat-release-new/
 ```
+
+先上传到独立发布目录，核对完整性，再切换站点根目录或发布入口。保留旧发布用于回滚；不要对正在服务的站点直接使用 `rsync --delete`。
 
 （或者先打包再传：`tar -C site -czf site.tar.gz .`，2.0 GB 压缩后约 1.9 GB——音频已经是 Ogg，压不动。）
 
@@ -79,7 +82,7 @@ curl -r 0-1023 -o /dev/null -w '%{http_code}\n' \
 
 | 动作 | 流量 |
 |---|---|
-| 曲库索引（一次） | **93 KB**（gzip） |
+| 曲库索引（一次） | **约 307 KiB**（gzip） |
 | 列表封面 | **~9 KB/张**（96px 缩略图；未生成时退回 150 KB 原图） |
 | 选一首歌：谱面 + 封面 | ~15 KB + 150 KB |
 | 听一遍 | ~1.2 MB（Opus 80k VBR） |
@@ -124,7 +127,7 @@ include /www/server/panel/vhost/nginx/snippets/cloudflare-realip.conf;
 ### 2. `.json` 默认不会被 CF 缓存（要在面板加 Cache Rule）
 
 CF 免费版默认**只按文件扩展名决定缓存**，它的默认列表里有 `.js/.css/.ogg/.png/.jpg` 这些，
-**没有 `.json`**。所以 `/data/library.json`（115 KB gzip 后）和每张谱面 json 目前是
+**没有 `.json`**。所以 `/data/library.json`（约 307 KiB gzip 后）和每张谱面 json 目前是
 `cf-cache-status: DYNAMIC`——每次访问都回源。
 
 在本站 nginx 里已经把 `/data/*.json` 的响应头改成：
@@ -189,3 +192,5 @@ Rules → Cache Rules → Create rule
   验证发版有没有生效，要用无痕窗口 / 新 profile，或者 `fetch(url, {cache:"no-store"})`。
 - 即使边缘 TTL 改成 5 分钟，**已经在缓存里的旧条目仍会按它当初的 TTL 活着**，
   所以改配置那次还得手动 purge 一次。
+
+保音调变速：安全响应头中的 `media-src` 需要允许 `blob:`，用于播放本地已下载的音频；`script-src` 与 `connect-src` 保持只允许本站。内核安全更新需要在维护窗口重启后生效。

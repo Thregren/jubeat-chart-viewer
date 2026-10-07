@@ -44,6 +44,8 @@ function jubeat_mime(string $path): string
         'oga'  => 'audio/ogg',
         'mp3'  => 'audio/mpeg',
         'wav'  => 'audio/wav',
+        'm4a'  => 'audio/mp4',
+        'flac' => 'audio/flac',
         'woff' => 'font/woff',
         'woff2'=> 'font/woff2',
         'ttf'  => 'font/ttf',
@@ -61,8 +63,11 @@ function jubeat_is_compressible(string $path): bool
 /** 缓存策略：素材类长缓存，入口与索引每次都回来问一声 */
 function jubeat_cache_control(string $rel): string
 {
+    if (preg_match('#(?:/_hashed/[a-f0-9]{20}|\.[a-f0-9]{20})\.#', $rel)) {
+        return 'public, max-age=31536000, immutable';
+    }
     if (preg_match('#^(media|markers|static)/#', $rel)) {
-        return 'public, max-age=604800';
+        return str_starts_with($rel, 'markers/') ? 'public, max-age=604800' : 'no-cache';
     }
     return 'no-cache';
 }
@@ -72,6 +77,7 @@ function jubeat_fail(int $code, string $message): void
     if (!headers_sent()) {
         http_response_code($code);
         header('Content-Type: text/plain; charset=utf-8');
+        header('Cache-Control: no-store');
     }
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
         echo $message, "\n";
@@ -105,6 +111,9 @@ function jubeat_resolve(string $uri): ?array
         return null;                       // 目录穿越（..）与隐藏文件（.htaccess/.git…）一律不放行
     }
     $rel = rawurldecode(ltrim($uri, '/'));
+    if (strpos($rel, "\0") !== false || strpos($rel, "\\") !== false || preg_match('#(^|/)\.#', $rel)) {
+        return null;
+    }
     if ($rel === '' || substr($rel, -1) === '/') {
         $rel .= 'index.html';
     }
@@ -116,7 +125,14 @@ function jubeat_resolve(string $uri): ?array
     if ($root === false || strncmp($real, $root . DIRECTORY_SEPARATOR, strlen($root) + 1) !== 0) {
         return null;                       // 落点跑出站点根目录
     }
-    return ['path' => $real, 'rel' => str_replace(DIRECTORY_SEPARATOR, '/', substr($real, strlen($root) + 1))];
+    $resolvedRel = str_replace(DIRECTORY_SEPARATOR, '/', substr($real, strlen($root) + 1));
+    if (preg_match('#(^|/)\.#', $resolvedRel)) { return null; }
+    if (!in_array($resolvedRel, ['index.html', 'robots.txt'], true) && !preg_match('#^(data|media|markers|static)/#', $resolvedRel)) { return null; }
+    if (str_ends_with(strtolower($resolvedRel), '.json') && !str_starts_with($resolvedRel, 'data/')) { return null; }
+    $ext = strtolower(pathinfo($real, PATHINFO_EXTENSION));
+    $allowed = ['html','htm','css','js','mjs','json','txt','svg','png','jpg','jpeg','webp','gif','ico','ogg','oga','mp3','wav','m4a','flac','woff','woff2','ttf'];
+    if (!in_array($ext, $allowed, true)) { return null; }
+    return ['path' => $real, 'rel' => $resolvedRel];
 }
 
 /**
@@ -191,6 +207,7 @@ function jubeat_stream_gzip(string $path, bool $headOnly): bool
 /** 流式发文件（分块写，不把大文件读进内存） */
 function jubeat_stream(string $path, int $start, int $end, bool $headOnly): void
 {
+    if ($headOnly) { return; }
     $fp = fopen($path, 'rb');
     if ($fp === false) {
         return;

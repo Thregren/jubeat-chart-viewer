@@ -57,17 +57,47 @@ server {
     # 搜索引擎别收录：robots.txt 只是君子协定，再加一条响应头
     add_header X-Robots-Tag "noindex, nofollow" always;
 
-    # —— 曲库索引：一次拉全量（gzip 后约 93 KB），每次校验 ——
+    # Content-addressed assets remain immutable; error handlers prevent caching failures.
+    error_page 403 404 = @jubeat_not_found;
+    error_page 429 = @jubeat_rate_limited;
+    location ~ "^/media/audio/_hashed/[a-f0-9]{20}\.ogg$" {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+        # Enable only after defining matching zones in http {}:
+        # limit_req zone=jubeat_media burst=20 nodelay;
+        # limit_conn jubeat_conn 8;
+        valid_referers none blocked server_names *.thregren.world;
+        if ($invalid_referer) { return 403; }
+    }
+    location ~ "(?:/_hashed/[a-f0-9]{20}|\.[a-f0-9]{20})\.(js|css|json|png|jpg|jpeg|webp|woff2?)$" {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+    location @jubeat_not_found {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        return 404;
+    }
+    location @jubeat_rate_limited {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        add_header Retry-After "5" always;
+        return 429;
+    }
+
+    # —— 曲库索引：一次拉全量（gzip 后约 307 KiB），每次校验 ——
     location = /data/library.json {
         include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "no-cache" always;
         try_files $uri =404;
     }
 
-    # —— 谱面 JSON：不会变，缓存一天（gzip 后 ~15 KB/张）——
+    # —— 旧路径谱面 JSON：重新验证；内容哈希路径在前面的规则缓存一年——
     location /data/ {
         include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
-        add_header Cache-Control "public, max-age=86400" always;
+        add_header Cache-Control "no-cache";
         try_files $uri =404;
     }
 
@@ -75,7 +105,7 @@ server {
     # 2.6 GB 音源是这个站最大的敞口：源站公网可直连时，务必加限流 + 防盗链
     location /media/audio/ {
         include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
-        add_header Cache-Control "public, max-age=604800" always;
+        add_header Cache-Control "no-cache";
         try_files $uri =404;
 
         # 要开这两行，先把文件开头那 3 行 zone 定义一起打开（都在 http {} 里）：
@@ -92,14 +122,14 @@ server {
     # —— 封面与缩略图 ——
     location ~ ^/media/(cover|thumb)/ {
         include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
-        add_header Cache-Control "public, max-age=604800" always;
+        add_header Cache-Control "no-cache";
         try_files $uri =404;
     }
 
     # —— marker 素材：换素材时改文件名或等一天 ——
     location /markers/ {
         include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
-        add_header Cache-Control "public, max-age=86400" always;
+        add_header Cache-Control "no-cache";
         try_files $uri =404;
     }
 
@@ -110,7 +140,7 @@ server {
         # 如果 CDN 的缓存键忽略 query string（?v= 失效，见 deploy/README.md 第 4 节），
         # 短边缘 TTL 就是兜底——发版后最多 5 分钟自动生效，不用手动 purge。
         # CDN 正常把 query 纳入缓存键的话，可以只写 no-cache，让 ?v= 去控制。
-        add_header Cache-Control "public, max-age=43200, s-maxage=300" always;
+        add_header Cache-Control "no-cache";
         try_files $uri =404;
     }
 

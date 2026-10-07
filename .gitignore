@@ -45,3 +45,7 @@ electron/node_modules/
 electron/dist/
 electron/out/
 
+
+# Temporary staged build transactions and process locks
+.*.build.lock
+.*.build-*/

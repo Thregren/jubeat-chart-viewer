@@ -123,7 +123,7 @@
     // marker 接近 / 判定动画 + 节拍指示
     drawMarkers(mediaT);
     updateComboDisplay();
-    if (!state.scrubbing) drawDensity(mediaT);
+    drawDensity(mediaT);
   }
 
   // 画面「需要重画」的脏标记 + 把渲染循环重新点起来的入口。
@@ -229,7 +229,7 @@
         play();
       } else {
         pause();
-        seekTo(state.duration || 0);
+        seekTo(0);
       }
     }
   }

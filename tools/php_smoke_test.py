@@ -68,6 +68,11 @@ def build_root(tmp: Path) -> tuple[Path, dict[str, bytes]]:
     (root / "data" / "library.json").write_bytes(index_json)
     shutil.copy2(ROOT / "deploy" / "php" / "index.php", root / "index.php")
     (root / ".htaccess").write_text("secret\n")
+    (root / "static" / ".private.txt").write_text("secret")
+    (root / "static" / "source.py").write_text("secret")
+    (root / "data" / ".private.json").write_text("secret")
+    (root / "package.json").write_text("secret")
+    (root / "static" / "app.js.0123456789abcdef0123.js").write_bytes(js)
     return root, {"html": html, "blob": blob, "json": index_json}
 
 
@@ -132,7 +137,7 @@ def main() -> int:
             check("后缀 Range bytes=-10", st == 206 and body == blob[-10:], str(st))
 
             st, hd, body = request(port, "/media/audio/song.ogg", {"Range": f"bytes={size + 5}-"})
-            check("越界 Range → 416", st == 416 and hd.get("content-range") == f"bytes */{size}", str(st))
+            check("越界 Range 被忽略，返回整文件（与其它后端一致）", st == 200 and body == blob, str(st))
 
             st, hd, body = request(port, "/media/audio/song.ogg")
             etag = hd.get("etag", "")
@@ -144,6 +149,11 @@ def main() -> int:
             st, hd, body = request(port, "/", method="HEAD")
             check("HEAD 无 body 且有 Content-Length", st == 200 and body == b"" and hd.get("content-length") == str(len(html)), str(st))
 
+            st, hd, _ = request(port, "/static/app.js.0123456789abcdef0123.js")
+            check("内容哈希资源长期不可变缓存", st == 200 and "immutable" in hd.get("cache-control", ""), str(st))
+            for path in ["/%2ehtaccess", "/static/%2eprivate.txt", "/data/%2eprivate.json", "/package.json", "/static/source.py", "/index.php"]:
+                st, hd, _ = request(port, path)
+                check(f"隐藏/源文件阻止 {path}", st == 404 and hd.get("cache-control") == "no-store", str(st))
             st, hd, _ = request(port, "/nope.js")
             check("不存在的文件 → 404", st == 404, str(st))
             st, hd, _ = request(port, "/.htaccess")

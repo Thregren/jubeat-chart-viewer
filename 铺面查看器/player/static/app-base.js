@@ -94,6 +94,7 @@
     timeNow: $("#timeNow"),
     timeTotal: $("#timeTotal"),
     rate: $("#rate"),
+    markerNormalSpeed: $("#markerNormalSpeed"),
     offset: $("#offset"),
     autoLoop: $("#autoLoop"),
     loadRow: $("#loadRow"),
@@ -208,6 +209,7 @@
   const abLoop = { a: null, b: null };
 
   const STORAGE = {
+    markerNormalSpeed: "jubeat.markerNormalSpeed",
     marker: "jubeat.marker",   // 选中的 marker 设计 id（如 tm0001）
     metroSound: "jubeat.metroSound",
     metroVolume: "jubeat.metroVolume",
@@ -347,19 +349,23 @@
   }
 
   function chartPath(song, chart) {
+    if (song.assets && song.assets[`chart:${chart.code}`]) return encPath(song.assets[`chart:${chart.code}`]);
     return `${PATHS.charts}${encPath(stemOf(song.id))}/${encodeURIComponent(chart.code)}.json`;
   }
 
   function audioUrl(song) {
+    if (song.assets && song.assets.audio) return encPath(song.assets.audio);
     return `${PATHS.audio}${encPath(stemOf(song.id))}.ogg`;
   }
 
   function coverUrl(song) {
+    if (song.assets && song.assets.cover) return encPath(song.assets.cover);
     const ext = (String(song.cover || "").match(/\.[a-z0-9]+$/i) || [".png"])[0];
     return `${PATHS.cover}${encPath(stemOf(song.id))}${ext}`;
   }
 
   function thumbUrl(song) {
+    if (song.assets && song.assets.thumb) return encPath(song.assets.thumb);
     return `${PATHS.thumb}${encPath(stemOf(song.id))}.jpg`;
   }
 

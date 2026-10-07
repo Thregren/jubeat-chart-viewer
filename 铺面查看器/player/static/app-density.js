@@ -275,7 +275,9 @@
   function densitySeekFromEvent(ev) {
     const cv = els.densityCanvas;
     const box = cv.getBoundingClientRect();
-    const x = Math.max(0, Math.min(box.width, ev.clientX - box.left));
+    if (box.width <= 0) return 0;
+    const logicalWidth = density.rect?.w || box.width;
+    const x = Math.max(0, Math.min(box.width, ev.clientX - box.left)) * logicalWidth / box.width;
     const dur = density.dur || state.duration || 0;
     // 图是居中的：左右那两条留白不参与换算，免得点最左边却落到曲子中间
     const graphW = density.graphW || box.width;

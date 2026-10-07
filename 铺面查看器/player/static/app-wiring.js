@@ -326,33 +326,38 @@
     // 以前每移动一下就 seek 一次，一秒能打断音频管线几十次，松手后音轨要重新起、
     // 还会从不对的位置出声，拍子就乱了。现在松手才 seek 一次。
     let resumeAfterScrub = false;
+    let scrubPointerId = null;
     els.densityCanvas.addEventListener("pointerdown", (ev) => {
-      if (!state.notes.length || density.placeholder) return;   // 音源没就绪时不给拖
+      if (ev.button !== 0 || state.scrubbing || !state.notes.length || density.placeholder) return;   // 音源没就绪时不给拖
       // 已经有 A–B 打点时，拖动进度条 = 清空所有打点（用户明确要的行为）
       clearAB(null);
       state.scrubbing = true;
+      scrubPointerId = ev.pointerId;
       resumeAfterScrub = state.playing;
       if (state.playing) pause();
       els.densityCanvas.setPointerCapture(ev.pointerId);
       const sec = densitySeekFromEvent(ev);
       state.scrubSec = sec;
       els.densityInfo.textContent = `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`;
-      drawDensity(sec);
+      A.requestPaint();
     });
     els.densityCanvas.addEventListener("pointermove", (ev) => {
-      const box = els.densityCanvas.getBoundingClientRect();
-      const sec = (Math.max(0, Math.min(box.width, ev.clientX - box.left)) / box.width) * (density.dur || 0);
+      if (state.scrubbing && ev.pointerId !== scrubPointerId) return;
+      const sec = densitySeekFromEvent(ev);
       if (!state.scrubbing) {
         els.densityInfo.textContent = `物量 · ${fmtTime(sec)} 附近 ${bucketInfo(sec)}`;
         return;
       }
       state.scrubSec = sec;                    // 只记录预览位置，不碰音频
       els.densityInfo.textContent = `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`;
-      drawDensity(sec);
+      A.requestPaint();
     });
     const endScrub = (ev) => {
-      if (!state.scrubbing) return;
+      if (!state.scrubbing || ev.pointerId !== scrubPointerId) return;
+      // Include the final pointer position, even if its last move was coalesced.
+      if (ev.type === "pointerup") state.scrubSec = densitySeekFromEvent(ev);
       state.scrubbing = false;
+      scrubPointerId = null;
       try {
         els.densityCanvas.releasePointerCapture(ev.pointerId);
       } catch (_) {
@@ -366,6 +371,7 @@
     };
     els.densityCanvas.addEventListener("pointerup", endScrub);
     els.densityCanvas.addEventListener("pointercancel", endScrub);
+    els.densityCanvas.addEventListener("lostpointercapture", endScrub);
     els.densityCanvas.addEventListener("pointerleave", () => {
       if (!state.scrubbing) els.densityInfo.textContent = "物量 · 拖这里跳转";
     });
@@ -394,17 +400,18 @@
     els.btnRestart.addEventListener("click", restart);
     els.btnStop.addEventListener("click", stop);
 
-    els.rate.addEventListener("change", () => {
-      const rate = Number(els.rate.value) || 1;
-      if (backend.mode === "webaudio") {
-        const pos = audioNow();
-        if (state.playing) startBufferAt(pos);   // 用新速率重起一个源
-        else backend.anchorPos = pos;
-      } else {
-        els.audio.playbackRate = rate;
-      }
-      sfxReset();                       // 变速后重排，别用旧速度算出来的时刻
+    const restoreMarkerSpeed = () => {
+      if (els.markerNormalSpeed) els.markerNormalSpeed.checked = store(STORAGE.markerNormalSpeed) !== "0";
+      A.requestPaint();
+    };
+    restoreMarkerSpeed();
+    window.addEventListener("pageshow", restoreMarkerSpeed);
+    els.markerNormalSpeed?.addEventListener("change", () => {
+      store(STORAGE.markerNormalSpeed, els.markerNormalSpeed.checked ? "1" : "0");
+      A.requestPaint();
     });
+
+    els.rate.addEventListener("change", () => A.applyPlaybackRate());
 
     // 切回前台 / 重新可见时，确保音频图还在跑（隐藏页面里 WebAudio 可能被挂起）
     document.addEventListener("visibilitychange", keepAudioAlive);
@@ -422,6 +429,7 @@
     bindLoadEvents();     // 音源加载进度：<audio> 的缓冲状态都在这里收
 
     els.audio.addEventListener("ended", () => {
+      if (backend.mode !== "element" || els.audio.dataset.src !== backend.url) return;
       if (abLoop.b != null && state.song) {
         seekTo(abLoop.a);          // 打着 A–B 点：回到 A 继续循环
         play();
@@ -429,16 +437,18 @@
         seekTo(0);
         play();
       } else {
-        setPlaying(false);
-        els.playIcon.textContent = "▶";
+        pause();
+        seekTo(0);
       }
     });
 
-    els.audio.addEventListener("play", () => {
+    els.audio.addEventListener("playing", () => {
+      if (backend.mode !== "element" || els.audio.paused || els.audio.dataset.src !== backend.url) return;
       setPlaying(true);
       els.playIcon.textContent = "❚❚";
     });
     els.audio.addEventListener("pause", () => {
+      if (backend.mode !== "element" || !els.audio.paused) return;
       setPlaying(false);
       els.playIcon.textContent = "▶";
     });
@@ -525,7 +535,7 @@
     try {
       const res = await fetch(`index.html?__v=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) return;
-      const m = /app\.js\?v=([^"'&\s]+)/.exec(await res.text());
+      const m = /app\.js(?:\.[a-f0-9]{20}\.js)?\?v=([^"'&\s]+)/.exec(await res.text());
       if (!m || m[1] === frontVersion()) return;
       versionReloaded = true;                                 // 只重载一次，别来回刷
       console.info(`[jubeat] 前端已更新 ${frontVersion()} → ${m[1]}，重载`);

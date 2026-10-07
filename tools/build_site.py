@@ -25,6 +25,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import re
 import concurrent.futures
 import json
 import os
@@ -33,6 +35,7 @@ import sys
 import time
 import unicodedata
 from pathlib import Path
+from site_transaction import SiteTransaction
 
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO = TOOLS_DIR.parent
@@ -131,6 +134,8 @@ def expected_paths(songs: list[dict], marker_files: list[str], se_files: list[st
     """这次构建应该存在的所有文件（相对 out 的 posix 路径）。"""
     want = {"robots.txt", "data/library.json", "data/markers.json", "data/build.json"}
     want |= {p.name if p.name == "index.html" else f"static/{p.name}" for p in static_files()}
+    for song in songs:
+        want.update(song.get("assets", {}).values())
     want |= {"markers/" + rel for rel in marker_files}
     want |= {"media/se/" + name for name in se_files}
     for s in songs:
@@ -222,6 +227,8 @@ def build_song(song: dict, out: Path, force: bool, force_audio: bool, stats: Sta
         thumb_dest = out / "media" / "thumb" / f"{stem}.jpg"
         if not fresh(thumb_dest, mtime, force):
             thumb_dest.parent.mkdir(parents=True, exist_ok=True)
+            # A staging copy may share an inode with the published tree.
+            thumb_dest.unlink(missing_ok=True)
             if thumbs.make(cover_dest, thumb_dest, config.THUMB_SIZE, config.THUMB_QUALITY):
                 stats.added(thumb_dest.stat().st_size)
             elif thumbs.backend() == "none":
@@ -270,6 +277,7 @@ def build_markers(out: Path, force: bool, stats: Stats) -> list[str]:
             else:
                 stats.skipped += 1
     if missing:
+        stats.failed.extend("marker: " + rel for rel in missing)
         print(f"⚠️  marker 素材缺 {len(missing)} 张（清单有、盘上没有），"
               f"例如 {missing[0]}", file=sys.stderr)
     print(f"  marker 贴图 {len(copied)} 张 / {len(manifest['designs'])} 套设计")
@@ -304,6 +312,18 @@ def build_se(out: Path, force: bool, stats: Stats) -> list[str]:
     return copied
 
 
+def asset_alias(out: Path, rel: str, flat: bool = False) -> str:
+    src = out / rel
+    with src.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()[:20]
+    dest = (src.with_name(src.name + "." + digest + src.suffix) if flat
+            else out / src.relative_to(out).parts[0] / src.relative_to(out).parts[1] / "_hashed" / (digest + src.suffix))
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.link(src, dest)
+    return dest.relative_to(out).as_posix()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="把曲库展开成纯静态站点")
     ap.add_argument("--out", default=str(REPO / "site"), help="输出目录（默认 ./site）")
@@ -317,8 +337,19 @@ def main() -> int:
                     help="无视索引缓存，重新解压扫描每个 .mcz（默认走 cache/library_index.json）")
     ap.add_argument("--thumb-size", type=int, default=config.THUMB_SIZE)
     args = ap.parse_args()
+    if args.limit < 0 or args.jobs < 1:
+        ap.error("--limit 必须非负，--jobs 必须大于 0")
+    if args.limit and args.prune:
+        ap.error("--limit 不能与 --prune 同时使用，避免删掉完整曲库")
+    target = Path(args.out).expanduser().resolve()
+    with SiteTransaction(target) as transaction:
+        result = run_build(args, transaction.stage)
+        if result == 0:
+            transaction.publish()
+        return result
 
-    out = Path(args.out).expanduser().resolve()
+
+def run_build(args, out: Path) -> int:
     config.THUMB_SIZE = max(32, min(512, args.thumb_size))
     out.mkdir(parents=True, exist_ok=True)
     (out / "data" / "charts").mkdir(parents=True, exist_ok=True)
@@ -357,7 +388,7 @@ def main() -> int:
         # mtime，于是「源 HTML 改了结构」会被当成「产物已是最新」跳过，线上就变成
         # 「新 JS + 老 HTML」——本轮新增 #numColor 时就踩了这个坑。它只有十几 KB，
         # 每次都复制最省心。
-        if copy_fresh(src, dest, args.force or name == "index.html"):
+        if copy_fresh(src, dest, True):
             stats.added(src.stat().st_size)
 
     # robots.txt：曲库 / marker 素材没必要被搜索引擎收录（既费流量也是版权暴露面）
@@ -372,7 +403,7 @@ def main() -> int:
     #
     # 以前这里绕开缓存、每次都全量重扫：整个曲库的 zip 都要开一遍、再把每份谱面
     # json.loads 一次，光「什么都没改」的重复构建就要几十秒。现在走 Library，
-    # 缓存带曲库指纹（条数 + 最新 mtime + 总字节，见 library.fingerprint），
+    # 缓存带曲库指纹（每个文件的路径、大小、mtime_ns、ctime_ns 的 SHA256，见 library.fingerprint），
     # 曲库没动就直接命中；真要重建用 --rescan。
     print("读取曲库索引…" + ("（--rescan：全量重扫）" if args.rescan else ""))
     lib = library.Library()
@@ -397,8 +428,7 @@ def main() -> int:
             stats.failed.append(f"NFC 规范化后路径撞车：{other} ↔ {s['id']}")
         else:
             stem_owner[stem] = s["id"]
-    write_atomic(out / "data" / "library.json",
-                 json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    # Publish the catalog only after every asset has built successfully.
     stats.songs = len(songs)
     print(f"曲目 {len(songs)} 首，开始展开音频/封面/谱面（{args.jobs} 线程）…")
 
@@ -422,8 +452,37 @@ def main() -> int:
     # 5) 可选打点音素材
     se_files = build_se(out, args.force, stats)
 
+    if stats.failed:
+        print("构建失败，保留原站点和索引：", *stats.failed[:10], sep="\n", file=sys.stderr)
+        return 2
+
+    # Content-addressed references avoid stale audio/frontend caches after updates.
+    for song in index["songs"]:
+        stem = stem_of(song["id"])
+        paths = {"audio": f"media/audio/{stem}.ogg"}
+        if song.get("cover"):
+            ext = Path(song["cover"]).suffix.lower() or ".png"
+            paths.update(cover=f"media/cover/{stem}{ext}", thumb=f"media/thumb/{stem}.jpg")
+        paths.update({f"chart:{c['code']}": f"data/charts/{stem}/{c['code']}.json" for c in song["charts"]})
+        song["assets"] = {key: asset_alias(out, rel) for key, rel in paths.items() if (out/rel).is_file()}
+    index_html_path = out / "index.html"
+    html = index_html_path.read_text(encoding="utf-8")
+    for match in set(re.findall(r'(?:src|href)="static/([^"?]+)', html)):
+        src = out / "static" / match
+        if not src.is_file():
+            raise RuntimeError(f"前端引用缺失：{match}")
+        alias = asset_alias(out, "static/" + match, flat=True)
+        html = html.replace("static/" + match + "?", alias + "?")
+    # Older open clients look for app.js?v= when checking for new releases.
+    html = html.replace("</head>", "<!-- app.js?v=" + version_mod.read_version() + " -->\n</head>")
+    write_atomic(index_html_path, html.encode("utf-8"))
+    write_atomic(out / "data" / "library.json", json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
     if args.prune:
-        removed = prune(out, expected_paths(songs, marker_files, se_files))
+        wanted = expected_paths(songs, marker_files, se_files)
+        # Keep prior hashed resources for already-open browser sessions.
+        wanted.update(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file() and ("_hashed" in p.parts or re.search(r"\.[a-f0-9]{20}\.", p.name)))
+        removed = prune(out, wanted)
         if removed:
             print(f"  清理旧文件 {removed} 个")
 

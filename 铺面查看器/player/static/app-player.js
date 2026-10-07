@@ -22,7 +22,7 @@
   //             输出总线 → 画面 / 打点音 / 音乐三者同一个时钟、同一个输出延迟。
   //             （试过把 <audio> 用 MediaElementAudioSourceNode 接进来，但它在 seek
   //              之后有速率怪癖会把音乐放快，所以不用那条路。）
-  //   element ：解码失败（个别坏文件）、或加了 ?media=1 时，回落原来的 <audio> 直出。
+  //   element ：变速时以 preservesPitch 保持音调；解码失败或 ?media=1 也走媒体直出。
   //
   // 想排查对拍问题：?debug=1 会在左下角显示 chart / audio / 后端 / 输出峰值；
   // 输出峰值（out）恒为 0 就说明声音没送到输出。
@@ -34,6 +34,8 @@
     anchorPos: 0,      // 起播位置（音频秒）
     anchorCtx: 0,      // 起播时刻（audioCtx.currentTime）
     url: "",
+    objectUrl: "",   // 已下载的压缩音频：变速复用，换歌释放
+    rate: 1,
   };
   const FORCE_MEDIA = new URLSearchParams(location.search).get("media") === "1";
 
@@ -64,7 +66,10 @@
     return p;
   }
 
+  let playGeneration = 0;
+
   function stopBufferSource() {
+    playGeneration++;
     if (!backend.src) return;
     try {
       backend.src.stop();
@@ -247,29 +252,59 @@
    * 返回 ArrayBuffer，可以直接喂给 decodeAudioData。
    */
   async function readWithProgress(res, onProgress) {
-    const total = Number(res.headers.get("Content-Length") || 0) || 0;
-    if (!res.body || typeof res.body.getReader !== "function") {
-      const buf = await res.arrayBuffer();
-      onProgress(buf.byteLength, total || buf.byteLength);
-      return buf;
+    return window.JubeatRuntime.readBytes(res, 64 * 1024 * 1024, onProgress);
+  }
+  const audioRequests = new window.JubeatRuntime.RequestScope();
+  function releaseMediaObject() {
+    if (backend.objectUrl) URL.revokeObjectURL(backend.objectUrl);
+    backend.objectUrl = "";
+  }
+  function cancelAudioLoad() { audioRequests.cancel(); releaseMediaObject(); }
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) cancelAudioLoad();
+  });
+
+  function preservePitch() {
+    const el = els.audio;
+    let supported = false;
+    for (const key of ["preservesPitch", "webkitPreservesPitch", "mozPreservesPitch"]) {
+      if (key in el) { el[key] = true; supported = true; }
     }
-    const reader = res.body.getReader();
-    const chunks = [];
-    let done = 0;
-    for (;;) {
-      const { value, done: fin } = await reader.read();
-      if (fin) break;
-      chunks.push(value);
-      done += value.byteLength;
-      onProgress(done, total);
+    return supported;
+  }
+
+  function selectedRate() {
+    const rate = Number(els.rate.value) || 1;
+    if (rate !== 1 && !preservePitch()) {
+      els.rate.value = "1";
+      toast("当前浏览器不支持保持音调变速，请更新浏览器", true);
+      return 1;
     }
-    const out = new Uint8Array(done);
-    let at = 0;
-    for (const c of chunks) {
-      out.set(c, at);
-      at += c.byteLength;
+    return rate;
+  }
+
+  /** 常速保留采样级 WebAudio；变速切到原生保音调媒体管线，同首歌复用已下载音频。 */
+  function applyPlaybackRate() {
+    const rate = selectedRate();
+    if (backend.mode === "webaudio" && rate !== 1 && backend.buf) {
+      const pos = audioNow(), wasPlaying = state.playing;
+      pause();
+      backend.mode = "element";
+      backend.rate = rate;
+      pendingSeek = pos + (Number(els.offset.value) || 0) / 1000 - (state.baseOffset || 0);
+      loadElementSource(backend.url);
+      flushPendingSeek();
+      if (wasPlaying) resumeAfterSeek();
+    } else if (backend.mode === "element") {
+      preservePitch();
+      els.audio.playbackRate = rate;
+      backend.rate = rate;
+      audioClock.base = els.audio.currentTime || 0;
+      audioClock.at = performance.now();
+      audioClock.fresh = 0;
     }
-    return out.buffer;
+    sfxReset();
+    A.requestPaint();
   }
 
   /**
@@ -329,19 +364,26 @@
       refresh();
     });
     el.addEventListener("error", () => {
+      if (backend.mode === "element" && el.dataset.src === backend.url) {
+        audioLoad.pending = false;
+        toast("音源加载失败，请重新选择曲目重试", true);
+      }
       audioLoad.buffering = false;
       refresh();
     });
   }
 
-  /** WebAudio 路径失败或 ?media=1 时才启动 <audio>，避免同一首音源同时下载两份。 */
+  /** 变速、解码失败或 ?media=1 时启动 <audio>；已下载的音频通过 Blob 复用。 */
   function loadElementSource(url) {
     if (backend.url !== url) return;
     audioLoad.pendingLabel = "音频加载";
     audioLoad.pending = true;
     updateLoadMeter();
-    els.audio.preload = "metadata";
-    els.audio.src = url;
+    els.audio.preload = backend.objectUrl ? "auto" : "metadata";
+    preservePitch();
+    els.audio.playbackRate = selectedRate();
+    backend.rate = els.audio.playbackRate;
+    els.audio.src = backend.objectUrl || url;
     els.audio.dataset.src = url;
     els.audio.currentTime = 0;
     els.audio.load();
@@ -355,7 +397,11 @@
 
   /** 把音源解码成 AudioBuffer（换歌时调用；失败就继续用 <audio> 直出） */
   async function prepareBuffer(url) {
+    const request = audioRequests.start(90000);
+    const started = performance.now();
+    const current = () => audioRequests.current(request) && backend.url === url;
     stopBufferSource();
+    releaseMediaObject();
     backend.buf = null;
     backend.url = url;
     backend.mode = "element";
@@ -363,27 +409,31 @@
     if (FORCE_MEDIA) {
       // ?media=1：故意的直出模式，进度交给 <audio> 自己报
       loadElementSource(url);
+      audioRequests.finish(request);
       return false;
     }
     audioLoad.pending = false;
     audioLoad.fetching = true;
     updateLoadMeter();
     try {
-      const res = await fetch(url, { cache: "force-cache" });
+      const res = await fetch(url, { cache: "force-cache", signal: request.signal });
       if (!res.ok) throw new Error(`音源读取失败（${res.status}）`);
       const bytes = await readWithProgress(res, (done, total) => {
-        if (backend.url !== url) return;
+        if (!current()) return;
         audioLoad.fetchDone = done;
         audioLoad.fetchTotal = total;
         updateLoadMeter();
       });
+      if (!current()) return;
+      backend.objectUrl = URL.createObjectURL(new Blob([bytes], { type: res.headers.get("Content-Type")?.split(";")[0] || "audio/ogg" }));
       audioLoad.fetching = false;
-      if (backend.url !== url) return;                       // 已经换歌了
       audioLoad.decoding = true;
       updateLoadMeter();
       A.audioCtx = A.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       const buf = await A.audioCtx.decodeAudioData(bytes);
-      if (backend.url !== url) return;
+      if (!current()) return;
+      A.metrics = A.metrics || {}; A.metrics.audioReadyMs = performance.now() - started;
+      A.metrics.audioPCMBytes = buf.length * buf.numberOfChannels * 4;
       backend.buf = buf;
       // 解码是异步的：如果这会儿已经开播（走的是 <audio>），就别中途换后端，
       // 否则时钟会在半路换源。下一首（或重新加载）自然就用上 buffer 了。
@@ -391,8 +441,9 @@
         console.info("[audio] 解码完成，但正在播放，保持 <audio> 直到下次加载");
         return;
       }
-      backend.mode = "webaudio";
-      console.info(`[audio] 解码完成 ${buf.duration.toFixed(1)}s，改用 WebAudio 播放`);
+      backend.mode = selectedRate() === 1 ? "webaudio" : "element";
+      if (backend.mode === "element") loadElementSource(url);
+      console.info(`[audio] 解码完成 ${buf.duration.toFixed(1)}s，使用 ${backend.mode} 播放`);
       if (state._parsed) {
         const dur = computeDuration(state._parsed);
         if (Math.abs(dur - (state.duration || 0)) > 0.01) {
@@ -405,11 +456,13 @@
       flushPendingSeek();   // ?t= 深链接：buffer 一好就把位置落下去
       return true;
     } catch (err) {
-      console.warn("[audio] 解码失败，继续用 <audio>", err);
+      if (audioRequests.active !== request || request.signal.reason?.name === "AbortError") return false;
+      console.warn("[audio] 加载失败，继续用 <audio>", err);
       if (backend.url === url) loadElementSource(url);
     } finally {
       // 换过歌就别动进度条了，那是新一首的状态
-      if (backend.url === url) {
+      audioRequests.finish(request);
+      if (audioRequests.active === request && backend.url === url) {
         audioLoad.fetching = false;
         audioLoad.decoding = false;
         updateLoadMeter();
@@ -420,7 +473,10 @@
 
   /** 从音频秒 pos 起播（webaudio 模式）；打点音和音乐挂在同一条输出上 */
   async function startBufferAt(pos) {
-    if (!backend.buf || !A.audioCtx) return;
+    if (!backend.buf || !A.audioCtx) return false;
+    const generation = ++playGeneration;
+    const buffer = backend.buf;
+    const url = backend.url;
     try {
       // resume() 在某些环境下会一直 pending（状态其实已经是 running），所以加超时兜底，
       // 绝不能因为等它而卡住播放
@@ -430,7 +486,8 @@
     } catch (_) {
       /* ignore */
     }
-    const rate = Number(els.rate.value) || 1;
+    if (generation !== playGeneration || buffer !== backend.buf || url !== backend.url) return false;
+    const rate = 1;  // AudioBuffer 调速会改变音高，变速统一走保音调媒体后端
     const off = Math.max(0, Math.min(pos, Math.max(0, backend.buf.duration - 0.02)));
     stopBufferSource();
     const src = A.audioCtx.createBufferSource();
@@ -441,6 +498,8 @@
     backend.src = src;
     backend.anchorPos = off;
     backend.anchorCtx = A.audioCtx.currentTime;
+    backend.rate = rate;
+    return true;
   }
 
   /** 输出延迟：画面要提前这么多，marker 才和你听到的声音对齐 */
@@ -527,7 +586,7 @@
     // WebAudio 直接播 buffer：位置就是「起播点 + 经过的 ctx 时间」，连续、无量化台阶
     if (backend.mode === "webaudio") {
       if (!state.playing || !A.audioCtx) return backend.anchorPos;
-      const rate = Number(els.rate.value) || 1;
+      const rate = backend.rate || 1;
       return backend.anchorPos + Math.max(0, A.audioCtx.currentTime - backend.anchorCtx) * rate;
     }
     const raw = els.audio.currentTime || 0;
@@ -540,7 +599,7 @@
     if (!state.playing || els.audio.paused || els.audio.seeking) return raw;
     if (els.audio.readyState < 3) return raw;            // 还没缓冲够，别猜
     if (now - audioClock.fresh > 150) return raw;        // 150ms 没动过 = 卡住了
-    const rate = Number(els.rate.value) || 1;
+    const rate = els.audio.playbackRate || 1;
     const dt = Math.min(CLOCK_MAX_EXTRAP, Math.max(0, (now - audioClock.at) / 1000));
     return audioClock.base + dt * rate;
   }
@@ -568,7 +627,7 @@
     // 录制模式：时间由录制脚本直接给定（__player.setFrameTime），
     // 画面只由这个数决定，和音频时钟、音源有没有加载完全无关。
     if (forcedMediaTime != null) return Math.max(0, forcedMediaTime);
-    return Math.max(0, currentMediaTime() - outputLatency());
+    return Math.max(0, currentMediaTime() - outputLatency() * (backend.rate || 1));
   }
 
   /** 不做任何外推的原始谱面时间：排打点音用它，宁可差半帧也不要提前响 */
@@ -636,9 +695,13 @@
       toast("先从左侧选择一首曲目");
       return;
     }
+    if (backend.mode === "webaudio" && selectedRate() !== 1) {
+      applyPlaybackRate();
+    }
     if (backend.mode === "webaudio" && backend.buf) {
       try {
-        await startBufferAt(backend.anchorPos);
+        const url = backend.url, song = state.song;
+        if (!await startBufferAt(backend.anchorPos) || url !== backend.url || song !== state.song || !backend.src) return;
         setPlaying(true);       // 已经出声了，排队的这次请求就算用掉了
         els.playIcon.textContent = "❚❚";
         els.btnPlay.setAttribute("aria-label", "暂停");
@@ -649,6 +712,10 @@
       return;
     }
     if (!playbackLoaded()) {
+      // 已有元数据且整首音频已在本地，交给媒体管线等 seek/解码落地；play promise 可被 pause 取消。
+      if (els.audio.dataset.src === backend.url && els.audio.readyState >= 1 && (backend.objectUrl || els.audio.seeking)) {
+        return startElementPlay();
+      }
       // 音源还没到齐（慢网换歌就是这个状态）：直接拒绝，不排队。
       // 排队的版本会在数据刚到、谱面状态还没落好时就起播，听起来就是「提前响了、不对拍」。
       // 按钮此时是 disabled 的，这里兜住键盘（空格）这类入口。
@@ -660,9 +727,14 @@
 
   /** element 后端起播（音频已经可以出声了） */
   async function startElementPlay() {
+    const generation = ++playGeneration;
+    const url = backend.url;
     try {
-      els.audio.playbackRate = Number(els.rate.value) || 1;
+      preservePitch();
+      els.audio.playbackRate = selectedRate();
+      backend.rate = els.audio.playbackRate;
       await els.audio.play();
+      if (generation !== playGeneration || url !== backend.url) return;
       setPlaying(true);
       els.playIcon.textContent = "❚❚";
       els.btnPlay.setAttribute("aria-label", "暂停");
@@ -675,6 +747,7 @@
   }
 
   function pause() {
+    playGeneration++;
     if (backend.mode === "webaudio") {
       backend.anchorPos = audioNow();       // 先记下位置再停
       stopBufferSource();
@@ -709,6 +782,7 @@
       return;
     }
     const el = els.audio;
+    const generation = playGeneration, url = backend.url;
     if (!el.seeking && el.readyState >= 3) {
       sfxReset();
       play();
@@ -717,16 +791,24 @@
     let fired = false;
     const fire = () => {
       if (fired) return;
+      if (generation === playGeneration && url === backend.url && (el.seeking || el.readyState < 3)) return;
       fired = true;
       el.removeEventListener("seeked", fire);
       el.removeEventListener("canplay", fire);
       clearTimeout(timer);
+      clearTimeout(deadline);
+      if (generation !== playGeneration || url !== backend.url || backend.mode !== "element") return;
       sfxReset();                       // 位置定了，再按最终位置锚打点音
       play();
     };
     el.addEventListener("seeked", fire);
     el.addEventListener("canplay", fire);
     const timer = setTimeout(fire, fallbackMs);
+    const deadline = setTimeout(() => {
+      fired = true;
+      el.removeEventListener("seeked", fire);
+      el.removeEventListener("canplay", fire);
+    }, 10000);
   }
 
   /** 暂停状态下跳转：等 seek 落地后按最终位置重建一次状态 */
@@ -783,7 +865,9 @@
     resetLoadMeter,
     bindLoadEvents,
     prepareBuffer,
+    cancelAudioLoad,
     startBufferAt,
+    applyPlaybackRate,
     keepAudioAlive,
     audioNow,
     currentMediaTime,

@@ -74,16 +74,30 @@
    * 曲库索引只拉一次（gzip 后约 100 KB），搜索/筛选在本地做：
    * 静态站点和开发服务器行为一致，也省掉了每次输入都发请求。
    */
+  const Runtime = window.JubeatRuntime;
+  const libraryRequests = new Runtime.RequestScope();
+  const chartRequests = new Runtime.RequestScope();
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) { libraryRequests.cancel(); chartRequests.cancel(); }
+  });
+
   async function loadLibrary(force = false) {
+    const request = libraryRequests.start();
+    const started = performance.now();
     els.listCount.textContent = "加载中…";
     try {
       const res = await fetch(PATHS.library + (force ? "?reindex=1" : ""),
-                              force ? { cache: "reload" } : undefined);
+                              { cache: force ? "reload" : "default", signal: request.signal });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const data = await res.json();
-      state.songs = data.songs || [];
+      const data = Runtime.validateLibrary(await Runtime.readJSON(res));
+      if (!libraryRequests.current(request)) return;
+      state.songs = data.songs;
+      state.chartCache.clear();
+      A.metrics = A.metrics || {}; A.metrics.libraryMs = performance.now() - started;
       invalidateSongCaches();
-      if (!els.versionFilter.dataset.ready) {
+      {
+        const selectedVersion = els.versionFilter.value;
+        els.versionFilter.replaceChildren(new Option("全部版本", ""));
         const versions = (data.versions || []).slice().sort((a, b) => versionRank(a) - versionRank(b));
         for (const v of versions) {
           const opt = document.createElement("option");
@@ -91,13 +105,14 @@
           opt.textContent = versionLabel(v);
           els.versionFilter.appendChild(opt);
         }
-        els.versionFilter.dataset.ready = "1";
+        els.versionFilter.value = data.versions.includes(selectedVersion) ? selectedVersion : "";
       }
       renderList();
     } catch (err) {
+      if (libraryRequests.active !== request || request.signal.reason?.name === "AbortError") return;
       els.listCount.textContent = "加载失败";
-      toast(`曲库加载失败：${err.message}（先跑一次构建脚本生成 data/？）`, true);
-    }
+      toast(`曲库加载失败：${err.message}，请检查网络后点击“重新读取”`, true);
+    } finally { libraryRequests.finish(request); }
   }
 
   /** 按搜索框 + 机台版本筛选（纯前端，不请求服务器） */
@@ -155,6 +170,7 @@
   }
 
   /** 排序：曲名 / 推出版本（旧→新）/ 各难度等级、note 数（高→低） */
+  const titleCollator = new Intl.Collator("ja", { sensitivity: "base" });
   function sortSongs(list, mode) {
     const num = (song, code, key) => {
       const c = chartOf(song, code);
@@ -163,7 +179,7 @@
       if (key === "levelNum") return Number(c.level) || -1;
       return typeof c[key] === "number" ? c[key] : -1;
     };
-    const byTitle = (a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase(), "ja");
+    const byTitle = (a, b) => titleCollator.compare(a.title, b.title);
     const byVersion = (a, b) => versionRank(a.version) - versionRank(b.version) || byTitle(a, b);
     const byChart = (code, key) => (a, b) =>
       num(b, code, key) - num(a, code, key) || byTitle(a, b);
@@ -235,9 +251,11 @@
       cancelChunk(renderCancel);
       renderCancel = null;
     }
+    if (coverObserver) coverObserver.disconnect();
     songButtonById.clear();
     activeSongRowId = state.song ? state.song.id : "";
     ul.replaceChildren();
+    const started = performance.now();
     const songs = visibleSongs();
     els.listCount.textContent = `${songs.length} / ${state.songs.length} 首`;
     if (!songs.length) {
@@ -258,6 +276,7 @@
       for (; i < end; i++) frag.appendChild(buildSongRow(songs[i]));
       ul.appendChild(frag);
       renderCancel = i < songs.length ? scheduleChunk(step) : null;
+      if (!renderCancel) { A.metrics = A.metrics || {}; A.metrics.listMs = performance.now() - started; }
     };
     step();
   }
@@ -289,6 +308,7 @@
     const img = btn.querySelector(".cv img");
     if (img) {
       img.addEventListener("error", () => {
+        if (!img.isConnected) { if (coverObserver) coverObserver.unobserve(img); return; }
         // 缩略图失败（例如没生成）就退回原图，再失败才用占位符
         if (img.dataset.full && !img.dataset.triedFull) {
           img.dataset.triedFull = "1";
@@ -322,6 +342,7 @@
   }
 
   async function selectSong(song, preferredCode = null) {
+    if (!song || !Array.isArray(song.charts) || !song.charts.length) return;
     state.song = song;
     updateActiveSongRow();
     if (isNarrow()) setSidebarOpen(false);   // 手机上选完曲就把抽屉收起来
@@ -390,13 +411,15 @@
 
   async function loadChart(code) {
     if (!state.song) return;
-    const picked = pickChart(state.song.charts, code);
+    const song = state.song;
+    const request = chartRequests.start();
+    const started = performance.now();
+    const picked = pickChart(song.charts, code);
     const chart = picked || { code: "EXT" };
-    const key = `${state.song.id}::${chart.code}`;
-    const src = audioUrl(state.song);
+    const key = `${song.id}::${chart.code}`;
+    const src = audioUrl(song);
     // 同首歌切难度时保留已经下载/解码好的音源；只有换歌才重置后端。
-    const keepAudio = A.backend.url === src
-      && (!!A.backend.buf || els.audio.dataset.src === src);
+    const keepAudio = A.backend.url === src;
     stopForLoad(keepAudio);
     clearAB(null);   // 换歌 / 换难度：上一首的 A–B 打在旧谱面上，直接清掉
     els.captionLeft.textContent = "LOADING CHART…";
@@ -407,14 +430,17 @@
     try {
       let payload = chartCacheGet(key);
       if (!payload) {
-        const res = await fetch(chartPath(state.song, chart));
+        const res = await fetch(chartPath(song, chart), { signal: request.signal });
         if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
-        payload = { chart: await res.json(), chartMeta: chart };
+        payload = { chart: Runtime.validateChart(await Runtime.readJSON(res)), chartMeta: chart };
+        if (!chartRequests.current(request) || state.song !== song) return;
         chartCachePut(key, payload);
       }
       // 注意别叫 chart：上面已经有一个同名的难度元信息对象（`chart`），
       // 这里再声明一次会在 try 块内把它遮住，于是块内更早的
       // chartPath(state.song, chart) 直接踩 TDZ → 每次冷加载都 ReferenceError。
+      if (!chartRequests.current(request) || state.song !== song) return;
+      A.metrics = A.metrics || {}; A.metrics.chartMs = performance.now() - started;
       const chartJson = payload.chart;
       state.chartMeta = payload.chartMeta;
       state.chart = chartJson;
@@ -476,12 +502,13 @@
       A.seekWhenReady(urlT != null ? urlT : 0);
       A.requestPaint();     // 换谱面后立刻重画一帧（暂停时渲染循环是停着的）
     } catch (err) {
+      if (chartRequests.active !== request || state.song !== song || request.signal.reason?.name === "AbortError") return;
       console.error(err);
       els.captionLeft.textContent = "LOAD FAILED";
       A.audioLoad.pending = false;
       A.updateLoadMeter();
-      toast(`铺面加载失败：${err.message}`, true);
-    }
+      toast(`谱面加载失败：${err.message}，请重新选择难度重试`, true);
+    } finally { chartRequests.finish(request); }
   }
 
   function clearPads() {
@@ -499,15 +526,17 @@
   function stopForLoad(keepAudio = false) {
     A.stopBufferSource();
     if (!keepAudio) {
+      A.cancelAudioLoad();
+      els.audio.removeAttribute("src");
+      delete els.audio.dataset.src;
+      els.audio.load();
       A.backend.buf = null;
       A.backend.mode = "element";
       A.backend.url = "";
-    } else if (A.backend.buf) {
-      A.backend.mode = "webaudio";
     }
     A.backend.anchorPos = 0;
     A.pendingSeek = null;      // 上一首没落下去的跳转作废
-    A.resetLoadMeter();
+    if (!keepAudio) A.resetLoadMeter();
     try {
       els.audio.pause();
     } catch (_) {

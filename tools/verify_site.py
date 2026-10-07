@@ -230,6 +230,9 @@ def main() -> int:
               "不再逐个核对文件大小")
     for song in songs:
         check_song(out, song, want, r, degraded, audio_map)
+        for rel in song.get("assets", {}).values():
+            want.add(rel)
+            r.check(f"内容哈希资源 {rel}", not Path(rel).is_absolute() and ".." not in Path(rel).parts and (out/rel).is_file())
 
     # 5) marker 素材（官方逐帧贴图：清单里的每一帧都要在盘上）
     markers_path = out / "data" / "markers.json"
@@ -270,6 +273,8 @@ def main() -> int:
                 rel = path.relative_to(out).as_posix()
                 # media/se/ 是可选打点音素材：构建时「源目录里有什么就传什么」，
                 # 索引里没有它的清单，所以不参与孤儿判断
+                if "_hashed" in path.parts or __import__("re").search(r"\.[a-f0-9]{20}\.", path.name):
+                    continue
                 if rel.startswith("media/se/"):
                     continue
                 if rel not in want:

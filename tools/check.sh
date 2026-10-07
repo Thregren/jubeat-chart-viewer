@@ -51,7 +51,9 @@ check_js() {
 run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
-run "core.js 单测（node --test）" node --test tools/test_core.mjs
+run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs
+
+run "构建失败与发布回滚" "$PY" tools/test_build.py
 
 # ── 3. Range / 路径穿越三实现一致性 ──────────────────────────
 run "Range + 路径穿越（python3 tools/test_range.py）" "$PY" tools/test_range.py

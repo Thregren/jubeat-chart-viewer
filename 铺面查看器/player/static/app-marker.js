@@ -65,18 +65,67 @@
    * 「动画缺帧 / 不完整」（网络越快越不容易碰到，慢一点必现）。
    * decode() 是幂等的，同一张图调用多次只复用同一个 Promise。
    */
+  const frameDownloads = new window.JubeatRuntime.Semaphore(6);
+  const FRAME_CACHE_LIMIT = 256;
+  let pendingDesign = null;
+
+  function pinnedFrame(url) {
+    return [markerCfg.design, pendingDesign].some((d) => d && url.startsWith(markerUrl(d.dir + "/")));
+  }
+
+  function trimFrameCache() {
+    for (const [url, img] of markerCfg.images) {
+      if (markerCfg.images.size <= FRAME_CACHE_LIMIT) break;
+      if (!img._settled || pinnedFrame(url)) continue;
+      markerCfg.images.delete(url);
+      for (const [key, old] of lastDrawn) if (old === img) lastDrawn.delete(key);
+    }
+  }
+
+  function downloadFrame(img, url, src = url) {
+    img._settled = false;
+    frameDownloads.run(() => new Promise((resolve) => {
+      if (markerCfg.images.get(url) !== img || !pinnedFrame(url)) {
+        img._tries = FRAME_RETRIES;
+        img._settled = true;
+        img.dispatchEvent(new Event("error"));
+        trimFrameCache(); resolve(); return;
+      }
+      let timer;
+      const finish = () => {
+        clearTimeout(timer);
+        img.removeEventListener("load", finish);
+        img.removeEventListener("error", finish);
+        img._settled = true;
+        trimFrameCache(); resolve();
+      };
+      img.addEventListener("load", finish, { once: true });
+      img.addEventListener("error", finish, { once: true });
+      timer = setTimeout(() => {
+        img._tries = FRAME_RETRIES;
+        img.src = "";
+        img.dispatchEvent(new Event("error"));
+      }, 20000);
+      img.src = src;
+      decodeFrame(img);
+    })).catch(() => {});
+  }
+
   function frameImage(url) {
     let img = markerCfg.images.get(url);
-    if (img) return img;
+    if (img) {
+      markerCfg.images.delete(url); markerCfg.images.set(url, img);
+      return img;
+    }
     img = new Image();
-    img.decoding = "async";      // 异步解码：不卡主线程，但必须显式预热（见上）
-    img.fetchPriority = "high";  // 素材在动画关键路径上，让它排在封面 / 缩略图前面
+    img.decoding = "async";
+    img.fetchPriority = "high";
     img._tries = 0;
+    img._settled = false;
     img.addEventListener("load", repaintSoon);
     img.addEventListener("error", () => retryFrame(img, url));
-    img.src = url;
-    decodeFrame(img);
     markerCfg.images.set(url, img);
+    downloadFrame(img, url);
     return img;
   }
 
@@ -101,8 +150,7 @@
     img._tries += 1;
     window.setTimeout(() => {
       if (markerCfg.images.get(url) !== img) return;   // 已不在缓存里，别再折腾
-      img.src = `${url}${url.includes("?") ? "&" : "?"}markerRetry=${img._tries}`;
-      decodeFrame(img);
+      downloadFrame(img, url, `${url}${url.includes("?") ? "&" : "?"}markerRetry=${img._tries}`);
       repaintSoon();
     }, delay);
   }
@@ -115,18 +163,20 @@
   function whenImageSettled(img, url) {
     if (!img) return Promise.resolve(false);
     if (ready(img)) return Promise.resolve(true);
-    if (img.complete && img._tries >= FRAME_RETRIES) return Promise.resolve(false);
+    if (img._settled && img._tries >= FRAME_RETRIES) return Promise.resolve(false);
     return new Promise((resolve) => {
+      const deadline = setTimeout(() => finish(false, true), 45000);
       const onLoad = () => finish(true);
       const onError = () => finish(false);
-      function finish(ok) {
+      function finish(ok, expired = false) {
         img.removeEventListener("load", onLoad);
         img.removeEventListener("error", onError);
-        if (!ok && img._tries < FRAME_RETRIES && markerCfg.images.get(url) === img) {
+        if (!expired && !ok && img._tries < FRAME_RETRIES && markerCfg.images.get(url) === img) {
           img.addEventListener("load", onLoad);      // 还有重试额度：接着等
           img.addEventListener("error", onError);
           return;
         }
+        clearTimeout(deadline);
         resolve(ok);
       }
       img.addEventListener("load", onLoad);
@@ -252,7 +302,7 @@
 
   /**
    * 预热一组帧：建 Image 就等于「下载 + 解码」一起排队（frameImage 里挂了 decode()）。
-   * 已经建过的再拉一次是空操作（markerCfg.images 不淘汰，一直留着）。
+   * 已经建过的再拉一次是空操作（最近使用缓存，最多保留 256 张已完成的贴图）。
    * 返回的 Promise 在「每一帧都有结果（就绪或彻底失败）」时兑现。
    */
   function preloadUrls(urls) {
@@ -279,6 +329,8 @@
    */
   function selectMarker(id) {
     const design = markerCfg.designs.find((d) => d.id === id) || null;
+    pendingDesign = design;
+    trimFrameCache();
     els.markerSelect.value = design ? design.id : "";
     store(STORAGE.marker, design ? design.id : "");
     const token = ++selectToken;
@@ -304,6 +356,8 @@
     if (token !== selectToken) return;         // 期间又换了一套，这一趟作废
     setMarkerBusy(false);
     markerCfg.design = design;
+    pendingDesign = null;
+    trimFrameCache();
     repaintSoon();
   }
 
@@ -999,8 +1053,10 @@
     const win = markerCfg.window || {};
     const early = Number.isFinite(win.early) ? win.early : -155;
     const late = Number.isFinite(win.late) ? win.late : 160;
-    const earlySec = (early * unitMs) / 1000;
-    const lateSec = (late * unitMs) / 1000;
+    // Delta is in chart seconds; dividing by rate gives normal real-time animation.
+    const animationRate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
+    const earlySec = (early * unitMs * animationRate) / 1000;
+    const lateSec = (late * unitMs * animationRate) / 1000;
     const holdBack = (state._parsed && state._parsed.maxHold) || 0;
     const counts = new Map();
     // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
@@ -1008,13 +1064,13 @@
     // 会把先画的数字盖掉（同押的时候尤其明显）。
     const numbers = [];
 
-    for (const n of notesInWindow(chartT + earlySec - holdBack, chartT + lateSec)) {
+    for (const n of notesInWindow(chartT - lateSec - holdBack, chartT - earlySec)) {
       const rect = state.padRects[n.index];
       if (!rect) continue;
       // 长押在松开（endT）那一瞬重播一次同一套命中动画：把 endT 当成新的 0 点
       const dur = n.kind === "hold" && n.endT != null ? n.endT - n.t : null;
       const rel = chartT - n.t;
-      const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / unitMs;
+      const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / (unitMs * animationRate);
 
       // 顺序数字：官方是「拍点前 0.10s」才出现（见 NUM_LEAD），跟上这一段的命中动画
       // 一起收尾；长押按住期间一直留着，松开时再跟着爆一次。这一段不属于 marker

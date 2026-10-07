@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import hashlib
 import os
 import re
 import sys
@@ -246,26 +247,23 @@ def mcz_paths(root: Path) -> list[Path]:
 
 
 def fingerprint(paths: list[Path]) -> dict:
-    """索引缓存指纹：条数 + 最新修改时间 + 总字节数。
+    """索引缓存指纹：每个文件的路径、大小、纳秒级 mtime 与 ctime 的 SHA256。
 
     老缓存只比「索引结构版本 + 曲库路径」：往 music/ 里丢一首新歌再重启，缓存照样命中，
     新歌在界面上就是不出现（得手动点「重新读取」）。加上指纹后，增删改任意一首都会失效。
     这里只 stat，不解压，代价是毫秒级。
     """
-    count = 0
-    newest = 0
-    total = 0
-    for path in paths:
+    digest = hashlib.sha256()
+    for path in sorted(paths):
         try:
             st = path.stat()
         except OSError:
-            continue                     # 扫描期间刚被删掉的：跳过，不算进指纹
-        count += 1
-        total += st.st_size
-        mtime_ms = int(st.st_mtime * 1000)
-        if mtime_ms > newest:
-            newest = mtime_ms
-    return {"count": count, "newest_ms": newest, "bytes": total}
+            continue
+        digest.update(json.dumps([str(path), st.st_size, st.st_mtime_ns, st.st_ctime_ns],
+                                 ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        digest.update(b"\0")
+    return {"sha256": digest.hexdigest()}
+
 
 
 class Library:
@@ -331,6 +329,7 @@ class Library:
     def _scan(self, paths: list[Path]) -> list[dict]:
         print(f"[index] scanning {self.root} …", file=sys.stderr)
         songs: list[dict] = []
+        before = fingerprint(paths)
         if paths:
             # 每个 zip 都要开关一次，多线程扫能明显加快首次启动
             workers = min(16, max(4, (os.cpu_count() or 4) * 2))
@@ -339,10 +338,12 @@ class Library:
                     if meta:
                         songs.append(meta)
         songs.sort(key=lambda s: (s["title"].lower(), s["version"]))
+        if before != fingerprint(mcz_paths(self.root)):
+            raise RuntimeError("索引扫描期间曲库发生变化，请重新读取")
         try:
             write_atomic(config.INDEX_CACHE, json.dumps(
                 {"version": config.INDEX_VERSION, "library": str(self.root),
-                 "fingerprint": fingerprint(paths), "songs": songs},
+                 "fingerprint": before, "songs": songs},
                 ensure_ascii=False).encode("utf-8"))
         except OSError as exc:
             print(f"[index] 缓存写入失败: {exc}", file=sys.stderr)

@@ -4,7 +4,7 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.18`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.22`，由 `tools/set_version.py` 同步）。
 
 [![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
 
@@ -19,7 +19,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.18`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.18** · [Release notes](docs/release-v0.6.18.md) ·
+当前版本：**v0.6.22** · 历史 [Release notes](docs/release-v0.6.22.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -929,10 +929,10 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 | 项 | 做法 |
 |---|---|
 | 体积 | 3.1 GB 里 2.4 GB 是音源（**Ogg Opus 80k**，比原来的 Vorbis 128k 小三成半且听感相当）；封面原图按需加载，列表只用 96px 缩略图（17 MB） |
-| 带宽 | 一首歌 ≈ 1.1 MB，听一遍 ≈ 1.1 MB；索引 gzip 后 104 KB，只拉一次 |
-| 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；音源走 Range，拖进度条也只取需要的块 |
-| 缓存 | `media/` `markers/` `static/` 长缓存（7 天）+ ETag/304；`data/*.json` 与 `index.html` 走 no-cache 随时生效 |
-| 首屏 | 只拉 `index.html` + 前端（合计约 223 KB，gzip 后约 83 KB）+ 索引（gzip 后约 104 KB）和当前可见行的缩略图 |
+| 带宽 | 一首歌 ≈ 1.1 MB，听一遍 ≈ 1.1 MB；当前索引 gzip 后约 307 KiB，每次访问验证缓存 |
+| 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；HTML 音频回退支持 Range；WebAudio 首次载入整首，之后在本地跳转 |
+| 缓存 | 内容哈希资源缓存一年；旧路径重新验证，`markers/` 缓存 7 天；曲库索引与首页 no-cache |
+| 首屏 | 只拉 `index.html` + 前端（合计约 295 KiB，gzip 后约 113 KiB）+ 索引（gzip 后约 307 KiB）和当前可见行的缩略图 |
 | 重复下载 | WebAudio 路径同一首歌只 fetch 一次并解码；切难度复用 AudioBuffer，解码失败才回落 `<audio>` |
 
 ## 已知限制
@@ -940,8 +940,10 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 - **音源是 Ogg Opus**：Chrome / Edge / Firefox / 各安卓浏览器都没问题；Safari 要 **18.4** 以上
   才认 Ogg 容器，而桌面 Safari 还得 **macOS 15.4（Sequoia）**以上才带 Opus 解码器 ——
   够不上时页面会弹一条提示让人换 Chrome / Edge / Firefox；另外浏览器要求先有一次页面交互才允许播放
-- **57 首在现有官方素材里确实找不到封面**（例如 A Dance & A Beer、Are U Ready?、BRANDNEW DAYS），
-  列表里退化成 ♪ 占位；其余 1422 首都有封面。补齐得等新的素材来源，脚本侧已经跑不出更多了
+- **曲库封面已补齐**（2026-10-07）：当前 2269 首的 `.mcz` 都带可读取的封面，
+  静态站点同步包含全部封面原图和缩略图。此前 57 首源包缺图，现已把本地补图写回对应曲目包；
+  《風になりたい》原补图误用了总览拼图，已改为 [RemyWiki 曲目页](https://remywiki.com/Kaze_ni_naritai)
+  提供的 THE BOOM 正确封面。`cache/cover-overrides/` 仍可供录制工具优先读取本地补图。
 - **同押「密集」只看时间间隔**（相邻两批 ≤ 0.35 s），不看你个人手感；阈值写在 `GLOW_DENSE_GAP`
 - 前端没有构建步骤，所以**没有类型检查 / 压缩**，改 `app-*.js` / `core.js` 要自己保证语法
   （`node --check` 能挡一部分；纯逻辑尽量往 `core.js` 放，有单测兜着）。九个前端文件靠
@@ -961,3 +963,19 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
   请勿商用或再分发；`music/` 与构建产物（`site/`、`dist-php/`、`electron/dist/`）都不入库，
   公网部署建议加 Basic Auth 或 IP 白名单
 - **本项目与 KONAMI 无任何关联**，未获授权或认可；权利人若提出异议，会立即删除对应素材
+
+
+## v0.6.20–v0.6.22 维护更新
+
+- 播放速度支持 0.25–2.00×，每档相差 0.05×；变速默认保持音调，复用已下载音频，切回 1× 后仍使用媒体管线直到下一首。Marker 保持常速开关让接近与命中动画保持 1× 时长，拍点仍跟随歌曲；首次使用默认开启，开启或关闭的选择会保存，刷新后保留。
+- 歌曲播放完成后暂停并回到开头；循环播放和 A–B 循环保持原有行为。
+- 物量条使用统一图形坐标，并按屏幕帧刷新拖动预览；松手只提交一次音频跳转。
+- 换歌、切难度和音源准备使用取消请求及状态校验，过期结果不会覆盖新选择；播放速度改变不再造成时间跳位。
+- Marker 下载最多 6 路；已完成的图片按最近使用顺序保留最多 256 张，并保护当前及正在切换的设计。曲目列表已有 `content-visibility`，当前 2,269 行完整渲染约 250 ms；保留完整列表便于搜索和键盘访问。
+- 构建先在临时目录完成，失败保留原站点，发布失败回滚；`--limit` 与 `--prune` 不能一起使用。前端和曲库资源使用内容哈希文件名，索引发布在资源之后，旧哈希文件保留以支持已打开的页面。
+- Electron 固定为 44.6.0，electron-builder 固定为 26.15.3。构建依赖的 `sprintf-js` 存在尚无已发布修复的中风险精度参数拒绝服务问题；不在网站运行时使用，审计见 `npm audit --registry=https://registry.npmjs.org`。
+- PHP 入口仅公开站点文件，禁止编码后的隐藏路径、源文件和根目录配置；HEAD 请求不读取文件正文，错误响应不缓存。
+
+检查：`sh tools/check.sh --full`、`electron/node_modules/.bin/electron tools/ui_smoke.js`、`electron/node_modules/.bin/electron tools/mobile_touch_smoke.js`。PHP 入口需额外运行 `python3 tools/php_smoke_test.py --php <php-cli>`。
+
+网站监测：`python3 tools/monitor_site.py` 保存最近 168 次可用性、版本、曲库计数、音频 Range、证书与延迟检查；`tools/monitor_remote.sh` 只读汇总源站磁盘、负载、证书有效期、重启需求、状态码和近期响应字节数。日志样本只反映最近请求，不代表全日流量。

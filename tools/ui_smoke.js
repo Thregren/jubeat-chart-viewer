@@ -213,8 +213,10 @@ async function runPage(win, errors) {
     "return new Promise((done) => setTimeout(() => {" +
     "  const after = document.querySelectorAll('.song-item').length;" +
     "  s.value = ''; s.dispatchEvent(new Event('input', {bubbles: true}));" +
-    "  setTimeout(() => done({before, after," +
-    "    restored: document.querySelectorAll('.song-item').length}), 300);" +
+    "  const until = Date.now() + 8000; const settled = () => {" +
+    "    const restored = document.querySelectorAll('.song-item').length;" +
+    "    if (restored === before || Date.now() > until) done({before, after, restored});" +
+    "    else setTimeout(settled, 50); }; settled();" +
     "}, 600));" +
     "})()");
   check("搜索能过滤列表", filtered.after > 0 && filtered.after < filtered.before,
@@ -529,6 +531,121 @@ async function runContractSweep(win) {
   }
 }
 
+async function runMaintenance(win) {
+  console.log("\n▸ 变速 / Marker 常速 / 加载竞态");
+  await win.loadURL(base + DEEP_LINK);
+  await waitFor(win, "window.JubeatApp?.backend.buf && window.JubeatApp?.markerCfg.design && window.__player?.state.notes.length");
+  const result = await win.webContents.executeJavaScript(`(() => {
+    const A = window.JubeatApp, rate = document.querySelector('#rate'), normal = document.querySelector('#markerNormalSpeed');
+    const values = [...rate.options].map(x => Number(x.value));
+    const defaultOn = normal.checked;
+    A.seekTo(20); A.setPlaying(true);
+    A.backend.anchorCtx = A.audioCtx.currentTime - 4; A.backend.anchorPos = 20; A.backend.rate = 1;
+    const before = A.audioNow(); rate.value = '0.75';
+    const unchanged = Math.abs(A.audioNow() - before) < 0.03;
+    A.pause();
+    const saved = A.state.notes; A.state.notes = [{t: 2, index: 0, kind: 'tap'}];
+    const g = A.els.markerCanvas.getContext('2d'), oldDraw = g.drawImage; let urls = [];
+    g.drawImage = function(img, ...rest) { if (img?.src) urls.push(img.src); return oldDraw.call(this, img, ...rest); };
+    const shot = (t, checked) => { normal.checked = checked; urls = []; A.drawMarkers(t); return urls.filter(u => /_MA[0-9]+\.png/.test(u)); };
+    let off, on;
+    try { rate.value = '0.5'; off = shot(1.9, false); on = shot(1.95, true); }
+    finally { g.drawImage = oldDraw; A.state.notes = saved; rate.value = '1'; normal.checked = true; normal.dispatchEvent(new Event('change')); }
+    return { defaultOn, fine: [0.75, 0.8, 0.85, 0.9, 0.95].every(x => values.includes(x)), unchanged,
+      sameFrames: off.length > 0 && JSON.stringify(off) === JSON.stringify(on), metrics: A.metrics };
+  })()`, true);
+  check("播放速度包含 0.75–0.95 的 0.05 倍步进", result.fine);
+  check("Marker 常速开关默认开启", result.defaultOn);
+  check("改变速度控件不会跳动已有音频时间", result.unchanged);
+  check("Marker 常速使用相同真实时间对应的动画帧", result.sameFrames);
+  console.log("  性能采样：" + JSON.stringify(result.metrics));
+  const geometry = await win.webContents.executeJavaScript(`(() => {
+    const A = window.JubeatApp; A.pause(); A.seekTo(10);
+    const box = A.els.densityCanvas.getBoundingClientRect(), d = A.density;
+    return { x0: box.left + d.graphX, width: d.graphW, y: box.top + box.height / 2, dur: d.dur };
+  })()`, true);
+  const pointer = (type, ratio) => win.webContents.sendInputEvent({type, x: Math.round(geometry.x0 + geometry.width * ratio), y: Math.round(geometry.y), button: 'left', clickCount: 1});
+  pointer('mouseDown', 0.2); await wait(50); pointer('mouseMove', 0.8); await wait(80);
+  const dragging = await win.webContents.executeJavaScript(`({preview: window.JubeatApp.state.scrubSec, scrubbing: window.JubeatApp.state.scrubbing, time: window.JubeatApp.state.lastTimeText})`, true);
+  check("桌面拖动使用物量图坐标，预览跟随指针", dragging.scrubbing && Math.abs(dragging.preview / geometry.dur - 0.8) < 0.01);
+  check("拖动过程中歌曲时间同步刷新", dragging.time !== '0:10.00', dragging.time);
+  pointer('mouseUp', 0.8); await wait(100);
+  await win.webContents.executeJavaScript(`(async () => { const A = window.JubeatApp;
+    A.clearAB(null); A.els.autoLoop.checked = false; A.seekTo(A.state.duration - 0.03); await A.play(); })()`, true);
+  await wait(350);
+  check("播放结束后暂停并回到开头", await win.webContents.executeJavaScript("!window.JubeatApp.state.playing && Math.abs(window.JubeatApp.audioNow()) < 0.03", true));
+  const race = await win.webContents.executeJavaScript(`(async () => {
+    const A = window.JubeatApp, song = A.state.song;
+    A.state.chartCache.clear(); const original = window.fetch;
+    const first = song.charts[0].code, last = song.charts.at(-1).code;
+    window.fetch = async (...args) => { const response = await original(...args);
+      if (String(args[0]).includes(first + '.json')) await new Promise(r => setTimeout(r, 250)); return response; };
+    try { await Promise.all([A.loadChart(first), A.loadChart(last)]); return A.state.chartMeta.code === last; }
+    finally { window.fetch = original; }
+  })()`, true);
+  check("较慢旧谱面请求不会覆盖最新难度", race);
+  await win.loadURL(base + DEEP_LINK);
+  await waitFor(win, "!!window.__player?.state.songs.length");
+  check("开启 Marker 常速后刷新仍保持开启", await win.webContents.executeJavaScript("document.querySelector('#markerNormalSpeed').checked === true", true));
+  await win.webContents.executeJavaScript("(() => { const normal = document.querySelector('#markerNormalSpeed'); normal.checked = false; normal.dispatchEvent(new Event('change')); })()", true);
+  await win.loadURL(base + DEEP_LINK);
+  await waitFor(win, "!!window.__player?.state.notes.length");
+  check("关闭 Marker 常速后刷新仍保持关闭", await win.webContents.executeJavaScript("document.querySelector('#markerNormalSpeed').checked === false", true));
+}
+
+async function runPitch(win) {
+  console.log("\n▸ 变速保音调（真实媒体频谱）");
+  await win.loadURL(base + DEEP_LINK);
+  await waitFor(win, "window.JubeatApp?.backend.buf && window.__player?.state.notes.length");
+  const result = await win.webContents.executeJavaScript(`(async () => {
+    const A = window.JubeatApp, el = A.els.audio, wait = ms => new Promise(r => setTimeout(r, ms));
+    const until = async fn => { for (let i = 0; i < 100; i++) { if (fn()) return; await wait(30); } throw new Error('media timeout ' + JSON.stringify({mode:A.backend.mode,playing:A.state.playing,paused:el.paused,ready:el.readyState,seeking:el.seeking,pos:el.currentTime,error:el.error?.message})); };
+    A.pause(); A.els.rate.value = '1'; A.state.baseOffset = 0; A.els.offset.value = '0';
+    // 6 秒、440 Hz PCM WAV。频谱能区分「保音调」与 330 / 660 Hz 的普通重采样。
+    const sampleRate = 48000, samples = sampleRate * 6, wav = new ArrayBuffer(44 + samples * 2), view = new DataView(wav);
+    const ascii = (at, text) => { for (let i = 0; i < text.length; i++) view.setUint8(at + i, text.charCodeAt(i)); };
+    ascii(0, 'RIFF'); view.setUint32(4, wav.byteLength - 8, true); ascii(8, 'WAVE'); ascii(12, 'fmt ');
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    ascii(36, 'data'); view.setUint32(40, samples * 2, true);
+    for (let i = 0; i < samples; i++) view.setInt16(44 + i * 2, Math.round(12000 * Math.sin(2 * Math.PI * 440 * i / sampleRate)), true);
+    const toneUrl = URL.createObjectURL(new Blob([wav], {type:'audio/wav'}));
+    await A.prepareBuffer(toneUrl); A.state.duration = 6; A.seekTo(1); await A.play();
+    const before = A.audioNow(); A.els.rate.value = '0.75'; A.els.rate.dispatchEvent(new Event('change'));
+    await until(() => A.backend.mode === 'element' && A.state.playing && el.readyState >= 3 && !el.seeking);
+    const preservedPosition = Math.abs(el.currentTime - before) < 0.3;
+    const reused = el.src === A.backend.objectUrl && el.src.startsWith('blob:');
+    const analyser = A.audioCtx.createAnalyser(); analyser.fftSize = 8192;
+    A.audioCtx.createMediaElementSource(el).connect(analyser); analyser.connect(A.audioCtx.destination);
+    const frequencies = [], speeds = [];
+    for (const rate of [0.75, 0.95, 1.5]) {
+      A.els.rate.value = String(rate); A.els.rate.dispatchEvent(new Event('change'));
+      await wait(180); const t0 = el.currentTime, wall = performance.now(); await wait(500);
+      speeds.push((el.currentTime - t0) / ((performance.now() - wall) / 1000));
+      const bins = new Float32Array(analyser.frequencyBinCount); analyser.getFloatFrequencyData(bins);
+      let peak = 1; for (let i = 2; i < bins.length; i++) if (bins[i] > bins[peak]) peak = i;
+      frequencies.push(peak * A.audioCtx.sampleRate / analyser.fftSize);
+    }
+    const supported = el.preservesPitch || el.webkitPreservesPitch || el.mozPreservesPitch;
+    A.pause(); A.seekTo(2); A.els.rate.value = '1'; A.els.rate.dispatchEvent(new Event('change')); await A.play();
+    await until(() => A.state.playing && !el.seeking); const normalPosition = Math.abs(el.currentTime - 2) < 0.3;
+    A.pause(); const pausedAt = el.currentTime; await wait(100); const stops = !A.state.playing && Math.abs(el.currentTime - pausedAt) < 0.03;
+    A.els.rate.value = '0.75'; A.els.rate.dispatchEvent(new Event('change')); A.seekTo(5.9); await A.play(); await wait(550);
+    const endedAtStart = !A.state.playing && el.currentTime < 0.03;
+    A.pause(); await A.selectSong(A.state.songs.find(s => s.id !== A.state.song.id));
+    const released = !A.backend.objectUrl.startsWith('blob:') || A.backend.objectUrl !== toneUrl;
+    URL.revokeObjectURL(toneUrl);
+    return { supported, preservedPosition, reused, frequencies, speeds, normalPosition, stops, endedAtStart, released };
+  })()`, true);
+  check("变速使用保持音调的媒体后端，复用下载音频", result.supported && result.reused);
+  check("切换变速后仍从原位置继续", result.preservedPosition);
+  check("0.75 / 0.95 / 1.5 倍播放均维持 440 Hz 音高", result.frequencies.every(f => Math.abs(f - 440) < 15), result.frequencies.map(f => f.toFixed(1)).join(' / ') + ' Hz');
+  check("保音调播放的时间推进符合所选速度", result.speeds.every((s, i) => Math.abs(s - [0.75, 0.95, 1.5][i]) < 0.15), result.speeds.map(s => s.toFixed(2)).join(' / '));
+  check("切回常速与跳转保持歌曲位置", result.normalPosition);
+  check("保音调播放能暂停且不继续走时", result.stops);
+  check("保音调播放结束仍回到开头", result.endedAtStart);
+}
+
 app.whenReady().then(async () => {
   const serving = await srv.serve(SITE);
   base = serving.url;
@@ -549,7 +666,12 @@ app.whenReady().then(async () => {
     const event = args[0];
     const level = typeof args[1] === "number" ? args[1] : event && event.level;
     const message = typeof args[2] === "string" ? args[2] : event && event.message;
-    if (level === 3 || level === "error") errors.push(String(message));
+    if (level === 3 || level === "error") {
+      const source = event?.sourceId || args[4] || "";
+      const line = event?.lineNumber || args[3] || "";
+      errors.push(String(message));
+      console.log(`  [browser error] ${message} (${source}:${line})`);
+    }
   });
   win.webContents.on("render-process-gone", (_e, detail) => {
     errors.push(`渲染进程挂了：${JSON.stringify(detail)}`);
@@ -558,9 +680,14 @@ app.whenReady().then(async () => {
 
   try {
     console.log(`站点目录：${SITE}\n前端地址：${base}`);
-    await runPage(win, errors);
-    await runRecMode(win);
-    await runContractSweep(win);
+    if (process.argv.includes("--pitch-only")) await runPitch(win);
+    else {
+      await runPage(win, errors);
+      await runRecMode(win);
+      await runContractSweep(win);
+      await runMaintenance(win);
+      await runPitch(win);
+    }
     console.log("\n▸ 控制台");
     check("页面没有 JS 报错（console error / 未捕获异常）", errors.length === 0,
       errors.slice(0, 3).join(" ｜ "));

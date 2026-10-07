@@ -38,5 +38,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq php-cli
 
+      - name: 安装缩略图后端
+        run: python -m pip install pillow
+
       - name: tools/check.sh --release
         run: sh tools/check.sh --release

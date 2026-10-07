@@ -10,6 +10,12 @@
 from __future__ import annotations
 
 import argparse
+import io
+import random
+import struct
+import wave
+import zipfile
+import zlib
 import json
 import os
 import socket
@@ -147,10 +153,44 @@ def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool) -> dict:
     return song
 
 
+def make_fixture(root: Path) -> dict[str, str]:
+    """Self-contained HTTP fixtures; no private library or game assets required."""
+    music = root / "music" / "fixture"
+    markers = root / "markers"
+    music.mkdir(parents=True)
+    design = markers / "tex_l44_tm0000"
+    design.mkdir(parents=True)
+    rng = random.Random(42)
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    pixels = b"".join(b"\0" + rng.randbytes(320 * 3) for _ in range(320))
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 320, 320, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b""))
+    for channel in ("MA", "H4"):
+        (design / f"TM0000_{channel}00.png").write_bytes(png)
+    (markers / "manifest.json").write_text(json.dumps({"designs": [{
+        "dir": design.name, "prefix": "TM0000", "ma": 1, "h": {"4": 1}, "fr": 0
+    }]}))
+    audio = io.BytesIO()
+    with wave.open(audio, "wb") as out:
+        out.setnchannels(1); out.setsampwidth(2); out.setframerate(16000)
+        out.writeframes(rng.randbytes(16000 * 2 * 20))
+    for i in range(5):
+        chart = {"meta": {"song": {"title": f"Fixture {i}", "artist": "Smoke test " * 20}},
+                 "note": [{"index": n % 16, "beat": [n, 0, 1]} for n in range(32)]}
+        with zipfile.ZipFile(music / f"Fixture {i}.mcz", "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(f"0/Fixture {i}_EXT Lv10.mc", json.dumps(chart))
+            archive.writestr("0/bgm.wav", audio.getvalue())
+            archive.writestr("0/jkt.png", png)
+    return {"JUBEAT_LIBRARY": str(music.parent), "JUBEAT_MARKERS": str(markers),
+            "JUBEAT_CACHE": str(root / "cache")}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", action="store_true", help="先构建一个 5 首的临时站点")
     ap.add_argument("--site", default=str(REPO / "site"))
+    ap.add_argument("--fixture", action="store_true", help="使用生成的五首测试曲及图片，不依赖私人曲库")
     args = ap.parse_args()
 
     c = Checker()
@@ -158,13 +198,16 @@ def main() -> int:
     tmp_ctx = None
     site = Path(args.site)
 
-    if args.build or not (site / "index.html").is_file():
+    env = dict(os.environ)
+    if args.build or args.fixture or not (site / "index.html").is_file():
         tmp_ctx = tempfile.TemporaryDirectory(prefix="jv-smoke-")
         site = Path(tmp_ctx.name) / "site"
+        if args.fixture:
+            env.update(make_fixture(Path(tmp_ctx.name) / "fixture"))
         print(f"构建测试站点（5 首）→ {site}")
         r = subprocess.run([sys.executable, str(REPO / "tools" / "build_site.py"),
                             "--out", str(site), "--limit", "5", "--force"],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, env=env)
         if r.returncode not in (0, 2):
             print(r.stdout[-2000:], r.stderr[-2000:])
             return 1
@@ -183,9 +226,9 @@ def main() -> int:
         # —— 开发服务器模式（直接从 .mcz 读）——
         if (PLAYER_DIR / "config.py").is_file():
             port_dev = free_port()
-            env = dict(os.environ, JUBEAT_PORT=str(port_dev))
+            dev_env = dict(env, JUBEAT_PORT=str(port_dev))
             procs.append(subprocess.Popen([sys.executable, str(PLAYER_DIR / "server.py")],
-                                          cwd=str(REPO), env=env,
+                                          cwd=str(REPO), env=dev_env,
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
             if wait_ready(port_dev, timeout=60):
                 run_suite(f"http://127.0.0.1:{port_dev}", c, label="开发服务器", expect_gzip=True)

@@ -82,7 +82,7 @@ if [ "$WANT_SITE" = 1 ]; then
 fi
 
 if [ "$WANT_FULL" = 1 ]; then
-  run "端到端冒烟（tools/smoke_test.py --build）" "$PY" tools/smoke_test.py --build
+  run "端到端冒烟（tools/smoke_test.py --build --fixture）" "$PY" tools/smoke_test.py --build --fixture
 fi
 
 if [ "$WANT_PHP" = 1 ]; then

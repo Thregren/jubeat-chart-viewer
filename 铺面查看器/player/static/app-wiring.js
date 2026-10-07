@@ -18,6 +18,7 @@
      layoutCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
      updateComboDisplay, bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
      setSidebarOpen, loadLibrary, renderList, loadChart, backend, bindLoadEvents, startBufferAt,
+     sidebarJustOpened,
      keepAudioAlive, audioNow, currentMediaTime, seekTo, play, pause, togglePlay, restart,
      resumeAfterSeek, settleAfterSeek, stop, requestPaint } = A;
 
@@ -288,7 +289,23 @@
     const scrim = document.createElement("div");
     scrim.className = "scrim";
     scrim.hidden = true;
-    scrim.addEventListener("click", () => setSidebarOpen(false));
+    // 手机上点开抽屉的那一下，系统会在 pointerup 之后补一串 mousedown/mouseup/click，
+    // 而那一串的命中测试发生在遮罩已经显示之后 —— 会把刚打开的抽屉立刻关掉（现象：
+    // 轻点点不开曲库，稍微长按一下才行）。补发的这一串**没有对应的 pointerdown**
+    // （触摸的 pointerdown 已经落在入口条上了），所以遮罩只在「真的被按下过」时才认。
+    // 另外再留一道时间保险：刚打开的一小段时间里的 click 一律吞掉（见 app-library.js
+    // 的 sidebarJustOpened），两道都挡不住的情况只剩「刚打开 + 真的按过遮罩」，
+    // 那本来就是用户想收起。
+    const hasPointerEvents = typeof window.PointerEvent === "function";
+    let scrimPressed = false;
+    scrim.addEventListener("pointerdown", () => { scrimPressed = true; }, true);
+    scrim.addEventListener("click", () => {
+      const pressed = scrimPressed;
+      scrimPressed = false;
+      if (!pressed && hasPointerEvents) return;
+      if (sidebarJustOpened()) return;
+      setSidebarOpen(false);
+    });
     document.body.appendChild(scrim);
     els.btnSidebar.addEventListener("click", () =>
       setSidebarOpen(els.sidebar.classList.contains("hidden")));

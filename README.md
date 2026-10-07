@@ -212,6 +212,7 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 │   ├── test_range.py          Range / 路径穿越：Python、Node、PHP 三份实现同一张用例表
 │   ├── smoke_test.py          端到端自测（静态 + 开发两种模式，32 项）
 │   ├── ui_smoke.js            界面自测：真 Electron 渲染进程里把页面跑起来（52 项）
+│   ├── mobile_touch_smoke.js  手机端自测：CDP 真触摸事件走一遍抽屉 / 选曲（14 项）
 │   └── php_smoke_test.py      PHP 入口自测（21 项：Range / gzip / 304 / 目录穿越）
 ├── .github/workflows/ci.yml   每次 push 跑 tools/check.sh --release
 ├── deploy/
@@ -861,6 +862,7 @@ node --test tools/test_core.mjs        # 前端纯逻辑（core.js）单测：�
 python3 tools/test_range.py            # Range 解析 + 路径穿越：同一张用例表跑 Python / Node / 开发服务器 / Electron 四份实现（有 php 连 PHP）
 python3 tools/smoke_test.py --build    # 静态 + 开发两种模式，32 项（首页/索引/谱面/音源 Range/封面/缩略图/缓存/gzip/404）
 cd electron && npx electron ../tools/ui_smoke.js   # 界面自测 52 项：真渲染进程里跑一遍页面并点关键路径
+cd electron && npx electron ../tools/mobile_touch_smoke.js   # 手机端自测 14 项：真触摸事件（light tap）打开抽屉 / 选曲
 python3 tools/php_smoke_test.py        # PHP 入口，21 项（各种 Range、416、gzip、ETag/304、HEAD、目录穿越）
 python3 tools/verify_site.py --strict  # 已有 ./site 的完整性（索引里每一项都要落到磁盘上）
 python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= / 侧栏版本号徽章 / site 构建产物 / electron 包版本
@@ -874,6 +876,9 @@ cd electron && npx electron ../tools/screenshot.js \
 这几个脚本都会临时起服务、造 fixture、自己清理，不需要真实曲库（PHP 那个需要机器上有 `php`，
 `ui_smoke.js` 需要本机的 electron）。`ui_smoke.js` 是唯一能证明「页面真的画得出来、播得响、
 打点按得中」的一层：前端的语法检查看不出「函数搬了家、名字对不上」这类错，只有真跑一遍才知道。
+`mobile_touch_smoke.js` 补的是另一半：鼠标能点不代表手机能点 —— 它用 CDP 派发**真触摸事件**
+（pointerdown → pointerup → 浏览器补发的 mousedown/mouseup/click）走一遍手机路径，
+手机端交互改动之后跑它（2026-10 的「安卓轻点点不开曲库」就是被它复现并钉住的）。
 CI（`.github/workflows/ci.yml`）每次 push 跑的就是 `tools/check.sh --release`。
 
 ### 在浏览器里调试

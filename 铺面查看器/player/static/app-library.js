@@ -44,8 +44,25 @@
     return window.matchMedia("(max-width: 900px)").matches;
   }
 
+  /**
+   * 抽屉「刚打开」的保护窗口。
+   *
+   * 手机浏览器点一下是「pointerdown → pointerup → 补发的 mousedown/mouseup/click」。
+   * 我们在 pointerup 里就把抽屉展开、遮罩显示出来，于是补发的那一串兼容鼠标事件
+   * 命中测试打在**刚出现的遮罩**上：遮罩的 click = 收起抽屉，刚打开就被关掉了。
+   * 用户看到的现象是「轻点打不开曲库，稍微长按一下才行」——长按时系统不补这个 click。
+   * （app-wiring.js 里遮罩的 click 会先问 sidebarJustOpened()，命中就吞掉。）
+   */
+  const GHOST_CLICK_MS = 600;
+  let sidebarOpenedAt = -Infinity;
+
+  function sidebarJustOpened() {
+    return performance.now() - sidebarOpenedAt < GHOST_CLICK_MS;
+  }
+
   function setSidebarOpen(open) {
     const narrow = isNarrow();
+    if (open) sidebarOpenedAt = performance.now();
     els.sidebar.classList.toggle("hidden", narrow ? !open : false);
     const scrim = document.querySelector(".scrim");
     if (scrim) scrim.hidden = !(narrow && open);
@@ -551,6 +568,7 @@
     setCollapsed,
     isNarrow,
     setSidebarOpen,
+    sidebarJustOpened,
     loadLibrary,
     hasHold,
     renderList,

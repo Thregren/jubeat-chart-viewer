@@ -6,7 +6,7 @@
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
 GitHub 图标右边挂着**当前前端版本号**（`v0.6.24`，由 `tools/set_version.py` 同步）。
 
-[![screenshot](docs/screenshot.jpg)](docs/screenshot.jpg)
+[![v0.6.24 界面：同押面板框与灰黄物量进度条](docs/screenshot.jpg)](docs/screenshot.jpg)
 
 > **桌面版下载（含全量曲库）**：<https://pan.quark.cn/s/e9c12157e039>
 >
@@ -579,7 +579,7 @@ tap 命中后同样播 marker 的收尾帧 / 判定特效。
 例：
 
 ```
-https://ub.thregren.world/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=74.54&paused=1
+https://ub.thregren.world/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=84.02&paused=1
 ```
 
 `tools/screenshot.js` 就是用这个抓 README 顶部那张图的。
@@ -877,7 +877,7 @@ python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= / 
 
 # 抓一张界面截图（README 顶部那张就是这么来的）
 cd electron && npx electron ../tools/screenshot.js \
-    "http://127.0.0.1:8124/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=74.54&paused=1" \
+    "http://127.0.0.1:8124/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=84.02&paused=1" \
     ../docs/screenshot.jpg 1280x720
 ```
 

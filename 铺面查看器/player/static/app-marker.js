@@ -856,19 +856,41 @@
     return lum < 110 ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.75)";
   }
 
+  // 同押覆盖层跟随实际贴图的淡出；每张已加载的帧只读取一次 alpha。
+  const markerOpacities = new WeakMap();
+  let opacityCanvas = null;
+  function markerOpacity(img) {
+    if (!ready(img)) return 0;
+    if (markerOpacities.has(img)) return markerOpacities.get(img);
+    let opacity = 1;
+    try {
+      opacityCanvas ||= document.createElement("canvas");
+      opacityCanvas.width = img.naturalWidth;
+      opacityCanvas.height = img.naturalHeight;
+      const sample = opacityCanvas.getContext("2d", { willReadFrequently: true });
+      sample.drawImage(img, 0, 0);
+      const pixels = sample.getImageData(0, 0, opacityCanvas.width, opacityCanvas.height).data;
+      let peak = 0;
+      for (let i = 3; i < pixels.length; i += 4) peak = Math.max(peak, pixels[i]);
+      opacity = peak / 255;
+    } catch (_) { /* 跨域素材不允许采样时仍遵循动画结束边界。 */ }
+    markerOpacities.set(img, opacity);
+    return opacity;
+  }
+
   /** 同押高亮画成什么样：glow（数字背后的彩色光晕）/ frame（沿格子描一圈粗框）/ both */
   function chordStyle() {
     const v = els.chordGlowStyle && els.chordGlowStyle.value;
     return v === "frame" || v === "both" ? v : "glow";
   }
 
-  function drawOrderNumber(note, rect) {
+  function drawOrderNumber(note, rect, markerOpacity = 1) {
     if (!rect) return;
     const text = String(note.seq || 0);
     const showNum = !!(els.showNumbers && els.showNumbers.checked);
     // 同押高亮和「音符序号」是两个开关：只开高亮、不显示数字也要能看（以前两者
     // 绑在一起，关掉数字连高亮一起没了）。
-    const chord = (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
+    const chord = markerOpacity > 0 && (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
     if (!showNum && !chord) return;
     // 参考视频里数字几乎占满格子；但按「换气」分句之后一句可能很长，
     // 两位数、三位数要缩一点，不然会被格子裁掉。
@@ -928,7 +950,7 @@
       const glow = Math.pow(0.5 - 0.5 * Math.cos(phase * Math.PI * 2), 0.75); // 峰更尖，落得更快
       // 「光晕透明度」只乘在这一层上：光晕、波纹、数字的霓虹描边都跟着它淡，
       // 0 的时候就只剩下面那圈白色数字（形状 / 半径都不变，只改不透明度）。
-      const ga = numCfg.glowAlpha;
+      const ga = numCfg.glowAlpha * markerOpacity;
       const style = chordStyle();
 
       if (style !== "frame") {
@@ -1056,7 +1078,7 @@
     // Delta is in chart seconds; dividing by rate gives normal real-time animation.
     const animationRate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
     const earlySec = (early * unitMs * animationRate) / 1000;
-    const lateSec = (late * unitMs * animationRate) / 1000;
+    const lateSec = (Math.min(late, hFrames * per) * unitMs * animationRate) / 1000;
     const holdBack = (state._parsed && state._parsed.maxHold) || 0;
     const counts = new Map();
     // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
@@ -1076,7 +1098,8 @@
       // 一起收尾；长押按住期间一直留着，松开时再跟着爆一次。这一段不属于 marker
       // 素材，所以放在窗口早退之前，设成「无（仅面板灯）」时也就自然不画了。
       const numEnd = (dur != null ? dur : 0) + lateSec;
-      if (rel >= -NUM_LEAD && rel <= numEnd) numbers.push([n, rect]);
+      const number = rel >= -NUM_LEAD && rel < numEnd ? [n, rect, 0] : null;
+      if (number) numbers.push(number);
 
       if (u < early || u >= late) continue;
       const count = counts.get(n.index) || 0;
@@ -1098,10 +1121,12 @@
       }
 
       counts.set(n.index, count + 1);
-      drawFrameImage(frameForChannel(design, channel, frame, total), rect);
+      const image = frameForChannel(design, channel, frame, total);
+      drawFrameImage(image, rect);
+      if (number) number[2] = markerOpacity(image);
     }
 
-    for (const [n, rect] of numbers) drawOrderNumber(n, rect);
+    for (const [n, rect, opacity] of numbers) drawOrderNumber(n, rect, opacity);
   }
 
   /** 首批落点预告：与同押 frame 共用颜色、粗细、内缩和圆角。 */

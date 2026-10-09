@@ -92,7 +92,7 @@ def parse_chart_name(filename: str) -> tuple[str, str, float] | None:
     return code, m.group(2), level
 
 
-def published_index(songs: list[dict]) -> dict:
+def published_index(songs: list[dict], generated: int | None = None) -> dict:
     """公网 `data/library.json` 的形状：只留前端真正读的字段。
 
     scan_song() 的完整索引还带 path / filename / audio / size /
@@ -103,7 +103,7 @@ def published_index(songs: list[dict]) -> dict:
     """
     return {
         "version": config.INDEX_VERSION,
-        "generated": int(time.time()),
+        "generated": int(time.time()) if generated is None else generated,
         "versions": sorted({s["version"] for s in songs}),
         "songs": [
             {
@@ -271,6 +271,7 @@ class Library:
 
     def __init__(self, root: Path | None = None):
         self._root = Path(root) if root is not None else None
+        self.generated = int(time.time())
         self.songs: list[dict] = []
         self.by_id: dict[str, dict] = {}
         self.by_stem: dict[str, dict] = {}
@@ -358,6 +359,7 @@ class Library:
                    for s in songs}
         versions = sorted({s["version"] for s in songs})
         with self._lock:
+            self.generated = int(time.time())
             self.songs = songs
             self.by_id = by_id
             self.by_stem = by_stem

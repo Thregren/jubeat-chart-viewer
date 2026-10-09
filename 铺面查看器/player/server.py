@@ -209,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
     def _data_library(self) -> None:
         LIB.load()
         # 和 static 站同一个形状：只发前端要读的字段（见 library.published_index）
-        return self._json(published_index(LIB.songs))
+        return self._json(published_index(LIB.songs, generated=LIB.generated))
 
     def _media_chart(self, rel: str) -> None:
         """data/charts/<曲目>/<难度>.json"""

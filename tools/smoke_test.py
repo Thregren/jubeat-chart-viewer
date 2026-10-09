@@ -100,6 +100,7 @@ def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool) -> dict:
                 f"{len(b2)}B vs {len(body)}B")
         tag = h2.get("ETag")
         if tag:
+            time.sleep(1.05)  # 跨过秒边界，索引未重建时 ETag 仍须稳定
             s3, _, _ = fetch(base + "/data/library.json", {"If-None-Match": tag})
             c.check("ETag 命中返回 304", s3 == 304, str(s3))
 

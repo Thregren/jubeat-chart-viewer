@@ -239,7 +239,7 @@
         if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
       }
-      els.firstMarker.checked = saved.firstMarker === "1";
+      els.firstMarker.checked = saved.firstMarker !== "0";
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       numCfg.style = normalizeChordStyle(saved.chordGlowStyle);
       els.chordGlowStyle.value = numCfg.style;

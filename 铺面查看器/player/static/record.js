@@ -32,7 +32,7 @@
                                           // 并把下面钉死的 numCorner 当成「旧默认」忽略
     marker: query.get("marker") || "tm0004",   // 官方设计 id（缺省 = #04 快门）
     showCombo: "1",
-    firstMarker: query.get("firstMarker") === "1" ? "1" : "0",
+    firstMarker: query.get("firstMarker") === "0" ? "0" : "1",
     showNumbers: "1",
     // 序号外观固定成默认值：录制机器上残留的滑杆设置不能影响成片
     numScale: "100",

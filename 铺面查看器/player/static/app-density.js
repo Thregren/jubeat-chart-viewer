@@ -40,6 +40,7 @@
     placeholder: false,   // true = 音源还没就绪，只画外框和提示，不画柱子和播放头
     // 背景 / 网格 / 柱子只在谱面或尺寸变化时画一次；每帧只合成这张缓存 + 播放头。
     base: null,
+    played: null,
     baseReady: false,
   };
 
@@ -57,6 +58,7 @@
   // 暗金边 + 金芯：格子小的时候 1px 的边色占了大部分面积，缩到几 px 也看得出是方格。
   // 长押和普通 note 用同一个颜色（用户定的），长押靠「头尾各多一格」来认。
   const TILE = { edge: "#8f6c05", face: "#ffd94a" };
+  const PENDING_TILE = { edge: "#424957", face: "#89919e" };
 
   /**
    * 列距（含暗缝）。官方是「条子宽 / 768 × 5px」——条子越宽格子越大，见 MAX_REF_W。
@@ -211,6 +213,25 @@
       if (showTicks) ctx2.fillText(fmtTime(sec).slice(0, 5), x + 3, h - 2);
     }
 
+    drawDensityBlocks(ctx2, PENDING_TILE);
+    // 两种颜色各缓存一次，逐帧只按播放位置裁切黄色层。
+    density.played ||= document.createElement("canvas");
+    density.played.width = base.width;
+    density.played.height = base.height;
+    const playedCtx = density.played.getContext("2d");
+    playedCtx.drawImage(base, 0, 0);
+    playedCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawDensityBlocks(playedCtx, TILE);
+    density.baseReady = true;
+    return true;
+  }
+
+  function drawDensityBlocks(ctx2, palette) {
+    const pitch = density.pitch;
+    const block = Math.max(1, pitch - GAP);
+    const bevel = block >= 4;
+    const baseY = density.rect.h - LABEL_H;
+    const ox = density.graphX;
     // 方块：底部对齐、由下往上码，几层就是这一列的 note 数（封顶 8 层，不归一化）。
     // 长押的头判、尾判各自所在的列各 +1，中间那段什么都不画 —— 和官方一模一样。
     for (let i = 0; i < density.cols; i++) {
@@ -219,16 +240,14 @@
       const x = ox + i * pitch;
       for (let r = 0; r < c; r++) {
         const y = baseY - (r + 1) * pitch + GAP;
-        ctx2.fillStyle = TILE.edge;
+        ctx2.fillStyle = palette.edge;
         ctx2.fillRect(x, y, block, block);
         if (bevel) {
-          ctx2.fillStyle = TILE.face;
+          ctx2.fillStyle = palette.face;
           ctx2.fillRect(x + 1, y + 1, block - 2, block - 2);
         }
       }
     }
-    density.baseReady = true;
-    return true;
   }
 
   function drawDensity(posSec = null) {
@@ -244,7 +263,7 @@
     ctx2.drawImage(density.base, 0, 0);
     if (!density.counts.length || density.placeholder) return;
 
-    // 播放头是唯一每帧变化的内容
+    // 播放进度同时控制柱子的颜色和播放头。
     ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     const dur = density.dur || 1;
     const now = posSec == null ? A.currentMediaTime() : posSec;
@@ -253,6 +272,12 @@
     const x0 = density.graphX;
     const xOf = (sec) => x0 + (Math.max(0, Math.min(dur, sec)) / dur) * graphW;
     const px = xOf(now);
+    const playedWidth = Math.max(0, Math.min(cv.width, px * dpr));
+    if (playedWidth > 0 && density.played) {
+      ctx2.setTransform(1, 0, 0, 1, 0, 0);
+      ctx2.drawImage(density.played, 0, 0, playedWidth, cv.height, 0, 0, playedWidth, cv.height);
+      ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
     // A–B 段落循环的打点：中间淡淡的循环区间 + 两条琥珀色竖线
     if (abLoop.a != null) {
       const ax = xOf(abLoop.a);

@@ -11,3 +11,5 @@
 完整发布检查通过；回归覆盖末帧透明度、动画结束边界、短帧设计、变速、长押松开和帧透明度缓存。线上已核验物量条 0 秒及中途播放状态。
 
 [在线网站](https://ub.thregren.world/) 刷新后可使用新版。六份轻量桌面包不含曲库、音乐、封面和 Marker 素材；桌面端请从本版本源码重建自己的 site 目录，再由桌面程序打开。
+
+![v0.6.24 界面：同押面板框与灰黄物量进度条](https://raw.githubusercontent.com/Thregren/jubeat-chart-viewer/9a326a55f7de8595f1c02cee4eadaa782078344d/docs/screenshot.jpg)

@@ -122,6 +122,7 @@
 
     // marker 接近 / 判定动画 + 节拍指示
     drawMarkers(mediaT);
+    A.drawFirstMarker(mediaT);
     updateComboDisplay();
     drawDensity(mediaT);
   }

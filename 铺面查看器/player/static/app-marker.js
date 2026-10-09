@@ -1104,6 +1104,75 @@
     for (const [n, rect] of numbers) drawOrderNumber(n, rect);
   }
 
+  /** 首批落点预告：与同押 frame 共用颜色、粗细、内缩和圆角。 */
+  let firstCueNotes = null;
+  let firstCueBatch = [];
+  function drawFirstMarker(chartT) {
+    if (!ctx || !els.firstMarker?.checked || !state.notes.length) return;
+    if (firstCueNotes !== state.notes) {
+      firstCueNotes = state.notes;
+      firstCueBatch = window.JubeatFirstMarker.firstBatch(state.notes);
+    }
+    if (!firstCueBatch.length) return;
+    const rate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
+    const early = Number.isFinite(markerCfg.window?.early) ? markerCfg.window.early : -155;
+    const unitMs = Number(markerCfg.unitMs) > 0 ? Number(markerCfg.unitMs) : 3.3333;
+    const lead = markerCfg.design ? Math.max(0, -early * unitMs * rate / 1000) : 0.5167 * rate;
+    // 音符已在当前渲染帧进入 MA 时，不让预告覆盖它（含被夹到 0 的早首音）。
+    if (chartT >= firstCueBatch[0].t - lead) return;
+    const base = Number(state.baseOffset) || 0;
+    const clock = A.firstMarkerClock;
+    const time = clock ? clock.sourceAudioT - base
+      : A.forcedMediaTime != null ? chartT
+      : Math.max(-base, Math.min(chartT, A.currentMediaTime?.() ?? chartT));
+    const cue = window.JubeatFirstMarker.cueState(firstCueBatch[0].t, time, lead, base, clock?.from ?? null);
+    if (!cue.alpha) return;
+    ctx.save();
+    ctx.globalAlpha = cue.alpha;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    const rgb = glowRgb(firstCueBatch[0].glowSlot || 0);
+    for (const note of firstCueBatch) {
+      const rect = state.padRects[note.index];
+      if (!rect) continue;
+      const lw = Math.max(3.5, rect.w * 0.085);
+      const inset = Math.max(1, rect.w * 0.02);
+      const fi = inset + lw * 0.5 + 1;
+      const w = rect.w - fi * 2, h = rect.h - fi * 2;
+      const r = Math.min(Math.max(5, rect.w * 0.14), w * 0.25, h * 0.25);
+      const len = w * 0.35;
+      ctx.strokeStyle = `rgb(${rgb})`;
+      ctx.lineWidth = lw;
+      ctx.shadowColor = `rgba(${rgb},0.5)`;
+      ctx.shadowBlur = lw * 1.6;
+      // 每个角独立绘制，保留每边中间的空白。
+      for (const [x, y, sx, sy] of [
+        [rect.x + fi, rect.y + fi, 1, 1],
+        [rect.x + rect.w - fi, rect.y + fi, -1, 1],
+        [rect.x + rect.w - fi, rect.y + rect.h - fi, -1, -1],
+        [rect.x + fi, rect.y + rect.h - fi, 1, -1],
+      ]) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + sy * len);
+        ctx.lineTo(x, y + sy * r);
+        ctx.quadraticCurveTo(x, y, x + sx * r, y);
+        ctx.lineTo(x + sx * len, y);
+        ctx.stroke();
+      }
+      const size = rect.w * 0.21;
+      const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+      ctx.shadowBlur = 3;
+      ctx.shadowColor = "rgba(0,0,0,0.8)";
+      ctx.font = `700 ${size}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#f1f8ff";
+      ctx.fillText("这里", cx, cy - size * 0.61);
+      ctx.fillText("开始", cx, cy + size * 0.61);
+    }
+    ctx.restore();
+  }
+
   /** 总连击：半透明大字，压在面板正中（对应「总连击」开关） */
   function drawComboOverlay() {
     if (!els.showCombo || !els.showCombo.checked) return;
@@ -1147,5 +1216,6 @@
     layoutCanvas,
     glowPair,
     drawMarkers,
+    drawFirstMarker,
   });
 })();

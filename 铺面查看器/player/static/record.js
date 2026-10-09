@@ -32,6 +32,7 @@
                                           // 并把下面钉死的 numCorner 当成「旧默认」忽略
     marker: query.get("marker") || "tm0004",   // 官方设计 id（缺省 = #04 快门）
     showCombo: "1",
+    firstMarker: query.get("firstMarker") === "1" ? "1" : "0",
     showNumbers: "1",
     // 序号外观固定成默认值：录制机器上残留的滑杆设置不能影响成片
     numScale: "100",
@@ -214,7 +215,15 @@
    * 返回 false = 页面判定画面没变、这一帧没画，调用方直接沿用上一帧即可。
    * 只有 `?pg=1`（按需重画）下才可能出现 false。
    */
-  async function renderAt(t) {
+  async function renderAt(t, clock = null) {
+    const A = window.JubeatApp;
+    const sourceAudioT = Number(clock?.sourceAudioT);
+    const next = clock && Number.isFinite(sourceAudioT)
+      ? { sourceAudioT, from: Number.isFinite(clock.from) ? clock.from : null } : null;
+    if (JSON.stringify(A.firstMarkerClock) !== JSON.stringify(next)) {
+      A.firstMarkerClock = next;
+      if (A.els.firstMarker.checked) A.requestPaint();
+    }
     const app = window.JubeatApp;
     const c0 = app && app.paintCount != null ? app.paintCount : null;
     window.__player.setFrameTime(Number(t));

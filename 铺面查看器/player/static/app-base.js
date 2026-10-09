@@ -182,7 +182,7 @@
   /** 序号颜色默认值：白色（和以前完全一致） */
   const DEFAULT_NUM_COLOR = "#ffffff";
   /** 同押高亮的默认样式：光晕（和以前完全一致） */
-  const DEFAULT_CHORD_STYLE = "glow";
+  const DEFAULT_CHORD_STYLE = "frame";
   const numCfg = {
     scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: true,
     color: DEFAULT_NUM_COLOR,   // 数字填充色，#rrggbb
@@ -203,7 +203,7 @@
     return m ? `#${m[1].toLowerCase()}` : DEFAULT_NUM_COLOR;
   };
   /** 同押高亮样式：只认三个枚举值，别的（老缓存 / 手改）一律当默认的「光晕」 */
-  const normalizeChordStyle = (v) => (v === "frame" || v === "both" ? v : DEFAULT_CHORD_STYLE);
+  const normalizeChordStyle = (v) => (v === "glow" || v === "frame" || v === "both" ? v : DEFAULT_CHORD_STYLE);
 
   // A–B 段落循环：同一个键（A）连按两次分别打 A / B 两个点，之后就在这一段里循环。
   // 时间是「谱面时间」（和进度条 / 时间显示同一套坐标），null = 还没打点。

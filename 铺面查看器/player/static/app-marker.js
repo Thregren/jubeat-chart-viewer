@@ -444,9 +444,8 @@
   }
 
   /** notes with a marker animation window covering [lo, hi] (seconds) */
-  function notesInWindow(lo, hi) {
+  function* notesInWindow(lo, hi) {
     const notes = state.notes;
-    if (!notes.length) return [];
     let a = 0;
     let b = notes.length;
     while (a < b) {
@@ -454,12 +453,9 @@
       if (notes[mid].t < lo) a = mid + 1;
       else b = mid;
     }
-    const out = [];
-    for (let i = a; i < notes.length && notes[i].t <= hi; i++) {
-      out.push(notes[i]);
-      if (out.length > 400) break;
-    }
-    return out;
+    // Stream the window without a temporary array. Long holds can widen the
+    // search interval beyond 400 notes; a cap here would hide valid markers.
+    for (let i = a; i < notes.length && notes[i].t <= hi; i++) yield notes[i];
   }
 
   // ================= 长押：官方「会移动的箭头」 =================

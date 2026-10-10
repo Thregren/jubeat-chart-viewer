@@ -7,14 +7,14 @@ import os
 import posixpath
 import re
 import threading
+import tempfile
 import zipfile
 from pathlib import Path
 from urllib.parse import unquote
 
-# 同一个文件被并发请求时只解一次
-_locks: dict[str, threading.Lock] = {}
-_locks_guard = threading.Lock()
-_LOCKS_MAX = 4096
+# Fixed lock stripes stay bounded and cannot be evicted while a caller holds
+# a reference but has not acquired it yet. Hash collisions only serialize work.
+_MEMBER_LOCKS = tuple(threading.Lock() for _ in range(256))
 
 
 def zip_name(info: zipfile.ZipInfo) -> str:
@@ -35,14 +35,8 @@ def zip_name(info: zipfile.ZipInfo) -> str:
 
 
 def lock_for(key: str) -> threading.Lock:
-    with _locks_guard:
-        if len(_locks) > _LOCKS_MAX:      # 长跑之后别让字典无限涨
-            for k in [k for k, v in _locks.items() if not v.locked()][: _LOCKS_MAX // 2]:
-                _locks.pop(k, None)
-        lock = _locks.get(key)
-        if lock is None:
-            lock = _locks[key] = threading.Lock()
-        return lock
+    digest = hashlib.blake2b(key.encode("utf-8", "surrogatepass"), digest_size=2).digest()
+    return _MEMBER_LOCKS[int.from_bytes(digest, "big") % len(_MEMBER_LOCKS)]
 
 
 def guess_ctype(name: str) -> str:
@@ -122,33 +116,24 @@ def cached_member_file(zip_path: Path, member: str, dest: Path) -> Path:
             return dest
         data = read_member(zip_path, member)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_name(dest.name + f".tmp{os.getpid()}")
-        try:
-            with open(tmp, "wb") as fh:
-                fh.write(data)
-            os.replace(tmp, dest)
-        finally:
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except OSError:
-                    pass
+        write_atomic(dest, data)
         return dest
 
 
 def write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + f".tmp{os.getpid()}")
+    # mkstemp reserves a unique name across threads and processes.
+    fd, name = tempfile.mkstemp(prefix=path.name + ".tmp-", dir=path.parent)
+    tmp = Path(name)
     try:
-        with open(tmp, "wb") as fh:
+        with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         os.replace(tmp, path)
     finally:
-        if tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 # Range 值的形状：恰好一个短横线，两侧要么是纯数字要么是空。

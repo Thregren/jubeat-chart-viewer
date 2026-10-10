@@ -1,0 +1,6 @@
+Generated with the built-in imagegen tool, 2026-10-10.
+Source output: exec-cc22ba79-8aae-46b0-b8f4-4f174279b56f.png
+
+Use case: logo-brand. Create a polished square application icon for an independent 4x4 rhythm chart viewer. One icon only, front-facing, perfectly aligned four rows and four columns of rounded square pads, exactly 16 pads, generous consistent gaps. Deep midnight navy rounded-square app tile with subtle premium satin depth, dark unlit pads with fine blue edges. Four pads across a flowing diagonal rhythm pattern glow warm golden yellow and soft electric cyan, crisp luminous rounded borders with restrained bloom. Elegant geometric rhythm, bold silhouette, exceptionally readable at 32 pixels. Fill the square canvas, grid centered with balanced 12% inset. Contemporary professional app icon, refined and simple, no letters, no words, no musical note symbols, no play triangle, no official game logos, no perspective, no extra frames, no photorealistic scene. A standalone finished icon image.
+
+Packaging: resized with Lanczos to 1024 / 512 pixels for desktop, 192 / 512 pixels for manifest icons, 180 pixels for Apple touch, and 32 pixels for favicon.

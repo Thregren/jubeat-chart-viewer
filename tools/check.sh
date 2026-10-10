@@ -51,7 +51,11 @@ check_js() {
 run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
-run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs
+run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs tools/test_marker_window.mjs
+
+run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
+
+run "缓存并发与原子写入" "$PY" tools/test_media_concurrency.py
 
 run "构建失败与发布回滚" "$PY" tools/test_build.py
 

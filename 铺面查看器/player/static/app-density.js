@@ -187,9 +187,6 @@
       return true;
     }
     const dur = density.dur || 1;
-    const pitch = density.pitch;
-    const block = Math.max(1, pitch - GAP);        // 正方形：宽 = 高
-    const bevel = block >= 4;                      // 够大才画得出「亮芯 + 暗边」
     const baseY = h - LABEL_H;                     // 方块从这条线往上码，贴底
     // 官方把整张图按「条子宽 / 768」等比放大后水平居中：768 宽时 115 列正好 575px（75%）。
     // 时间轴（刻度 / 播放头 / A–B / 点击跳转）全都按同一张图的左右边界换算，

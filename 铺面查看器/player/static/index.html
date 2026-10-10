@@ -251,8 +251,16 @@
               </select>
             </label>
             <label class="ctl ctl-vol">音效音量
-              <input id="metroVolume" type="range" min="0" max="200" value="60" />
-              <span class="unit" id="metroVolumeLabel">60%</span>
+              <select id="metroVolume" aria-label="音效音量">
+                <option value="0">0%（静音）</option>
+                <option value="25">25%</option>
+                <option value="50">50%</option>
+                <option value="60" selected>60%</option>
+                <option value="75">75%</option>
+                <option value="100">100%</option>
+                <option value="150">150%</option>
+                <option value="200">200%</option>
+              </select>
             </label>
           </div>
           <!-- 音符序号的切分参数：按「换气」分句，句内从 1 数起 -->
@@ -300,6 +308,12 @@
                      aria-label="同押光晕的透明度"
                      title="只淡「同押高亮」这一层：光晕 + 两圈波纹 + 数字的霓虹描边（选「加粗面板框」时淡的是那圈框）；数字本身跟着「序号透明度」走" />
               <span class="unit" id="numGlowAlphaLabel">70%</span>
+            </label>
+            <label class="ctl">序号配色
+              <select id="numColorMode" aria-label="音符序号的配色方式">
+                <option value="custom" selected>自选颜色</option>
+                <option value="rhythm">节奏分组</option>
+              </select>
             </label>
             <label class="ctl">序号颜色
               <input id="numColor" type="color" value="#ffffff"

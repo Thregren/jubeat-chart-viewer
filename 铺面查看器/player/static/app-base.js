@@ -60,7 +60,6 @@
     markerHint: $("#markerHint"),
     metroSound: $("#metroSound"),
     metroVolume: $("#metroVolume"),
-    metroVolumeLabel: $("#metroVolumeLabel"),
     showCombo: $("#showCombo"),
     firstMarker: $("#firstMarker"),
     showNumbers: $("#showNumbers"),
@@ -70,6 +69,7 @@
     numAlphaLabel: $("#numAlphaLabel"),
     numGlowAlpha: $("#numGlowAlpha"),
     numGlowAlphaLabel: $("#numGlowAlphaLabel"),
+    numColorMode: $("#numColorMode"),
     numColor: $("#numColor"),
     numCorner: $("#numCorner"),
     showChordGlow: $("#showChordGlow"),
@@ -185,6 +185,7 @@
   const DEFAULT_CHORD_STYLE = "frame";
   const numCfg = {
     scale: 1, alpha: 1, glowAlpha: DEFAULT_NUM_GLOW_ALPHA, corner: true,
+    colorMode: "custom",       // custom | rhythm，互斥的配色方式
     color: DEFAULT_NUM_COLOR,   // 数字填充色，#rrggbb
     style: DEFAULT_CHORD_STYLE, // 同押高亮：glow | frame | both
   };
@@ -221,6 +222,7 @@
     numAlpha: "jubeat.numAlpha",
     numGlowAlpha: "jubeat.numGlowAlpha",
     numCorner: "jubeat.numCorner",
+    numColorMode: "jubeat.numColorMode",
     numColor: "jubeat.numColor",
     showChordGlow: "jubeat.showChordGlow",
     chordGlowStyle: "jubeat.chordGlowStyle",

@@ -855,8 +855,17 @@
     return glowClock;
   }
 
-  /** 音符序号的填充色。取色器给的是 `#rrggbb`，坏值一律当白色（= 老行为）。 */
-  function numColorHex() {
+  // 缓存按谱面对象刷新；拖动、暂停和重编号不会改变节奏分组。
+  let rhythmNotes = null, noteRhythmColors = null;
+  const recording = typeof location !== "undefined" && new URLSearchParams(location.search).get("rec") === "1";
+  function numColorHex(note) {
+    if (!recording && numCfg.colorMode === "rhythm") {
+      if (rhythmNotes !== state.notes) {
+        rhythmNotes = state.notes;
+        noteRhythmColors = window.JubeatCore.rhythmColors(rhythmNotes);
+      }
+      return noteRhythmColors.get(note) || normalizeHexColor(numCfg.color);
+    }
     return normalizeHexColor(numCfg.color);
   }
 
@@ -1032,8 +1041,8 @@
     if (showNum) {
       // 数字本体：永远画在最上面（压在同押高亮上），深浅色都带对比描边
       ctx.lineWidth = Math.max(2, size * 0.14);
-      ctx.strokeStyle = numOutline(numColorHex());
-      ctx.fillStyle = numColorHex();
+      ctx.strokeStyle = numOutline(numColorHex(note));
+      ctx.fillStyle = numColorHex(note);
       ctx.strokeText(text, x, y);
       ctx.fillText(text, x, y);
     }

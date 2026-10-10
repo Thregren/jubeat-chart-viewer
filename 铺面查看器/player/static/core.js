@@ -418,7 +418,47 @@
     return { a: null, b: null, phase: "clear" };
   }
 
+  // 常用音效音量档位；兼容旧滑杆保存的任意百分比。
+  const SFX_VOLUME_LEVELS = [0, 25, 50, 60, 75, 100, 150, 200];
+  function soundEffectVolume(value) {
+    if (value == null || String(value).trim() === "") return 60;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 60;
+    return SFX_VOLUME_LEVELS.reduce((best, level) =>
+      Math.abs(level - n) < Math.abs(best - n) ? level : best, 60);
+  }
+
+  // 同押共享颜色，按拍间隔的换气和持续节奏变化分组。
+  // 只着色谱面头部，不改序号，也不让 BPM 变化或长押尾巴打断分组。
+  const RHYTHM_COLORS = ["#66dcff", "#ffd16a", "#cf9cff", "#7ce3a5", "#ff95bb"];
+  function rhythmColors(notes) {
+    const similar = (a, b) => Math.abs(a - b) <= Math.max(1 / 96, Math.min(a, b) * .2);
+    const groups = [];
+    for (const note of notes) {
+      const last = groups[groups.length - 1];
+      if (last && Math.abs(note.t - last.t) < 1e-4) last.notes.push(note);
+      else groups.push({ t: note.t, beat: note.beat, notes: [note] });
+    }
+    const gaps = groups.slice(1).map((group, i) => group.beat - groups[i].beat);
+    const colors = new WeakMap();
+    let slot = 0;
+    for (let i = 0; i < groups.length; i++) {
+      const gap = gaps[i - 1], prev = gaps[i - 2], before = gaps[i - 3], next = gaps[i];
+      if (i > 1 && gap > 0 && prev > 0 && !similar(gap, prev)) {
+        const slower = gap > prev;
+        const returnAfterBreath = !slower && before > 0 && similar(gap, before);
+        if (slower || (!returnAfterBreath && next > 0 && similar(gap, next))) slot++;
+      }
+      for (const note of groups[i].notes) colors.set(note, RHYTHM_COLORS[slot % RHYTHM_COLORS.length]);
+    }
+    return colors;
+  }
+
   return {
+    soundEffectVolume,
+    SFX_VOLUME_LEVELS,
+    rhythmColors,
+    RHYTHM_COLORS,
     beatToFloat,
     buildTimeMap,
     numberNotes,

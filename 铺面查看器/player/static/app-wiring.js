@@ -97,10 +97,6 @@
         }
         if (els.metroSound.value) playMetro(true); // 试听
       });
-      els.metroVolume.addEventListener("input", () => {
-        els.metroVolumeLabel.textContent = els.metroVolume.value + "%";
-        store(STORAGE.metroVolume, els.metroVolume.value);
-      });
       els.metroVolume.addEventListener("change", () => store(STORAGE.metroVolume, els.metroVolume.value));
       els.showCombo.addEventListener("change", () => {
         store(STORAGE.showCombo, els.showCombo.checked ? "1" : "0");
@@ -132,6 +128,17 @@
         els.numGlowAlphaLabel.textContent = els.numGlowAlpha.value + "%";
       });
       els.numGlowAlpha.addEventListener("change", () => store(STORAGE.numGlowAlpha, els.numGlowAlpha.value));
+      const recording = new URLSearchParams(location.search).get("rec") === "1";
+      function setNumColorMode(value) {
+        numCfg.colorMode = !recording && value === "rhythm" ? "rhythm" : "custom";
+        els.numColorMode.value = numCfg.colorMode;
+        els.numColorMode.disabled = recording;
+        els.numColor.disabled = numCfg.colorMode === "rhythm";
+      }
+      els.numColorMode.addEventListener("change", () => {
+        setNumColorMode(els.numColorMode.value);
+        if (!recording) store(STORAGE.numColorMode, numCfg.colorMode);
+      });
       // 「序号颜色」：拖动取色器时只改内存（画布每帧重画，立刻见效），
       // 松手（change）才落 localStorage —— 免得拖一下写几十遍。
       els.numColor.addEventListener("input", () => {
@@ -183,6 +190,7 @@
         numAlpha: store(STORAGE.numAlpha),
         numGlowAlpha: store(STORAGE.numGlowAlpha),
         numCorner: store(STORAGE.numCorner),
+        numColorMode: store(STORAGE.numColorMode),
         numColor: store(STORAGE.numColor),
         showChordGlow: store(STORAGE.showChordGlow),
         chordGlowStyle: store(STORAGE.chordGlowStyle),
@@ -195,10 +203,7 @@
         holdFilter: store(STORAGE.holdFilter),
       };
       if (saved.metroSound != null) els.metroSound.value = saved.metroSound;
-      if (saved.metroVolume != null) {
-        els.metroVolume.value = saved.metroVolume;
-        els.metroVolumeLabel.textContent = saved.metroVolume + "%";
-      }
+      els.metroVolume.value = String(window.JubeatCore.soundEffectVolume(saved.metroVolume));
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
       // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
       // 设置版本 4：marker 默认动画速度改为 0.8×。
@@ -266,6 +271,7 @@
       // 序号颜色：老版本没存过 → 保持默认白（取色器里显示的也是 #ffffff）
       numCfg.color = normalizeHexColor(saved.numColor);
       els.numColor.value = numCfg.color;
+      setNumColorMode(saved.numColorMode);
       if (saved.phraseMult != null) els.phraseMult.value = saved.phraseMult;
       if (saved.phraseFloor != null) els.phraseFloor.value = saved.phraseFloor;
       if (saved.phraseMax != null) els.phraseMax.value = saved.phraseMax;

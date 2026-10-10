@@ -10,9 +10,9 @@ test('sample timeout falls back to synth even while decoding is pending',async()
  const window={JubeatApp:A,JubeatRuntime:{readBytes:async()=>new ArrayBuffer(1)}};
  vm.runInNewContext(source,{window,AbortController,setTimeout:fn=>{expire=fn;return 1;},clearTimeout(){},fetch:async()=>({ok:true})});
  A.audioCtx=ctx;A.seProbe('clap');
- for(let i=0;i<5;i++)await Promise.resolve();
+ await new Promise(setImmediate);
  assert.equal(A.seState().clap,'loading');
  expire();assert.equal(A.seState().clap,'synth');
- resolveDecode({});for(let i=0;i<5;i++)await Promise.resolve();
+ resolveDecode({});await new Promise(setImmediate);
  assert.equal(A.seState().clap,'synth');
 });

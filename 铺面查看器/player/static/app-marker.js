@@ -444,8 +444,7 @@
   }
 
   /** notes with a marker animation window covering [lo, hi] (seconds) */
-  function* notesInWindow(lo, hi) {
-    const notes = state.notes;
+  function* notesInWindow(lo, hi, notes = state.notes) {
     let a = 0;
     let b = notes.length;
     while (a < b) {
@@ -456,6 +455,25 @@
     // Stream the window without a temporary array. Long holds can widen the
     // search interval beyond 400 notes; a cap here would hide valid markers.
     for (let i = a; i < notes.length && notes[i].t <= hi; i++) yield notes[i];
+  }
+
+  let holdSource = null;
+  let holdNotes = [];
+  function chartHolds() {
+    if (holdSource !== state.notes) {
+      holdSource = state.notes;
+      holdNotes = state.notes.filter((note) => note.kind === "hold");
+    }
+    return holdNotes;
+  }
+
+  function* markerNotesInWindow(lo, hi, holdBack) {
+    // Only holds can still be visible before the normal H animation window.
+    // Yield historical holds first to preserve the original chronological order.
+    for (const note of notesInWindow(lo - holdBack, lo, chartHolds())) {
+      if (note.t < lo) yield note;
+    }
+    yield* notesInWindow(lo, hi);
   }
 
   // ================= 长押：官方「会移动的箭头」 =================
@@ -785,8 +803,8 @@
     const lo = chartT - maxHold - HOLD_PRE - 0.05;
     // 还没开始的长押也要提前 HOLD_PRE 亮起来，所以上界要往后放一个提前量
     const hi = chartT + HOLD_PRE + 0.05;
-    for (const n of notesInWindow(lo, hi)) {
-      if (n.kind !== "hold" || n.endT == null) continue;
+    for (const n of notesInWindow(lo, hi, chartHolds())) {
+      if (n.endT == null) continue;
       if (chartT < n.t - HOLD_PRE || chartT > n.endT + HOLD_POST) continue;
       const g = holdCells(n);
       if (!g) continue;
@@ -1082,7 +1100,7 @@
     // 会把先画的数字盖掉（同押的时候尤其明显）。
     const numbers = [];
 
-    for (const n of notesInWindow(chartT - lateSec - holdBack, chartT - earlySec)) {
+    for (const n of markerNotesInWindow(chartT - lateSec, chartT - earlySec, holdBack)) {
       const rect = state.padRects[n.index];
       if (!rect) continue;
       // 长押在松开（endT）那一瞬重播一次同一套命中动画：把 endT 当成新的 0 点

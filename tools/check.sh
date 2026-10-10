@@ -51,7 +51,7 @@ check_js() {
 run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
-run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs tools/test_marker_window.mjs
+run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs tools/test_marker_window.mjs tools/test_audio_loading.mjs
 
 run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
 

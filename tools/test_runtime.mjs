@@ -32,3 +32,15 @@ test("marker normal mode preserves real animation duration at every speed", () =
 test("invalid library paths cannot reach fetch", () => {
   for (const p of ["../x", "/x", "a/../b", "a\\b", "a//b"]) assert.equal(R.safePath(p), false);
 });
+
+
+test("malformed BPM, hold tails and offsets are rejected before parsing", () => {
+  const chart = (event, time = []) => ({meta: {}, time, note: [event]});
+  const note = {beat: [0, 0, 1], index: 0};
+  for (const bpm of [0, -120, Infinity, NaN, "120"])
+    assert.throws(() => R.validateChart(chart(note, [{beat: [0, 0, 1], bpm}])));
+  for (const endbeat of [[1, 0, 0], [1, 0, -1], [1, Infinity, 1], [1], "1"])
+    assert.throws(() => R.validateChart(chart({...note, endbeat})));
+  assert.throws(() => R.validateChart(chart({...note, offset: Infinity})));
+  assert.doesNotThrow(() => R.validateChart(chart({...note, endbeat: [0, 0, 1]}, [{beat: [0, 0, 1], bpm: 120}])));
+});

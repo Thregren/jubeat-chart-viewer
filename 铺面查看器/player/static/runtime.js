@@ -77,11 +77,17 @@
   function validateChart(data) {
     if (!object(data) || !object(data.meta) || !Array.isArray(data.note) || !Array.isArray(data.time)
       || data.note.length > 200000 || data.time.length > 20000) throw new Error("谱面格式无效");
-    for (const event of [...data.time, ...data.note]) {
-      if (!object(event) || !Array.isArray(event.beat) || event.beat.length !== 3
-        || !event.beat.every(Number.isFinite) || event.beat[2] <= 0
-        || (event.index != null && (!Number.isInteger(event.index) || event.index < 0 || event.index > 15)))
-        throw new Error("谱面拍点或按键无效");
+    const validBeat = (beat) => Array.isArray(beat) && beat.length === 3
+      && beat.every(Number.isFinite) && beat[2] > 0;
+    for (const events of [data.time, data.note]) {
+      for (const event of events) {
+        if (!object(event) || !validBeat(event.beat)
+          || (event.endbeat != null && !validBeat(event.endbeat))
+          || (event.bpm != null && (!Number.isFinite(event.bpm) || event.bpm <= 0))
+          || (event.offset != null && !Number.isFinite(event.offset))
+          || (event.index != null && (!Number.isInteger(event.index) || event.index < 0 || event.index > 15)))
+          throw new Error("谱面拍点、速度或按键无效");
+      }
     }
     return data;
   }

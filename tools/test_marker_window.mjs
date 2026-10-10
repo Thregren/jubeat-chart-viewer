@@ -9,7 +9,7 @@ const start = source.indexOf('  function* notesInWindow(');
 const end = source.indexOf('  // ================= 长押', start);
 const state = {notes: []};
 const context = vm.createContext({state});
-vm.runInContext(source.slice(start, end) + '\nglobalThis.windowNotes = notesInWindow;', context);
+vm.runInContext(source.slice(start, end) + '\nglobalThis.windowNotes = notesInWindow; globalThis.markerWindow = markerNotesInWindow;', context);
 const windowNotes = (lo, hi) => Array.from(context.windowNotes(lo, hi));
 
 test('marker window includes both endpoints and every simultaneous note', () => {
@@ -25,4 +25,18 @@ test('long hold search windows never truncate upcoming markers at 401 notes', ()
   state.notes = Array.from({length: 1200}, (_, i) => ({t: i / 100}));
   assert.deepEqual(windowNotes(0, 11.99), state.notes);
   assert.deepEqual(windowNotes(9, 11.99), state.notes.slice(900));
+});
+
+
+test('marker window retains historical holds, releases and equal-time ordering', () => {
+  state.notes = [
+    {t: 0, kind: 'hold', endT: 10}, {t: 1, kind: 'tap'},
+    {t: 2, kind: 'hold', endT: 10}, {t: 9, kind: 'hold', endT: 10},
+    {t: 9, kind: 'tap'}, {t: 10, kind: 'tap'},
+  ];
+  assert.deepEqual(Array.from(context.markerWindow(9, 10, 10)),
+    [state.notes[0], state.notes[2], ...state.notes.slice(3)]);
+  // Selecting another chart must invalidate the hold index.
+  state.notes = [{t: 0, kind: 'hold', endT: 10}, {t: 10, kind: 'tap'}];
+  assert.deepEqual(Array.from(context.markerWindow(9, 10, 10)), state.notes);
 });

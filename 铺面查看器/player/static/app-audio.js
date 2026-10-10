@@ -52,19 +52,27 @@
     if (!audioCtx) return undefined;
     seCache.set(name, "loading");
     (async () => {
-      for (const ext of SE_EXT) {
-        try {
-          // 带上前端版本号：素材改了但文件名不变（比如裁掉开头那段静音），
-          // 不带版本号会一直吃浏览器 / CDN 里那份 7 天缓存的旧文件。
-          const res = await fetch(`media/se/${name}.${ext}?v=${frontVersion()}`, { cache: "force-cache" });
-          if (!res.ok) continue;
-          seCache.set(name, await audioCtx.decodeAudioData(await res.arrayBuffer()));
-          return;
-        } catch (_) {
-          /* 换下一个后缀 */
+      const abort = new AbortController();
+      const timer = setTimeout(() => { abort.abort(); seCache.set(name, null); }, 15000);
+      try {
+        for (const ext of SE_EXT) {
+          try {
+            const res = await fetch(`media/se/${name}.${ext}?v=${frontVersion()}`, {
+              cache: "force-cache", signal: abort.signal,
+            });
+            if (!res.ok) continue;
+            const bytes = await window.JubeatRuntime.readBytes(res, 8 * 1024 * 1024);
+            const buffer = await audioCtx.decodeAudioData(bytes);
+            if (abort.signal.aborted) break;
+            seCache.set(name, buffer);
+            return;
+          } catch (_) {
+            if (abort.signal.aborted) break;
+            /* 换下一个后缀 */
+          }
         }
-      }
-      seCache.set(name, null);      // 没有素材 → 用合成音
+        seCache.set(name, null); // Missing, oversized or timed out: use synth.
+      } finally { clearTimeout(timer); }
     })();
     return undefined;
   }

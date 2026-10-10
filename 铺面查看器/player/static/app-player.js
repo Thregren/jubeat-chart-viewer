@@ -43,6 +43,7 @@
   // 顺带挂一个分析器，`?debug=1` 时能直接看到「到底有没有声音送到输出」。
   let masterBus = null;
   let masterAnalyser = null;
+  let masterSamples = null;
 
   function master() {
     if (!A.audioCtx) return null;
@@ -59,7 +60,10 @@
   /** 输出上当前的信号峰值（0~128）：调试用，确认声音真的出去了 */
   function masterPeak() {
     if (!masterAnalyser) return -1;
-    const buf = new Uint8Array(masterAnalyser.fftSize);
+    if (!masterSamples || masterSamples.length !== masterAnalyser.fftSize) {
+      masterSamples = new Uint8Array(masterAnalyser.fftSize);
+    }
+    const buf = masterSamples;
     masterAnalyser.getByteTimeDomainData(buf);
     let p = 0;
     for (const v of buf) p = Math.max(p, Math.abs(v - 128));

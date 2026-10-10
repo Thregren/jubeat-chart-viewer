@@ -13,3 +13,12 @@ assert.equal(draw(1.160001).length,0);A.markerCfg.design.h[4]=8;assert.equal(dra
 A.markerCfg.design.h[4]=16;A.els.rate.value='2';assert.equal(draw(1.31)[0].opacity,6/255);assert.equal(draw(1.32).length,0);
 A.els.rate.value='1';A.state.notes=[{t:1,index:0,groupSize:2,kind:'hold',endT:2}];A.state._parsed={maxHold:1};assert.equal(draw(1.5)[0].opacity,0);assert.equal(draw(2.155)[0].opacity,6/255);assert.equal(draw(2.160001).length,0);
 console.log('Chord fade/lifetime: last frame alpha, half-open end, shorter H, rate, hold release, alpha cache passed');
+
+// A long hold must not force finished taps through the marker draw loop.
+let padReads = 0;
+A.state.notes = [{t: 0, index: 0, kind: 'hold', endT: 100},
+  ...Array.from({length: 10000}, (_, i) => ({t: i / 100, kind: 'tap', get index(){padReads++;return 0;}}))];
+A.state._parsed = {maxHold: 100};
+draw(90);assert.ok(padReads < 100, `visited ${padReads} ordinary pads`);
+assert.equal(w.numbers[0].n.kind, 'hold');
+console.log('Long-hold chart: finished taps are omitted without losing held numbers');

@@ -237,31 +237,8 @@
   };
 
   // 按稼働日开始日的版本顺序（jubeat 2008-07 → 音乐魔方 2025-12）
-  const VERSION_ORDER = [
-    "jubeat", "jubeat-ripples", "jubeat-ripples-append", "jubeat-knit",
-    "jubeat-plus", "jukebeat", "jubeat-copious", "jubeat-copious-append", "jubeat-saucer",
-    "jubeat-saucer-fulfill", "jubeat-prop", "jubeat-qubell", "jubeat-clan",
-    "jubeat-festo", "jubeat-ave", "jubeat-beyond-ave", "音乐魔方",
-  ];
-  const VERSION_LABEL = {
-    "jubeat": "jubeat（2008-07）",
-    "jubeat-ripples": "jubeat ripples（2009-08）",
-    "jubeat-ripples-append": "jubeat ripples APPEND（2010-03）",
-    "jubeat-knit": "jubeat knit（2010-07）",
-    "jubeat-plus": "jubeat plus（手机版 2010-11）",
-    "jukebeat": "jukebeat（海外版 2011-08）",
-    "jubeat-copious": "jubeat copious（2011-09）",
-    "jubeat-copious-append": "jubeat copious APPEND（2012-03）",
-    "jubeat-saucer": "jubeat saucer（2012-09）",
-    "jubeat-saucer-fulfill": "jubeat saucer fulfill（2014-03）",
-    "jubeat-prop": "jubeat prop（2015-02）",
-    "jubeat-qubell": "jubeat Qubell（2016-03）",
-    "jubeat-clan": "jubeat clan（2017-07）",
-    "jubeat-festo": "jubeat festo（2018-09）",
-    "jubeat-ave": "jubeat Ave.（2022-08）",
-    "jubeat-beyond-ave": "jubeat beyond the Ave.（2023-09）",
-    "音乐魔方": "音乐魔方（中国版 2025-12）",
-  };
+  const VERSION_ORDER = window.JubeatVersions.order;
+  const VERSION_LABEL = window.JubeatVersions.labels;
   const DIFF_CLASS = { BSC: "lv-bsc", BAS: "lv-bsc", ADV: "lv-adv", EXT: "lv-ext" };
   const DIFF_ORDER = { BSC: 0, BAS: 0, ADV: 1, EXT: 2 };
 

@@ -1,0 +1,921 @@
+{
+  "date": "2026-10-11",
+  "songs": 2549,
+  "charts": 7645,
+  "covers": 2549,
+  "artistRepairs": [
+    {
+      "id": "jubeat-plus/A Perfect Sky.mcz",
+      "title": "A Perfect Sky",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(BONNIE PINK)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ave/AMBERGRIS.mcz",
+      "title": "AMBERGRIS",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "かめりあ",
+      "source": "https://w.atwiki.jp/jubeat/pages/2294.html"
+    },
+    {
+      "id": "jubeat-plus/BELIEVE IN LOVE.mcz",
+      "title": "BELIEVE IN LOVE",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Ai + BAND)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/BLUE BIRD.mcz",
+      "title": "BLUE BIRD",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(浜崎あゆみ)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/CRAZY FOR YOU.mcz",
+      "title": "CRAZY FOR YOU",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "(Kylee)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/Diver.mcz",
+      "title": "Diver",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "(NICO Touches the Walls)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/endscape.mcz",
+      "title": "endscape",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(UVERworld)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-saucer/ETERNAL BLAZE.mcz",
+      "title": "ETERNAL BLAZE",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(水樹奈々)",
+      "source": "https://w.atwiki.jp/jubeat/pages/1083.html"
+    },
+    {
+      "id": "jubeat-saucer-fulfill/ETERNAL_BLAZE___2__.mcz",
+      "title": "ETERNAL BLAZE [ 2 ]",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(水樹奈々)",
+      "source": "https://w.atwiki.jp/jubeat/pages/1083.html"
+    },
+    {
+      "id": "jubeat-festo/Everlasting Message (BEMANI SYMPHONY Arr_).mcz",
+      "title": "Everlasting Message (BEMANI SYMPHONY Arr.)",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "ぺのれり × Osamu Kubota + gaQdan",
+      "source": "https://w.atwiki.jp/sonicy_memo/pages/14.html"
+    },
+    {
+      "id": "jubeat-plus/Frogger's Song.mcz",
+      "title": "Frogger's Song",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "-",
+      "source": "https://p.eagate.573.jp/game/jubeat/lab/p/editor_detail.html?eid=gI7JQr"
+    },
+    {
+      "id": "jubeat-plus/Garden of Love.mcz",
+      "title": "Garden of Love",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(MAKAI feat.青山テルマ)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/HOT LIMIT.mcz",
+      "title": "HOT LIMIT",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(HIGH and MIGHTY COLOR)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ripples/HOT LIMIT.mcz",
+      "title": "HOT LIMIT",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(HIGH and MIGHTY COLOR)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-festo/HOT LIMIT [ 2 ].mcz",
+      "title": "HOT LIMIT [ 2 ]",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(HIGH and MIGHTY COLOR)",
+      "source": "https://w.atwiki.jp/jubeat/pages/166.html"
+    },
+    {
+      "id": "jubeat/I my me mine.mcz",
+      "title": "I my me mine",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(POLYSICS)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/I my me mine.mcz",
+      "title": "I my me mine",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(POLYSICS)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/I'M IN THE MOOD FOR DANCING.mcz",
+      "title": "I'M IN THE MOOD FOR DANCING",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Nolans)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-festo/Idola (BEMANI SYMPHONY Arr_).mcz",
+      "title": "Idola (BEMANI SYMPHONY Arr.)",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "iconoclasm × 原口 大 + gaQdan",
+      "source": "https://w.atwiki.jp/sonicy_memo/pages/4.html"
+    },
+    {
+      "id": "jubeat-beyond-ave/IGNITE THE IRON HEART.mcz",
+      "title": "IGNITE THE IRON HEART",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "BEMANI Sound Team \"L.E.D.\"",
+      "source": "https://www.namu.moe/w/IGNITE%20THE%20IRON%20HEART"
+    },
+    {
+      "id": "jubeat-festo/LANA - キロクノカケラ - [ 2 ].mcz",
+      "title": "LANA - キロクノカケラ - [ 2 ]",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "TOMOSUKE×Jazzin'park",
+      "source": "https://w.atwiki.jp/jubeat/pages/1050.html"
+    },
+    {
+      "id": "jubeat-plus/Let's ダバダバ.mcz",
+      "title": "Let's ダバダバ",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "(POLYSICS)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/Love so sweet.mcz",
+      "title": "Love so sweet",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(ARASHI)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/Lovin' Life.mcz",
+      "title": "Lovin' Life",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(FUNKY MONKEY BABYS)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ripples/Lovin' Life.mcz",
+      "title": "Lovin' Life",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(FUNKY MONKEY BABYS)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ave/MONOLITH.mcz",
+      "title": "MONOLITH",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "TOMOSUKE",
+      "source": "https://w.atwiki.jp/jubeat/pages/2272.html"
+    },
+    {
+      "id": "jubeat-plus/My SunShine.mcz",
+      "title": "My SunShine",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(ROCK'A'TRENCH)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/PEACH.mcz",
+      "title": "PEACH",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(大塚愛)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/PEACH.mcz",
+      "title": "PEACH",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(大塚愛)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/POP STAR.mcz",
+      "title": "POP STAR",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(平井堅)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/POP STAR.mcz",
+      "title": "POP STAR",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(平井堅)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/PROMiSE.mcz",
+      "title": "PROMiSE",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(MiChi)",
+      "source": "https://w.atwiki.jp/jubeat/pages/561.html"
+    },
+    {
+      "id": "jubeat-plus/Real voice.mcz",
+      "title": "Real voice",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(絢香)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-knit/Sandstorm.mcz",
+      "title": "Sandstorm",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Darude)",
+      "source": "https://w.atwiki.jp/jubeat/pages/309.html"
+    },
+    {
+      "id": "jubeat-plus/Sandstorm.mcz",
+      "title": "Sandstorm",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Darude)",
+      "source": "https://w.atwiki.jp/jubeat/pages/309.html"
+    },
+    {
+      "id": "jubeat-plus/SPEED KING.mcz",
+      "title": "SPEED KING",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Rip Slyme)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-festo/starmine (BEMANI SYMPHONY Arr_).mcz",
+      "title": "starmine (BEMANI SYMPHONY Arr.)",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "Ryu☆ × デビン木下 + gaQdan",
+      "source": "https://w.atwiki.jp/jubeat/pages/2175.html"
+    },
+    {
+      "id": "jubeat-knit/Supercalifragilisticexpialidocious.mcz",
+      "title": "Supercalifragilisticexpialidocious",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Julie Andrews & Dick Van Dyke)",
+      "source": "https://w.atwiki.jp/sonicy_memo/pages/483.html"
+    },
+    {
+      "id": "jubeat-plus/Supercalifragilisticexpialidocious.mcz",
+      "title": "Supercalifragilisticexpialidocious",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Julie Andrews & Dick Van Dyke)",
+      "source": "https://w.atwiki.jp/sonicy_memo/pages/483.html"
+    },
+    {
+      "id": "jubeat-plus/YELL _エール_.mcz",
+      "title": "YELL ～エール～",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(コブクロ)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/こんなに近くで___.mcz",
+      "title": "こんなに近くで...",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(Crystal Kay)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-festo/さよなら世界 (BEMANI SYMPHONY Arr_).mcz",
+      "title": "さよなら世界 (BEMANI SYMPHONY Arr.)",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "猫叉Master Arranged by ござ",
+      "source": "https://w.atwiki.jp/jubeat/pages/2193.html"
+    },
+    {
+      "id": "jubeat-plus/じょいふる.mcz",
+      "title": "じょいふる",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(いきものがかり)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/ふがいないや.mcz",
+      "title": "ふがいないや",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(YUKI)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/ふがいないや.mcz",
+      "title": "ふがいないや",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(YUKI)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/キスしてほしい.mcz",
+      "title": "キスしてほしい",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(中ノ森BAND)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/キスしてほしい.mcz",
+      "title": "キスしてほしい",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(中ノ森BAND)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/キミ_メグル_ボク.mcz",
+      "title": "キミ、メグル、ボク",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(秦 基博)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ripples/キミ_メグル_ボク.mcz",
+      "title": "キミ、メグル、ボク",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(秦 基博)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/キューティーハニー.mcz",
+      "title": "キューティーハニー",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(倖田來未)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/コネクト.mcz",
+      "title": "コネクト",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "(ClariS)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/シャカビーチ〜Laka Laka La〜.mcz",
+      "title": "シャカビーチ〜Laka Laka La〜",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "(UVERworld)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/タッチ.mcz",
+      "title": "タッチ",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "(岩崎良美)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-beyond-ave/ネハン.mcz",
+      "title": "ネハン",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "Somari",
+      "source": "https://p.eagate.573.jp/game/jubeat/beyond/artists/detail/02.html"
+    },
+    {
+      "id": "jubeat-plus/フレンズ.mcz",
+      "title": "フレンズ",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "(レベッカ)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-beyond-ave/ムラサキグルマ.mcz",
+      "title": "ムラサキグルマ",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "ここなつ Produced by はるなば",
+      "source": "https://w.atwiki.jp/jubeat/pages/2386.html"
+    },
+    {
+      "id": "jubeat-festo/ラプンツェル.mcz",
+      "title": "ラプンツェル",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "RoughSketch",
+      "source": "https://remywiki.com/Rapunzel_%28RoughSketch%29"
+    },
+    {
+      "id": "jubeat-plus/リーサルエンフォーサーズ メドレー.mcz",
+      "title": "リーサルエンフォーサーズ メドレー",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "-",
+      "source": "https://w.atwiki.jp/jubeat/pages/505.html"
+    },
+    {
+      "id": "jubeat/一色.mcz",
+      "title": "一色",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(NANA starring MIKA NAKASHIMA)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/一色.mcz",
+      "title": "一色",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(NANA starring MIKA NAKASHIMA)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/光のロック.mcz",
+      "title": "光のロック",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(サンボマスター)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/光のロック.mcz",
+      "title": "光のロック",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(サンボマスター)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/全力少年.mcz",
+      "title": "全力少年",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(スキマスイッチ)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/全力少年.mcz",
+      "title": "全力少年",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(スキマスイッチ)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-festo/嘆きの樹 (BEMANI SYMPHONY Arr_).mcz",
+      "title": "嘆きの樹 (BEMANI SYMPHONY Arr.)",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "Cuvelia × Nagiha + gaQdan",
+      "source": "https://w.atwiki.jp/jubeat/pages/2194.html"
+    },
+    {
+      "id": "jubeat-plus/夏祭り.mcz",
+      "title": "夏祭り",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(ジッタリンジン)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ripples/夏祭り.mcz",
+      "title": "夏祭り",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(ジッタリンジン)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/天体観測.mcz",
+      "title": "天体観測",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(BUMP OF CHICKEN)",
+      "source": "https://w.atwiki.jp/jubeat/pages/74.html"
+    },
+    {
+      "id": "jubeat-plus/天体観測.mcz",
+      "title": "天体観測",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(BUMP OF CHICKEN)",
+      "source": "https://w.atwiki.jp/jubeat/pages/74.html"
+    },
+    {
+      "id": "jubeat-plus/太陽の地図.mcz",
+      "title": "太陽の地図",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(MISIA)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/密林の戦い.mcz",
+      "title": "密林の戦い",
+      "old_artist": [
+        "",
+        "",
+        ""
+      ],
+      "artist": "-",
+      "source": "https://w.atwiki.jp/jubeat/pages/559.html"
+    },
+    {
+      "id": "jubeat-plus/情熱大陸.mcz",
+      "title": "情熱大陸",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(葉加瀬太郎)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/愛をとりもどせ__.mcz",
+      "title": "愛をとりもどせ！！",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(クリスタルキング)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ripples/愛をとりもどせ__.mcz",
+      "title": "愛をとりもどせ！！",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(クリスタルキング)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/抱いてセニョリータ.mcz",
+      "title": "抱いてセニョリータ",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(山下智久)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/抱いてセニョリータ.mcz",
+      "title": "抱いてセニョリータ",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(山下智久)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-festo/朧 (BEMANI SYMPHONY Arr_).mcz",
+      "title": "朧 (BEMANI SYMPHONY Arr.)",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "HHH×MM×ST × 浦木 裕太 + gaQdan",
+      "source": "https://w.atwiki.jp/jubeat/pages/2167.html"
+    },
+    {
+      "id": "jubeat-plus/空色デイズ.mcz",
+      "title": "空色デイズ",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(中川翔子)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/粉雪.mcz",
+      "title": "粉雪",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(レミオロメン)",
+      "source": "https://w.atwiki.jp/jubeat/pages/69.html"
+    },
+    {
+      "id": "jubeat-plus/素直になれたら.mcz",
+      "title": "素直になれたら",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(JUJU)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-ripples/素直になれたら.mcz",
+      "title": "素直になれたら",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(JUJU)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat/負けないで.mcz",
+      "title": "負けないで",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(ZARD)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    },
+    {
+      "id": "jubeat-plus/負けないで.mcz",
+      "title": "負けないで",
+      "old_artist": [
+        "Unknown Artist",
+        "Unknown Artist",
+        "Unknown Artist"
+      ],
+      "artist": "(ZARD)",
+      "source": "https://w.atwiki.jp/jubeat/pages/566.html"
+    }
+  ]
+}

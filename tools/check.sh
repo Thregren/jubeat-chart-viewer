@@ -51,15 +51,21 @@ check_js() {
 run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
-run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs tools/test_marker_window.mjs tools/test_audio_loading.mjs
+run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs tools/test_marker_window.mjs tools/test_audio_loading.mjs tools/test_watch_options.mjs tools/test_recording_fingerprint.mjs tools/test_recording_resources.mjs
 
 run "横向节奏轴拍点几何" node --test tools/test_rhythm_timeline.mjs
+
+run "共享版本资料一致性" "$PY" tools/version_data.py --check
 
 run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
 
 run "资源预算与增量索引" "$PY" tools/test_resource_limits.py
 
 run "缓存并发与原子写入" "$PY" tools/test_media_concurrency.py
+
+run "录制章节与定格判定" "$PY" tools/test_recording_timeline.py
+
+run "内容增量、封面门禁与缓存清理" "$PY" tools/test_asset_build.py
 
 run "构建失败与发布回滚" "$PY" tools/test_build.py
 

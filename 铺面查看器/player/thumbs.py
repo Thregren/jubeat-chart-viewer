@@ -72,3 +72,14 @@ def make(src: Path, dest: Path, size: int, quality: int) -> bool:
     except Exception:
         return False
     return False
+
+
+def profile() -> str:
+    """Include backend implementation version in thumbnail cache signatures."""
+    kind = backend()
+    if kind == "pillow":
+        import PIL
+        return kind + ":" + PIL.__version__
+    if kind == "sips":
+        return kind + ":" + subprocess.check_output(["sips", "--version"], text=True).strip()
+    return kind

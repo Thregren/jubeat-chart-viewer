@@ -109,6 +109,7 @@ def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[s
         r.check(f"NFC：{stem}", False, "路径不是 NFC，Windows 上会 404")
 
     for chart in song["charts"]:
+        r.check(f"等级 {song['id']} {chart['code']}", bool(str(chart.get("level", "")).strip()))
         rel = f"data/charts/{stem}/{chart['code']}.json"
         want.add(rel)
         path = out / rel
@@ -144,6 +145,7 @@ def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[s
         # 没有完整索引可查：只要这首歌还在库索引里，它的音源就不算孤儿文件
         want.add(rel_audio)
 
+    r.check(f"封面已声明 {song['id']}", bool(song.get("cover")))
     if song.get("cover"):
         ext = os.path.splitext(song["cover"])[1].lower() or ".png"
         rel = f"media/cover/{stem}{ext}"
@@ -158,7 +160,7 @@ def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[s
             r.check(f"缩略图 {rel_thumb}", True)
         elif rel_thumb in degraded:
             # 那 5 张源封面是坏 PNG，缩略图做不出来是预期内的（前端用 ♪ 占位）
-            r.warn(f"缩略图 {rel_thumb}", "源封面本身是坏图，前端用 ♪ 占位")
+            r.check(f"缩略图 {rel_thumb}", False, "封面降级不允许发布")
         elif not path.is_file():
             r.check(f"缩略图 {rel_thumb}", False, "文件不存在")
         else:
@@ -220,6 +222,7 @@ def main() -> int:
         except Exception as exc:
             r.check("data/build.json 可解析", False, str(exc))
     degraded = set(report.get("degraded") or [])
+    r.check("构建报告无封面降级", not degraded)
     if degraded:
         print(f"  ! 构建期降级 {len(degraded)} 项（源素材本身有问题，前端有占位）")
 

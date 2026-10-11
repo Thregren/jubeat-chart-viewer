@@ -20,7 +20,7 @@
     python3 tools/build_site.py --limit 20         # 只做前 20 首（调试用）
     python3 tools/build_site.py --jobs 8           # 并行度（默认 CPU 数）
 
-增量规则：以 .mcz 的修改时间为准，已存在且不比源文件旧就跳过。
+增量规则：逐个 ZIP 成员核对 SHA-256；转换参数变化时只重建受影响资源。
 """
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ import sys
 import time
 import tempfile
 import unicodedata
+import zipfile
 from pathlib import Path
 from site_transaction import SiteTransaction
 
@@ -107,6 +108,8 @@ def write_bytes_fresh(dest: Path, data: bytes, src_mtime: float, force: bool) ->
 
 class Stats:
     def __init__(self) -> None:
+        self.previous_sources = {}
+        self.sources = {}
         self.files = 0
         self.skipped = 0
         self.bytes = 0
@@ -193,72 +196,82 @@ def prune(out: Path, want: set[str]) -> int:
 def build_song(song: dict, out: Path, force: bool, force_audio: bool, stats: Stats) -> None:
     """展开一首歌的音频 / 封面 / 缩略图 / 谱面。"""
     mcz = config.LIBRARY / song["id"]
-    mtime = mcz.stat().st_mtime
     stem = nfc(stem_of(song["id"]))
-
-    # 音源：mcz 里是 Ogg Vorbis，转成 Ogg Opus 再落盘（体积砍掉三分之一左右）。
-    # 转码结果带内容哈希缓存（见 audio_opus.py），所以增量构建不会反复编码。
-    # force_audio：编码参数变了（比如换了码率）时忽视时间戳，把全库音源重写一遍。
-    if song.get("audio"):
-        dest = out / "media" / "audio" / f"{stem}.ogg"
-        # 除了时间戳，还看一眼编码：目标是 Opus 而盘上还是 Vorbis（上一版遗留、
-        # 或者中途换过编码参数）时照样重写 —— 光比 mtime 会把错的状态永久固化。
-        if fresh(dest, mtime, force or force_audio) and not (
-                WANT_OPUS and not audio_opus.file_is_opus(dest)):
+    previous = stats.previous_sources.get(song["id"], {})
+    current = {}
+    stats.sources[song["id"]] = current
+    if not song.get("cover"):
+        raise ValueError("缺少封面：" + song["id"])
+    if not song.get("audio") or not song.get("charts"):
+        raise ValueError("缺少音源或谱面：" + song["id"])
+    with zipfile.ZipFile(mcz) as archive:
+        def source(member):
+            data = archive.read(member)
+            return data, hashlib.sha256(data).hexdigest()
+        def unchanged(key, signature, dest, forced=False):
+            old = previous.get(key, {})
+            ok = (not forced and old.get("signature") == signature and dest.is_file()
+                  and dest.stat().st_size > 0 and old.get("size") == dest.stat().st_size
+                  and old.get("mtime_ns") == dest.stat().st_mtime_ns)
+            current[key] = {"signature": signature}
+            return ok
+        def remember(key, dest):
+            st = dest.stat()
+            current[key].update(size=st.st_size, mtime_ns=st.st_mtime_ns)
+        data, digest = source(song["audio"])
+        dest = out / "media/audio" / f"{stem}.ogg"
+        signature = digest + ":" + audio_opus.profile()
+        if unchanged("audio", signature, dest, force or force_audio):
             stats.skipped += 1
         else:
-            data, how = audio_opus.encode(read_member(mcz, song["audio"]), AUDIO_CACHE_DIR)
-            if how == "encoded":
-                stats.audio_encoded += 1
-            elif how == "cached":
-                stats.audio_cached += 1
-            elif how in ("no-ffmpeg", "failed"):
-                stats.audio_kept += 1
-            # 这里已经判过「该写」了，再让 write_bytes_fresh 自己判一次时间戳，
-            # 就会因为 dest 比源新而直接返回（音源永远写不进去）。
-            write_bytes_fresh(dest, data, mtime, force=True)
-            stats.added(len(data))
-
-    # 封面原图 + 缩略图
-    if song.get("cover"):
-        ext = os.path.splitext(song["cover"])[1].lower() or ".png"
-        cover_dest = out / "media" / "cover" / f"{stem}{ext}"
-        if not fresh(cover_dest, mtime, force):
-            data = read_member(mcz, song["cover"])
-            write_bytes_fresh(cover_dest, data, mtime, force)
-            stats.added(len(data))
-        else:
-            stats.skipped += 1
-
-        thumb_dest = out / "media" / "thumb" / f"{stem}.jpg"
-        if not fresh(thumb_dest, mtime, force):
-            thumb_dest.parent.mkdir(parents=True, exist_ok=True)
-            # A staging copy may share an inode with the published tree.
-            thumb_dest.unlink(missing_ok=True)
-            if thumbs.make(cover_dest, thumb_dest, config.THUMB_SIZE, config.THUMB_QUALITY):
-                stats.added(thumb_dest.stat().st_size)
-            elif thumbs.backend() == "none":
-                # 没有任何缩略图后端（没有 Pillow 也没有 sips）才是真失败：
-                # 这会让整个曲库的列表都退化成大图，必须报出来。
-                stats.failed.append(f"thumb: {song['id']}（本机没有 Pillow / sips，缩略图做不了）")
+            data, how = audio_opus.encode(data, AUDIO_CACHE_DIR)
+            if how == "encoded": stats.audio_encoded += 1
+            elif how == "cached": stats.audio_cached += 1
+            else: stats.audio_kept += 1
+            if dest.is_file() and dest.read_bytes() == data: stats.skipped += 1
             else:
-                # 后端可用但这一张失败了 —— 源封面本身就是坏图（README「已知限制」里那 5 张）
-                stats.degraded.append(f"media/thumb/{stem}.jpg")
+                write_atomic(dest, data)
+                stats.added(len(data))
+        remember("audio", dest)
+        data, digest = source(song["cover"])
+        ext = Path(song["cover"]).suffix.lower() or ".png"
+        cover_dest = out / "media/cover" / f"{stem}{ext}"
+        if unchanged("cover", digest, cover_dest, force):
+            stats.skipped += 1
         else:
-            stats.skipped += 1
-
-    # 谱面
-    for chart in song["charts"]:
-        dest = out / "data" / "charts" / stem / f"{chart['code']}.json"
-        if fresh(dest, mtime, force):
-            stats.skipped += 1
-            continue
-        try:
-            data = read_member(mcz, chart["file"])
-            write_bytes_fresh(dest, data, mtime, force)
+            write_atomic(cover_dest, data)
             stats.added(len(data))
-        except Exception as exc:
-            stats.failed.append(f"chart {song['id']} {chart['file']}: {exc}")
+        remember("cover", cover_dest)
+        thumb_dest = out / "media/thumb" / f"{stem}.jpg"
+        signature = f"{digest}:thumb-v2:{config.THUMB_SIZE}:{config.THUMB_QUALITY}:{thumbs.profile()}"
+        if unchanged("thumb", signature, thumb_dest, force):
+            stats.skipped += 1
+        else:
+            thumb_dest.parent.mkdir(parents=True, exist_ok=True)
+            thumb_dest.unlink(missing_ok=True)
+            if not thumbs.make(cover_dest, thumb_dest, config.THUMB_SIZE, config.THUMB_QUALITY):
+                raise ValueError("封面无法解码或生成缩略图：" + song["id"])
+            stats.added(thumb_dest.stat().st_size)
+        remember("thumb", thumb_dest)
+        for chart in song["charts"]:
+            if not str(chart.get("level", "")).strip():
+                raise ValueError("缺少等级：" + song["id"] + " " + chart["code"])
+            data, digest = source(chart["file"])
+            parsed = json.loads(data)
+            if not isinstance(parsed.get("note"), list) or not parsed["note"]:
+                raise ValueError("空谱面：" + song["id"] + " " + chart["code"])
+            meta = parsed.get("meta", {}).get("song", {})
+            for key in ("title", "artist"):
+                value = str(meta.get(key, "")).strip()
+                if value and value != str(song.get(key, "")).strip():
+                    raise ValueError("谱面曲名/作者不一致：" + song["id"] + " " + chart["code"])
+            key = "chart:" + chart["code"]
+            dest = out / "data/charts" / stem / f"{chart['code']}.json"
+            if unchanged(key, digest, dest, force): stats.skipped += 1
+            else:
+                write_atomic(dest, data)
+                stats.added(len(data))
+            remember(key, dest)
 
 
 def build_markers(out: Path, force: bool, stats: Stats) -> list[str]:
@@ -377,19 +390,15 @@ def run_build(args, out: Path, extension=None) -> int:
         # 不致命的降级：站点照样能建，只是音源保持源格式（安装包会大一截）
         print("⚠️  没找到 ffmpeg：音源原样保留（想转 Opus 先 brew install ffmpeg）")
 
-    # 编码参数变了就把音源整体重写一遍。只看 mtime 的话，改了码率重建会「全都跳过」，
-    # 站点里留的还是上一版编码的音源 —— 这种坑不该靠人记得清目录来躲。
-    prev_codec = None
-    try:
-        prev_codec = json.loads((out / "data" / "build.json").read_text(encoding="utf-8")).get("audio_codec")
-    except (OSError, ValueError):
-        prev_codec = None
-    force_audio = args.force or prev_codec != audio_opus.describe()
-    if force_audio and not args.force:
-        print(f"  音源编码从「{prev_codec}」变成「{audio_opus.describe()}」：音源全部重写")
+    # 每个音源独立核对 profile（包括 ffmpeg 版本）；不因描述串变化重写全库。
+    force_audio = args.force
 
     # 1) 前端文件
     stats = Stats()
+    try:
+        state = json.loads((out / ".build-sources.json").read_text())
+        if state.get("schema") == 1: stats.previous_sources = state["songs"]
+    except (OSError, ValueError, KeyError): pass
     for src in static_files():
         name = src.name
         dest = out / (name if name == "index.html" else f"static/{name}")
@@ -495,6 +504,9 @@ def run_build(args, out: Path, extension=None) -> int:
     write_atomic(index_html_path, html.encode("utf-8"))
     write_atomic(out / "data" / "library.json", json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
+    write_atomic(out / ".build-sources.json", json.dumps({"schema": 1, "songs": stats.sources}, ensure_ascii=False).encode())
+    from site_gc import record_snapshot
+    record_snapshot(out, expected_paths(index["songs"], marker_files, se_files) | set(extra_paths))
     if args.prune:
         wanted = expected_paths(songs, marker_files, se_files) | set(extra_paths)
         # Keep prior hashed resources for already-open browser sessions.

@@ -132,7 +132,7 @@ site/                           ← 唯一的「运行时数据」，体积随�
 ├── static/sfx.js                 打点音合成（7 KB）
 ├── static/record.js              录制模式 `?rec=1`：预设 + 卡片 + `__rec` 接口（10 KB）
 ├── static/record.css             录制模式版面：整页只剩一张卡片（3 KB）
-├── data/library.json             曲库索引（2269 首曲目）
+├── data/library.json             曲库索引（2549 首曲目）
 ├── data/markers.json             marker 清单（45 套 + 1 种判定特效）
 ├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 6797 个）
 ├── media/audio/<曲目>.ogg        音源（Ogg Opus 80k）
@@ -143,7 +143,7 @@ site/                           ← 唯一的「运行时数据」，体积随�
 
 - **一次展开，到处跑**：构建做两件事 —— 解 zip 改名，加索引；音源顺手从 mcz 里的
   **Vorbis 转成 Ogg Opus 80k**（体积砍掉三分之一，听感基本一样，见 `tools/audio_opus.py`）。
-  当前曲库（2269 首）首次约 6 分钟（其中转码约 5 分钟，之后有内容哈希缓存），增量 30 秒左右；
+  当前曲库（2549 首）首次约 6 分钟（其中转码约 5 分钟，之后有内容哈希缓存），增量 30 秒左右；
   本机没装 `ffmpeg` 时不转码、原样复制，站点照跑，只是包大一圈
 - **索引里就带 note / hold 数**，列表排序、筛选、物量条都不用再读谱面
 - 曲库（`music/`）和产物（`site/` 等）都**不入库**，仓库里只有代码和 marker 素材
@@ -996,7 +996,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 - **音源是 Ogg Opus**：Chrome / Edge / Firefox / 各安卓浏览器都没问题；Safari 要 **18.4** 以上
   才认 Ogg 容器，而桌面 Safari 还得 **macOS 15.4（Sequoia）**以上才带 Opus 解码器 ——
   够不上时页面会弹一条提示让人换 Chrome / Edge / Firefox；另外浏览器要求先有一次页面交互才允许播放
-- **曲库封面已补齐**（2026-10-07）：当前 2269 首的 `.mcz` 都带可读取的封面，
+- **曲库封面已补齐**（2026-10-07）：当前 2549 首的 `.mcz` 都带可读取的封面，
   静态站点同步包含全部封面原图和缩略图。此前 57 首源包缺图，现已把本地补图写回对应曲目包；
   《風になりたい》原补图误用了总览拼图，已改为 [RemyWiki 曲目页](https://remywiki.com/Kaze_ni_naritai)
   提供的 THE BOOM 正确封面。`cache/cover-overrides/` 仍可供录制工具优先读取本地补图。
@@ -1027,7 +1027,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 - 歌曲播放完成后暂停并回到开头；循环播放和 A–B 循环保持原有行为。
 - 物量条使用统一图形坐标，并按屏幕帧刷新拖动预览；松手只提交一次音频跳转。
 - 换歌、切难度和音源准备使用取消请求及状态校验，过期结果不会覆盖新选择；播放速度改变不再造成时间跳位。
-- Marker 下载最多 6 路；已完成的图片按最近使用顺序保留最多 256 张，并保护当前及正在切换的设计。曲目列表已有 `content-visibility`，当前 2,269 行完整渲染约 250 ms；保留完整列表便于搜索和键盘访问。
+- Marker 下载最多 6 路；已完成的图片按最近使用顺序保留最多 256 张，并保护当前及正在切换的设计。曲目列表采用可见行虚拟化，并保留搜索和键盘访问。
 - 构建先在临时目录完成，失败保留原站点，发布失败回滚；`--limit` 与 `--prune` 不能一起使用。前端和曲库资源使用内容哈希文件名，索引发布在资源之后，旧哈希文件保留以支持已打开的页面。
 - Electron 固定为 44.6.0，electron-builder 固定为 26.15.3。构建依赖的 `sprintf-js` 存在尚无已发布修复的中风险精度参数拒绝服务问题；不在网站运行时使用，审计见 `npm audit --registry=https://registry.npmjs.org`。
 - PHP 入口仅公开站点文件，禁止编码后的隐藏路径、源文件和根目录配置；HEAD 请求不读取文件正文，错误响应不缓存。
@@ -1035,3 +1035,12 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 检查：`sh tools/check.sh --full`、`electron/node_modules/.bin/electron tools/ui_smoke.js`、`electron/node_modules/.bin/electron tools/mobile_touch_smoke.js`。PHP 入口需额外运行 `python3 tools/php_smoke_test.py --php <php-cli>`。
 
 网站监测：`python3 tools/monitor_site.py` 保存最近 168 次可用性、版本、曲库计数、音频 Range、证书与延迟检查；`tools/monitor_remote.sh` 只读汇总源站磁盘、负载、证书有效期、重启需求、状态码和近期响应字节数。日志样本只反映最近请求，不代表全日流量。
+
+
+### 0.6.26 曲库与构建核对
+
+当前已核实曲库为 2,549 首、7,645 张谱面；83 个曲包的作者资料已修正。曲库数量以每次构建的 `site/data/build.json` 为准。增量构建按 ZIP 成员 SHA-256 与转换配置判断，不再以整包修改时间判断所有资源。作者修改只更新受影响的谱面和索引；封面缺失或不能解码、缺等级、难度间曲名或作者冲突均阻止构建发布。
+
+`python3 tools/site_gc.py --out site` 预览旧哈希资源清理；加 `--apply` 才执行，并通过构建锁及事务发布。保留至少三代与最近七天引用，首次接管旧资源有七天宽限期。不要把生成的 `.build-sources.json` 和 `.asset-history.json` 当成公开曲库数据上传。
+
+版本顺序、界面名称及录制署名写法统一在 `铺面查看器/player/static/versions.json`，修改后运行 `python3 tools/version_data.py`。录制复用模块在 `tools/recording_fingerprint.mjs` 和 `tools/recording_audit.py`；私用批量工具仍不入库，接入后旧的无源指纹成片不能自动证明为最新。现有录制进程不会被中断，新核验在下次启动生效。

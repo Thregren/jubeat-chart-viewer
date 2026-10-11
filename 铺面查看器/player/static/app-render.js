@@ -125,6 +125,7 @@
     A.drawFirstMarker(mediaT);
     updateComboDisplay();
     drawDensity(mediaT);
+    A.drawTimeline?.(mediaT);
   }
 
   // 画面「需要重画」的脏标记 + 把渲染循环重新点起来的入口。

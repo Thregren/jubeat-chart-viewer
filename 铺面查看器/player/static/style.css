@@ -629,6 +629,26 @@ button:focus-visible,
 }
 
 /* —— 物量显示 / 进度条 —— */
+.chart-overview { position: relative; margin-top: 10px; }
+.chart-overview .density-wrap { margin-top: 0; }
+.timeline-wrap {
+  height: 112px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0a0d14;
+}
+.timeline-wrap[hidden] { display: none; }
+#timelineCanvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#timelineCanvas:active { cursor: grabbing; }
+#timelineCanvas:focus-visible { outline: 2px solid #66dcff; outline-offset: -2px; }
+.timeline-toggle { width: auto; padding: 0 10px; white-space: nowrap; }
+.timeline-toggle[aria-pressed="true"] { color: #66dcff; border-color: #66dcff; }
+@media (max-width: 600px) {
+  .timeline-wrap { position: absolute; inset: 0; height: auto; margin: 0; z-index: 1; }
+  .timeline-open .density-wrap { visibility: hidden; pointer-events: none; }
+}
 .density-wrap {
   position: relative;
   margin-top: 10px;

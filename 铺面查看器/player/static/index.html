@@ -8,13 +8,13 @@
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.6.24" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.24" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.24" />
+  <link rel="manifest" href="static/manifest.json?v=0.6.25" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.25" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.25" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.24" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.24" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.25" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.25" />
 </head>
 <body>
   <div id="app">
@@ -44,7 +44,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.24</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.25</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -159,6 +159,25 @@
         </div>
 
         <div class="options" id="optionsPanel">
+          <div class="opt-row">
+            <button id="btnTimeline" class="icon-btn timeline-toggle" type="button"
+                    aria-pressed="false" aria-expanded="false" aria-controls="timelineWrap">节奏轴</button>
+            <label class="ctl">拍线
+              <select id="timelineDivision" aria-label="节奏轴拍线细分">
+                <option value="1" selected>四分音符</option>
+                <option value="2">八分音符（2 等分）</option>
+                <option value="3">十二分音符（3 等分）</option>
+                <option value="4">十六分音符（4 等分）</option>
+              </select>
+            </label>
+            <label class="ctl">可见拍数
+              <select id="timelineSpan" aria-label="节奏轴可见拍数">
+                <option value="4" selected>4 拍</option>
+                <option value="8">8 拍</option>
+                <option value="16">16 拍</option>
+              </select>
+            </label>
+          </div>
           <!-- 变速 / 偏移 / 循环收进折叠区：控制条只留播放按钮和时间，省竖向高度 -->
           <div class="opt-row">
             <label class="ctl">播放速度
@@ -327,10 +346,17 @@
           </div>
         </div>
 
-        <div class="density-wrap" id="densityWrap">
-          <canvas id="densityCanvas" aria-label="物量显示 / 进度条"></canvas>
-          <div class="density-hud">
-            <span id="densityInfo">物量 · 拖这里跳转</span>
+        <div class="chart-overview" id="chartOverview">
+          <div class="timeline-wrap" id="timelineWrap" hidden>
+            <canvas id="timelineCanvas" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"
+                    aria-label="横向节奏轴，左右拖动或按方向键定位"
+                    title="红线为当前位置；点击定位，左右拖动回看；方向键按所选细分移动一格"></canvas>
+          </div>
+          <div class="density-wrap" id="densityWrap">
+            <canvas id="densityCanvas" aria-label="物量显示 / 进度条"></canvas>
+            <div class="density-hud">
+              <span id="densityInfo">物量 · 拖这里跳转</span>
+            </div>
           </div>
         </div>
 
@@ -340,21 +366,23 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.24"></script>
-  <script src="static/core.js?v=0.6.24"></script>
-  <script src="static/runtime.js?v=0.6.24"></script>
+  <script src="static/sfx.js?v=0.6.25"></script>
+  <script src="static/core.js?v=0.6.25"></script>
+  <script src="static/runtime.js?v=0.6.25"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.24"></script>
+  <script src="static/record.js?v=0.6.25"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/app-base.js?v=0.6.24"></script>
-  <script src="static/app-audio.js?v=0.6.24"></script>
-  <script src="static/first-marker.js?v=0.6.24"></script>
-  <script src="static/app-marker.js?v=0.6.24"></script>
-  <script src="static/app-density.js?v=0.6.24"></script>
-  <script src="static/app-library.js?v=0.6.24"></script>
-  <script src="static/app-player.js?v=0.6.24"></script>
-  <script src="static/app-render.js?v=0.6.24"></script>
-  <script src="static/app-wiring.js?v=0.6.24"></script>
-  <script src="static/app.js?v=0.6.24"></script>
+  <script src="static/app-base.js?v=0.6.25"></script>
+  <script src="static/app-audio.js?v=0.6.25"></script>
+  <script src="static/first-marker.js?v=0.6.25"></script>
+  <script src="static/app-marker.js?v=0.6.25"></script>
+  <script src="static/app-density.js?v=0.6.25"></script>
+  <script src="static/rhythm-timeline.js?v=0.6.25"></script>
+  <script src="static/app-timeline.js?v=0.6.25"></script>
+  <script src="static/app-library.js?v=0.6.25"></script>
+  <script src="static/app-player.js?v=0.6.25"></script>
+  <script src="static/app-render.js?v=0.6.25"></script>
+  <script src="static/app-wiring.js?v=0.6.25"></script>
+  <script src="static/app.js?v=0.6.25"></script>
 </body>
 </html>

@@ -1,0 +1,36 @@
+/* Beat-space geometry shared by the horizontal timeline and its tests. */
+(function (root, factory) {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./core.js"));
+  else root.JubeatTimeline = factory(root.JubeatCore);
+})(typeof window === "undefined" ? globalThis : window, function (Core) {
+  "use strict";
+  function create(notes, events) {
+    const map = Core.buildTimeMap(events);
+    const entries = notes.map(n => ({
+      beat: n.beat, end: n.endBeat ?? n.beat, index: n.index,
+      hold: n.kind === "hold",
+    })).filter(n => Number.isFinite(n.beat) && Number.isFinite(n.end)).sort((a,b) => a.beat-b.beat);
+    const maxHold = entries.reduce((v,n) => Math.max(v, n.end-n.beat), 0);
+    function frame(sec, width, span = 4, division = 1) {
+      span = [4,8,16].includes(span) ? span : 4;
+      division = [1,2,3,4].includes(division) ? division : 1;
+      const beat = map.secToBeat(sec), left = beat - span * .2, right = left + span;
+      const scale = Math.max(1,width) / span;
+      const x = b => (b-left)*scale;
+      const lines = [];
+      for (let tick = Math.ceil(left*division); tick <= Math.floor(right*division); tick++) {
+        lines.push({beat:tick/division, x:x(tick/division), major:tick%division===0});
+      }
+      let lo=0, hi=entries.length;
+      while(lo<hi) { const mid=(lo+hi)>>1; if(entries[mid].beat < left-maxHold)lo=mid+1;else hi=mid; }
+      const visible=[];
+      for(let i=lo;i<entries.length && entries[i].beat<=right;i++) {
+        const n=entries[i]; if(n.end<left)continue;
+        visible.push({...n,x:x(n.beat),endX:x(n.end)});
+      }
+      return {beat,left,right,scale,playhead:width*.2,lines,notes:visible};
+    }
+    return {frame, beatToSec:map.beatToSec, secToBeat:map.secToBeat};
+  }
+  return {create};
+});

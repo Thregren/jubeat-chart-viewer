@@ -44,3 +44,9 @@ test("malformed BPM, hold tails and offsets are rejected before parsing", () => 
   assert.throws(() => R.validateChart(chart({...note, offset: Infinity})));
   assert.doesNotThrow(() => R.validateChart(chart({...note, endbeat: [0, 0, 1]}, [{beat: [0, 0, 1], bpm: 120}])));
 });
+
+test("known oversized response is canceled before reading", async () => {
+ let canceled=false;
+ const response=new Response(new ReadableStream({cancel(){canceled=true;}}),{headers:{'Content-Length':'100'}});
+ await assert.rejects(R.readBytes(response,4));assert.equal(canceled,true);
+});

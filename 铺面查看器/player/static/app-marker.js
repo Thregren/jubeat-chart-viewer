@@ -67,6 +67,7 @@
    */
   const frameDownloads = new window.JubeatRuntime.Semaphore(6);
   const FRAME_CACHE_LIMIT = 256;
+  const FRAME_CACHE_BYTES = 48 * 1024 * 1024;
   let pendingDesign = null;
 
   function pinnedFrame(url) {
@@ -74,10 +75,12 @@
   }
 
   function trimFrameCache() {
+    let bytes=0;for(const img of markerCfg.images.values())bytes+=(img.naturalWidth||0)*(img.naturalHeight||0)*4;
     for (const [url, img] of markerCfg.images) {
-      if (markerCfg.images.size <= FRAME_CACHE_LIMIT) break;
+      if (markerCfg.images.size <= FRAME_CACHE_LIMIT && bytes<=FRAME_CACHE_BYTES) break;
       if (!img._settled || pinnedFrame(url)) continue;
       markerCfg.images.delete(url);
+      bytes-=(img.naturalWidth||0)*(img.naturalHeight||0)*4;
       for (const [key, old] of lastDrawn) if (old === img) lastDrawn.delete(key);
     }
   }
@@ -233,12 +236,19 @@
   }
 
   async function loadMarkers() {
+    const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),25000);
     try {
-      const res = await fetch(PATHS.markers);
+      const res = await fetch(PATHS.markers,{signal:abort.signal});
       // 先看状态码再看内容：服务器挂了 / 被反代挡下时回来的是 HTML 错误页，
       // 直接 res.json() 只会抛一句 "Unexpected token '<'"，看不出真正的原因。
       if (!res.ok) throw new Error(`marker 清单读取失败（${res.status}）`);
-      const data = await res.json();
+      const data = await window.JubeatRuntime.readJSON(res);
+      if(!data||typeof data!=="object"||!Array.isArray(data.designs)||data.designs.length>128)throw Error("无效 marker 清单");
+      for(const d of data.designs){
+        if(!d||!window.JubeatRuntime.safePath(d.dir)||!window.JubeatRuntime.safePath(d.prefix)||d.prefix.includes("/"))throw Error("无效 marker 路径");
+        const counts=[d.ma??0,d.fr??0,...Object.values(d.h||{})];
+        if(counts.some(n=>!Number.isInteger(n)||n<0||n>256)||counts.reduce((a,b)=>a+b,0)>512)throw Error("marker 帧数超出限制");
+      }
       if (data.error) throw new Error(String(data.error));
       if (Number(data.unit_ms) > 0) markerCfg.unitMs = Number(data.unit_ms);
       if (Number(data.units_per_frame) > 0) markerCfg.unitsPerFrame = Number(data.units_per_frame);
@@ -268,7 +278,7 @@
     } catch (err) {
       console.warn("marker manifest 加载失败", err);
       toast("marker 素材加载失败，已退化为面板灯模式", true);
-    }
+    } finally { clearTimeout(timer); }
   }
 
   /**
@@ -859,6 +869,7 @@
   let rhythmNotes = null, noteRhythmColors = null;
   const recording = typeof location !== "undefined" && new URLSearchParams(location.search).get("rec") === "1";
   function numColorHex(note) {
+    if(A.mode?.rhythmColor)return normalizeHexColor(A.mode.rhythmColor(note)||numCfg.color);
     if (!recording && numCfg.colorMode === "rhythm") {
       if (rhythmNotes !== state.notes) {
         rhythmNotes = state.notes;
@@ -913,7 +924,7 @@
     const showNum = !!(els.showNumbers && els.showNumbers.checked);
     // 同押高亮和「音符序号」是两个开关：只开高亮、不显示数字也要能看（以前两者
     // 绑在一起，关掉数字连高亮一起没了）。
-    const chord = markerOpacity > 0 && (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
+    const chord = !A.mode?.suppressChords && markerOpacity > 0 && (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
     if (!showNum && !chord) return;
     // 参考视频里数字几乎占满格子；但按「换气」分句之后一句可能很长，
     // 两位数、三位数要缩一点，不然会被格子裁掉。
@@ -1078,6 +1089,7 @@
    * 中间那段只有「会移动的箭头」陪着你（drawHoldArrows）。
    */
   function drawMarkers(chartT) {
+    if(A.mode?.ownsFrame&&A.mode.draw?.(chartT))return;
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
     drawPanelFrames();      // FR：设计自带的面板边框（最底层）
@@ -1259,6 +1271,7 @@
   // 其实是「图片解码好了没」的判定），既没用又容易在下一次改动里被误用。
   Object.assign(A, {
     ctx,
+    markerPrimitives: {frameImage,frameUrl,ready,drawFrameImage,drawPanelFrames,drawComboOverlay,drawHoldArrow,holdCells,drawOrderNumber,preloadUrls},
     loadMarkers,
     selectMarker,
     layoutCanvas,

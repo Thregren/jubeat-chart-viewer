@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 和网页端一样走深色底：切到 WebView 时不会先闪一下白 -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF101014</item>
+        <item name="android:colorAccent">#FF7CFC4B</item>
+    </style>
+</resources>

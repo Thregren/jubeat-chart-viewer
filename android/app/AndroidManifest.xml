@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  versionCode / versionName 由 build.sh 通过 aapt2 的命令行参数注入，跟着仓库根的
+  VERSION 走，不在这里手写（手写迟早会和 VERSION 对不上）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="world.thregren.jubeatviewer">
+
+    <!-- 本地 http 服务要 listen 127.0.0.1，也是 INTERNET 权限的范围 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 只有 Android 6~9 往 Android/media/<包名> 写才可能要它；10 及以上用不到 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/AppTheme">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|density|uiMode"
+            android:theme="@style/AppTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

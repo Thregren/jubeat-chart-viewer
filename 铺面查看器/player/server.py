@@ -17,6 +17,8 @@ import mimetypes
 import os
 import sys
 import traceback
+import threading
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -30,6 +32,51 @@ from library import Library, published_index
 JSON_CT = "application/json; charset=utf-8"
 
 LIB = Library()
+
+
+class BoundedHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    def __init__(self, *args, **kwargs):
+        self.slots = threading.BoundedSemaphore(48)
+        self.connections = set()
+        self.connection_lock = threading.Lock()
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        request.settimeout(30)
+        with self.connection_lock:
+            self.connections.add(request)
+        try:
+            super().process_request(request, address)
+        except BaseException:
+            self._release(request)
+            self.shutdown_request(request)
+            raise
+
+    def _release(self, request):
+        with self.connection_lock:
+            self.connections.discard(request)
+        self.slots.release()
+
+    def process_request_thread(self, request, address):
+        try:
+            super().process_request_thread(request, address)
+        finally:
+            self._release(request)
+
+    def server_close(self):
+        with self.connection_lock:
+            connections = list(self.connections)
+        for conn in connections:
+            try:
+                conn.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            conn.close()
+        super().server_close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -347,7 +394,7 @@ def main() -> None:
     print(f"曲库: {LIB.root}（{len(LIB.songs)} 首）")
     print(f"缓存: {config.CACHE_DIR} · 缩略图后端: {thumbs.backend()}"
           + (f" · X-Accel: {config.X_ACCEL_PREFIX}" if config.X_ACCEL_PREFIX else ""))
-    httpd = ThreadingHTTPServer((config.HOST, config.PORT), Handler)
+    httpd = BoundedHTTPServer((config.HOST, config.PORT), Handler)
     httpd.daemon_threads = True
     try:
         httpd.serve_forever()

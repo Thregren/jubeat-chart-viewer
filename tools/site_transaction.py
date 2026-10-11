@@ -27,11 +27,16 @@ class SiteTransaction:
             raise RuntimeError("同一输出目录已有构建在运行") from None
         self.workspace = Path(tempfile.mkdtemp(prefix="." + self.target.name + ".build-", dir=self.target.parent))
         self.stage = self.workspace / "stage"
-        if self.target.exists():
-            shutil.copytree(self.target, self.stage, copy_function=os.link)
-        else:
-            self.stage.mkdir()
-        return self
+        try:
+            if self.target.exists():
+                shutil.copytree(self.target, self.stage, copy_function=os.link)
+            else:
+                self.stage.mkdir()
+            return self
+        except BaseException:
+            shutil.rmtree(self.workspace, ignore_errors=True)
+            self.lock.close()
+            raise
     def publish(self):
         old = {p.relative_to(self.target).as_posix(): p for p in self.target.rglob("*") if p.is_file()} if self.target.exists() else {}
         new = {p.relative_to(self.stage).as_posix(): p for p in self.stage.rglob("*") if p.is_file()}
@@ -57,5 +62,7 @@ class SiteTransaction:
                 else: dest.unlink(missing_ok=True)
             raise
     def __exit__(self, *exc):
-        shutil.rmtree(self.workspace)
-        self.lock.close()
+        try:
+            shutil.rmtree(self.workspace)
+        finally:
+            self.lock.close()

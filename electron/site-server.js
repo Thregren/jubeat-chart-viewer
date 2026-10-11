@@ -1,6 +1,7 @@
 // 极小的静态文件服务：给 Electron 里的页面提供 http:// 环境。
 // 必须是 http（而不是 file://），否则 fetch 读 data/*.json 会失败、音频也没法 Range 拖动。
 const http = require("node:http");
+const { pipeline } = require("node:stream");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -98,13 +99,14 @@ function sendFile(req, res, target, headers, code, opts = null) {
   res.writeHead(code, headers);
   if (req.method === "HEAD") return res.end();
   const stream = opts ? fs.createReadStream(target, opts) : fs.createReadStream(target);
-  stream.on("error", () => res.destroy());
-  return stream.pipe(res);
+  // pipeline closes both ends when a client cancels or a disk read fails.
+  pipeline(stream, res, () => {});
 }
 
 /** 启动静态服务，返回 { url, close } */
 function serve(rootDir) {
-  const root = path.resolve(rootDir);
+  const root = fs.realpathSync(rootDir);
+  const connections = new Set();
   const server = http.createServer((req, res) => {
     let rel;
     try {
@@ -119,7 +121,13 @@ function serve(rootDir) {
       res.writeHead(403).end("forbidden");
       return;
     }
-    fs.stat(target, (err, stat) => {
+    fs.realpath(target, (pathError, resolved) => {
+      if (pathError) { res.writeHead(404).end("404"); return; }
+      const relative = path.relative(root, resolved);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        res.writeHead(403).end("forbidden"); return;
+      }
+    fs.stat(resolved, (err, stat) => {
       if (err || !stat.isFile()) {
         res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...BASE_HEADERS }).end("404");
         return;
@@ -133,21 +141,34 @@ function serve(rootDir) {
       };
       const range = parseRange(req.headers.range, stat.size);
       if (!range) {
-        return sendFile(req, res, target, { ...headers, "Content-Length": stat.size }, 200);
+        return sendFile(req, res, resolved, { ...headers, "Content-Length": stat.size }, 200);
       }
       const [start, end] = range;
-      return sendFile(req, res, target, {
+      return sendFile(req, res, resolved, {
         ...headers,
         "Content-Range": `bytes ${start}-${end}/${stat.size}`,
         "Content-Length": end - start + 1,
       }, 206, { start, end });
     });
+    });
   });
-  return new Promise((resolve) => {
+  server.maxConnections = 48;
+  server.requestTimeout = 30000;
+  server.headersTimeout = 10000;
+  server.timeout = 30000;
+  server.on("connection", socket => {
+    connections.add(socket);
+    socket.once("close", () => connections.delete(socket));
+  });
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       resolve({
         url: `http://127.0.0.1:${server.address().port}/`,
-        close: () => new Promise((done) => server.close(done)),
+        close: () => new Promise((done) => {
+          server.close(done);
+          for (const socket of connections) socket.destroy();
+        }),
       });
     });
   });

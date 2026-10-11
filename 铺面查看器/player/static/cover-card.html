@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>jubeat 谱面确认 — 哔哩哔哩封面卡</title>
+<!-- 直接复用站点的 design tokens（--void / --amber / --ink / --muted / --font / --radius），
+     保证封面与网页的字号体系、配色完全同源。 -->
+<link rel="stylesheet" href="style.css" />
+<style>
+  /* ——— 画布：B 站封面 1200×900 ——— */
+  html, body { margin: 0; padding: 0; background: #07090f; }
+  body { overflow: hidden; }
+
+  .card {
+    position: relative;
+    width: 1200px;
+    height: 900px;
+    overflow: hidden;
+    background: var(--void);
+    font-family: var(--font);
+    --pad-left: 90px;
+    /* —— 安全区 ——
+       封面图永远钉在 (580,159) 553×553，任何情况下都不动；
+       文字只在左栏 x 90…540（宽 450）、纵向 225…470 里排，跟封面图留 40px 净空。
+       曲名/作曲过长先折行（曲名 ≤3 行、作曲 ≤2 行），再缩字号，最后才省略号。 */
+    --col-w: 450px;
+    --safe-top: 225px;
+    /* 文字块 ink 底的上限：443。「全等级」的 ink 顶在 483，
+       所以曲名/作曲无论折几行，和「全等级」都至少留 40px 净空。 */
+    --safe-bottom: 443px;
+    --art-left: 580px;
+    --art-top: 159px;
+    --art-size: 553px;
+    /* 网页里封面是 132px 见方、圆角 12px —— 封面卡按同样比例放大 */
+    --art-radius: 50.3px;
+    /* 基线网格（从参考图量得） */
+    --base-ver: 209px;
+    --base-title: 308.5px;
+    --base-artist: 388px;
+    --claim-lh: 115px;
+    --ver-size: 34px;
+    --title-size: 84px;
+    --artist-size: 39px;
+    --claim-size: 81px;
+    /* 「全等级」首行基线：对齐参考图的 ink 顶 481（cap 高 0.72×81 ≈ 58） */
+    --base-claim1: 551px;
+    /* 曲名只占一行时，把「版本行 → 曲名 → 全等级」之间空出来的地方往下分一点，
+       让它落在这一栏的视觉中线附近，而不是死贴在参考图的 249 上（2026-10-05 用户要求）。
+       0.5 正好落在「版本行 ink 底 214」和「全等级 ink 顶 483」的视觉中线上；
+       0 = 完全不动（严格贴参考图）；1 = 一直顶到安全区下沿 safe-bottom。 */
+    --single-center: 0.5;
+  }
+
+  .card .art {
+    position: absolute;
+    left: var(--art-left);
+    top: var(--art-top);
+    width: var(--art-size);
+    height: var(--art-size);
+    border-radius: var(--art-radius);
+    overflow: hidden;
+    background: var(--cabinet-2);
+  }
+  .card .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  /* 文字安全区有实体裁切边界：任何排版退路都不能进入右侧封面。 */
+  .card .text-safe {
+    position: absolute;
+    left: var(--pad-left);
+    top: 0;
+    width: var(--col-w);
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .card .txt {
+    position: absolute;
+    left: 0;
+    margin: 0;
+    white-space: pre;
+    line-height: 1;
+    font-kerning: normal;
+  }
+
+  /* 版本：网页里 .np-kicker 用 --amber；封面卡放大到 37px、加一点字距 */
+  .card .ver {
+    color: var(--amber);
+    /* 兜底字体：网页里版本这一行（.np-kicker）本来就是 --mono + 大字距 */
+    font-family: var(--ver-font, var(--mono));
+    font-size: var(--ver-size);
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+
+  /* 曲名：.np-main h2 —— --ink、font-weight:650、letter-spacing:-0.01em（和网页一字不差） */
+  .card .title {
+    color: var(--ink);
+    font-size: var(--title-size);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    line-height: 1.06;
+  }
+
+  /* 作曲：网页里 .np-artist 用 --muted */
+  .card .artist {
+    color: var(--muted);
+    font-size: var(--artist-size);
+    font-weight: 500;
+    letter-spacing: 0.012em;
+  }
+
+  /* 「全等级 / 谱面确认」：与标题同色，特粗，两行固定字距 */
+  .card .claim {
+    color: var(--ink);
+    font-size: var(--claim-size);
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    line-height: var(--claim-lh);
+  }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="art"><img id="art" alt="" /></div>
+    <div class="text-safe">
+    <div class="txt ver" id="ver"></div>
+    <div class="txt title" id="title"></div>
+    <div class="txt artist" id="artist"></div>
+    <div class="txt claim" id="claim">全等级
+谱面确认</div>
+    </div>
+  </div>
+
+<script>
+/* 封面卡渲染器。
+ *
+ * 关键点：所有文字都按「基线」定位，而不是按盒子顶边。因为 line-height:1 时
+ * 基线到盒顶的距离 = font-size × k（k 只跟字体有关），所以只要基线固定，任何曲名、
+ * 作曲、版本名的字形都落在同一条网格上 —— 与网页里的排版观感一致。
+ *
+ * 安全区：封面图钉死在 (580,159)，文字只在左栏 450px 宽、纵向 [safe-top, safe-bottom]
+ * 的区域内排。曲名/作曲过长时优先折行（曲名最多 2 行、作曲最多 2 行），行数撑满后
+ * 再逐级缩字号；实在放不下才截断加省略号。封面位置永不受文字影响。
+ */
+(() => {
+  const card = document.getElementById('card');
+  const QS = new URLSearchParams(location.search);
+  // 调试用：?v-ver-size=33&v-art-top=160 … 直接覆盖卡片的 CSS 变量，方便对着参考图微调。
+  for (const [k, v] of QS) {
+    if (k.startsWith('v-')) card.style.setProperty(`--${k.slice(2)}`, v);
+  }
+  // 作者行默认不排（见 render() 里的说明）；?artist=1 可以加回来。
+  const SHOW_ARTIST = QS.get("artist") === "1";
+  const els = {
+    ver: document.getElementById('ver'),
+    title: document.getElementById('title'),
+    artist: document.getElementById('artist'),
+    claim: document.getElementById('claim'),
+    art: document.getElementById('art'),
+  };
+  const cs = getComputedStyle(card);
+  // 注意别写成 `parseFloat(v) || fallback`：合法值 0 是 falsy，会被悄悄换成默认值
+  //（--single-center:0 就是靠这个才没生效的）。
+  const px = (name, fallback) => {
+    const v = parseFloat(cs.getPropertyValue(name));
+    return Number.isFinite(v) ? v : fallback;
+  };
+  const SAFE_W = px('--col-w', 450);
+  const COL_W = SAFE_W - 8; // 为字形边缘预留 8px，不贴着裁切边界
+  const SAFE_TOP = px('--safe-top', 225);
+  const SAFE_BOTTOM = px('--safe-bottom', 470);
+  const BASE = {
+    ver: px('--base-ver', 209),
+    title: px('--base-title', 308.5),
+    artist: px('--base-artist', 388),
+    claim: px('--base-claim1', 544),
+  };
+  // 参考图：曲名基线 308 → 作曲基线 385，相隔 77px（按作曲字号等比缩放）
+  const GAP_BASELINE_TITLE_ARTIST = 82;
+  const GAP_REF_ARTIST_SIZE = 39;
+  // 字距必须和 CSS 里逐字对上，否则「量的」和「排的」不是一回事
+  const W_TITLE = 650;        // .card .title  { font-weight: 650 }  ← 网页 .np-main h2
+  const W_ARTIST = 500;       // 必须与 .card .artist 的真实字重一致
+  const LS_TITLE = -0.01;     // .card .title  { letter-spacing: -0.01em }  ← 网页 .np-main h2
+  const LS_ARTIST = 0.012;    // .card .artist { letter-spacing:  0.012em }
+  const LS_VER = 0.10;        // .card .ver    { letter-spacing:  0.10em  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const metricsCache = new Map();
+  const widthCache = new Map();
+  let lastPlan = null;   // 最近一次排版结果，__coverInfo() 自检用
+
+  /* 量宽走 DOM，不走 canvas。
+   * Avenir Next 是可变字体，canvas.measureText 和真实排版对不上：
+   * "Windy Fairy" @84px canvas 量 521.6px、DOM 只有 495px —— 参考图里明明是单行，
+   * 用 canvas 量就会超过 450px 栏宽，被误判成要折行。所以这里用一根隐形 span 实测。 */
+  const ruler = document.createElement('span');
+  ruler.setAttribute('aria-hidden', 'true');
+  ruler.style.cssText =
+    'position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
+    'white-space:pre;font-kerning:normal;margin:0;padding:0;border:0;';
+  document.body.appendChild(ruler);
+
+  /** 字体的 typographic ascent/descent（em 比例）与基线偏移系数 k */
+  function fontMetrics(weight, size, family) {
+    const key = `${weight}/${size}/${family}`;
+    if (metricsCache.has(key)) return metricsCache.get(key);
+    ctx.font = `${weight} ${size}px ${family}`;
+    const m = ctx.measureText('Hg全等级');
+    const a = m.fontBoundingBoxAscent / size;
+    const d = m.fontBoundingBoxDescent / size;
+    const k = (1 - (a + d)) / 2 + a;   // 基线相对盒顶的偏移（em）
+    const out = { a, d, k };
+    metricsCache.set(key, out);
+    return out;
+  }
+
+  function measure(text, weight, size, family, ls) {
+    const key = `${weight}|${size}|${family}|${ls}|${text}`;
+    const hit = widthCache.get(key);
+    if (hit !== undefined) return hit;
+    ruler.style.fontFamily = family;
+    ruler.style.fontWeight = String(weight);
+    ruler.style.fontSize = `${size}px`;
+    ruler.style.letterSpacing = ls ? `${ls * size}px` : "normal";
+    ruler.textContent = text;
+    const w = ruler.getBoundingClientRect().width;
+    widthCache.set(key, w);
+    return w;
+  }
+
+  /** 这段文字在该字号下的实际 ink 高度（上/下都算真实字形，中日文也不会低估） */
+  function inkExtent(text, weight, size, family, ls) {
+    ctx.font = `${weight} ${size}px ${family}`;
+    let up = 0;
+    let down = 0;
+    for (const ch of text) {
+      if (ch === ' ') continue;
+      const m = ctx.measureText(ch);
+      up = Math.max(up, m.actualBoundingBoxAscent || 0);
+      down = Math.max(down, m.actualBoundingBoxDescent || 0);
+    }
+    const w = measure(text, weight, size, family, ls);
+    return { up, down, w };
+  }
+
+  const familyOf = (el) => getComputedStyle(el).fontFamily;
+
+  /** 首行基线到盒顶的距离：考虑 line-height 的半行距 */
+  function firstBaselineOffset(size, weight, family, lineHeight) {
+    const { a, d } = fontMetrics(weight, size, family);
+    return (lineHeight - (a + d) * size) / 2 + a * size;
+  }
+
+  /** 按「首行基线 + 行高」摆放一个多行文本块 */
+  function place(el, firstBaseline, size, weight, lineHeight) {
+    const off = firstBaselineOffset(size, weight, familyOf(el), lineHeight);
+    el.style.top = `${firstBaseline - off}px`;
+    el.style.fontSize = `${size}px`;
+    el.style.lineHeight = `${lineHeight}px`;
+  }
+
+  /** 单行自适应：字号从 max 一路降到 min，取第一个能放进 width 的 */
+  function fitOneLine(text, el, weight, max, min, width, ls) {
+    for (let s = max; s >= min; s -= 1) {
+      if (measure(text, weight, s, familyOf(el), ls) <= width) return s;
+    }
+    return min;
+  }
+
+  // 可以在这些符号之后断行；拉丁单词本身不拆（拆开是 "WARNI / NG" 那种丑样）
+  const BREAK_AFTER = /[×✕✖✗／/\\\-–—&＋+・:：~～、。,，!！?？]/;
+  const IS_CJK = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3040-\u30FF\uAC00-\uD7AF]/;
+
+  /** 切成「断行单元」：汉字/假名/全角符号各成一个单元，拉丁词整块不拆 */
+  function tokens(text) {
+    const out = [];
+    let buf = '';
+    for (const ch of text) {
+      if (IS_CJK.test(ch)) {
+        if (buf) { out.push(buf); buf = ''; }
+        out.push(ch);
+      } else if (ch === ' ') {
+        if (buf) { out.push(buf); buf = ''; }
+        out.push(' ');
+      } else {
+        buf += ch;
+        if (BREAK_AFTER.test(ch)) { out.push(buf); buf = ''; }
+      }
+    }
+    if (buf) out.push(buf);
+    return out;
+  }
+
+  /**
+   * 贪心折行。overflow=true 表示有「不可拆的单元」本身就装不下 —— 调用方据此
+   * 换更小的字号，而不是硬拆单词。
+   */
+  function wrap(text, weight, size, family, ls, width) {
+    const lines = [];
+    let line = '';
+    let overflow = false;
+    for (const tk of tokens(text)) {
+      if (tk === ' ') {
+        if (line) line += ' ';
+        continue;
+      }
+      const next = line + tk;
+      if (line.trim() && measure(next, weight, size, family, ls) > width) {
+        lines.push(line.trimEnd());
+        line = tk;
+      } else {
+        line = next;
+      }
+      if (measure(tk, weight, size, family, ls) > width) overflow = true;
+    }
+    if (line.trim()) lines.push(line.trimEnd());
+    return { lines: lines.length ? lines : [''], overflow };
+  }
+
+  /** 兜底硬拆：连单个单元都放不下时按字符切 */
+  function hardSplit(lines, weight, size, family, ls, width) {
+    const out = [];
+    for (const line of lines) {
+      if (measure(line, weight, size, family, ls) <= width) { out.push(line); continue; }
+      let rest = line;
+      while (rest.length) {
+        let cut = rest.length;
+        while (cut > 1 && measure(rest.slice(0, cut), weight, size, family, ls) > width) cut -= 1;
+        out.push(rest.slice(0, cut));
+        rest = rest.slice(cut);
+      }
+    }
+    return out;
+  }
+
+  /** 截断最后一行并加省略号，保证永远不越出安全区 */
+  function ellipsize(lines, weight, size, family, ls, width, maxLines) {
+    const out = lines.slice(0, maxLines);
+    if (lines.length <= maxLines) return out;
+    let last = out[maxLines - 1];
+    while (last.length > 1 && measure(`${last}…`, weight, size, family, ls) > width) {
+      last = last.slice(0, -1);
+    }
+    out[maxLines - 1] = `${last.trimEnd()}…`;
+    return out;
+  }
+
+  /**
+   * 曲名 + 作曲的联合排版。封面图完全不参与计算 —— 位置永远是 (art-left, art-top)。
+   *
+   * 安全区（参考图量出来的硬边界）：
+   *   · 横向：左栏 90…540（450 宽），离封面图左边 580 还留 40px 净空；
+   *   · 纵向：曲名首行 ink 顶恒为 249（= --base-title − cap 高，84px 时 cap 59.5）；
+   *           整块（含作曲最后一行）的 ink 底不得越过 safe-bottom 470。
+   *
+   * 排版顺序（先折行、再缩字号、最后才省略号，永远不越界、永远不动封面）：
+   *   1) 曲名按 450px 折行，最多 3 行；
+   *   2) 作曲接在曲名末行基线 + 82px 之后，最多 2 行；
+   *   3) 装不进 470 就把曲名字号逐级往下调（84 → 34），
+   *   4) 连最小字号都装不下，才硬拆单词 / 加省略号。
+   */
+  function layoutTitleArtist(titleText, artistText) {
+    const famT = familyOf(els.title);
+    const famA = familyOf(els.artist);
+    const maxTitle = Math.round(px('--title-size', 84));
+    const maxArtist = Math.round(px('--artist-size', 39));
+    const BLOCK_TOP = BASE.title - 59.5;   // 参考图：cap 顶 249
+    const MAX_TITLE_LINES = 3;
+    const MAX_ARTIST_LINES = 2;
+    /* 单行曲名的下移系数：把「曲名块 ink 底 → safe-bottom」之间多出来的空白按比例往下分。
+       只有「曲名一行」才参与 —— 折成 2/3 行的块本来就把这一栏填满了，再下移会顶到「全等级」。 */
+    const SINGLE_CENTER = Math.min(1, Math.max(0, px('--single-center', 0.5)));
+
+    const evaluate = (ts, tLines, as, aLines) => {
+      const lhT = ts * 1.06;
+      const lhA = as * 1.15;
+      const firstBase0 = BLOCK_TOP + inkExtent(tLines[0], W_TITLE, ts, famT, LS_TITLE).up;
+      const lastTitleBase0 = firstBase0 + (tLines.length - 1) * lhT;
+      // 作曲按「基线」跟，而不是按曲名的 ink 底 —— 曲名带 y/g 这类深降部时
+      // 按 ink 底跟会被顶下去（参考图是基线 308 → 385）。
+      const artistBase0 = aLines.length
+        ? lastTitleBase0 + GAP_BASELINE_TITLE_ARTIST * (as / GAP_REF_ARTIST_SIZE) : 0;
+      const downT = inkExtent(tLines[tLines.length - 1], W_TITLE, ts, famT, LS_TITLE).down;
+      const downA = aLines.length
+        ? inkExtent(aLines[aLines.length - 1], W_ARTIST, as, famA, LS_ARTIST).down : 0;
+      const bottom0 = aLines.length ? artistBase0 + downA : lastTitleBase0 + downT;
+      const shift = tLines.length === 1
+        ? Math.max(0, SAFE_BOTTOM - bottom0) * SINGLE_CENTER : 0;
+      return { ts, tLines, lhT, as: aLines.length ? as : 0, aLines, lhA,
+               firstBase: firstBase0 + shift,
+               artistBase: aLines.length ? artistBase0 + shift : 0,
+               blockTop: BLOCK_TOP + shift,
+               shift,
+               fits: bottom0 + shift <= SAFE_BOTTOM
+                 && tLines.every((line) => measure(line, W_TITLE, ts, famT, LS_TITLE) <= COL_W)
+                 && aLines.every((line) => measure(line, W_ARTIST, as, famA, LS_ARTIST) <= COL_W) };
+    };
+
+    const planTitle = (ts) => {
+      const w = wrap(titleText, W_TITLE, ts, famT, LS_TITLE, COL_W);
+      const lines = w.overflow
+        ? ellipsize(hardSplit(w.lines, W_TITLE, ts, famT, LS_TITLE, COL_W),
+                    W_TITLE, ts, famT, LS_TITLE, COL_W, MAX_TITLE_LINES)
+        : w.lines;
+      return { lines, hard: w.overflow };
+    };
+    const planArtist = (as) => {
+      if (!artistText) return { lines: [], hard: false };
+      const w = wrap(artistText, W_ARTIST, as, famA, LS_ARTIST, COL_W);
+      const lines = w.overflow
+        ? ellipsize(hardSplit(w.lines, W_ARTIST, as, famA, LS_ARTIST, COL_W),
+                    W_ARTIST, as, famA, LS_ARTIST, COL_W, MAX_ARTIST_LINES)
+        : ellipsize(w.lines, W_ARTIST, as, famA, LS_ARTIST, COL_W, MAX_ARTIST_LINES);
+      return { lines, hard: w.overflow };
+    };
+
+    /* 候选字号：从最大字号往下试，凡是「折行数 ≤ 3 行」的都收进来。
+     * 关键：不能直接取「最大的那个能塞下的字号」—— 那会让「稍微缩一点点就能单行」的曲名
+     * 硬折成两行（Windy Fairy 84px 时 475px > 450 栏宽，就是这个坑）。
+     * 所以在「大字档」（≥ 88% 最大字号）里先挑行数最少的，行数相同再取字号最大的。 */
+    const MIN_TITLE = 34;
+    const candidates = [];
+    for (let ts = maxTitle; ts >= MIN_TITLE; ts -= 1) {
+      const t = planTitle(ts);
+      if (t.lines.length <= MAX_TITLE_LINES) candidates.push({ ts, lines: t.lines, hard: t.hard });
+    }
+    const bigWindow = candidates.filter((c) => c.ts >= Math.round(maxTitle * 0.88));
+    const fewest = bigWindow.length ? Math.min(...bigWindow.map((c) => c.lines.length)) : Infinity;
+    // 只有「大字档里行数最少」的那批享受优先权；剩下的（更小字号 / 行数更多）一律按字号排。
+    const inBig = new Set(bigWindow.filter((c) => c.lines.length === fewest));
+    candidates.sort((a, b) => (inBig.has(a) === inBig.has(b) ? b.ts - a.ts : (inBig.has(a) ? -1 : 1)));
+
+    let hardPlan = null;   // 硬拆过单词的兜底方案（只在实在排不下时用）
+    for (const cand of candidates) {
+      for (let as = maxArtist; as >= 20; as -= 1) {
+        const a = planArtist(as);
+        if (a.lines.length > MAX_ARTIST_LINES) continue;
+        const p = evaluate(cand.ts, cand.lines, as, a.lines);
+        if (!p.fits) continue;
+        if (!cand.hard && !a.hard) return p;             // 没硬拆、放得下：最优档直接用
+        if (!hardPlan) hardPlan = p;
+        break;
+      }
+    }
+    if (hardPlan) return hardPlan;
+    // 极端兜底：最小字号 + 硬拆 + 省略号
+    const tiny = ellipsize(
+      hardSplit(wrap(titleText, W_TITLE, MIN_TITLE, famT, LS_TITLE, COL_W).lines,
+                W_TITLE, MIN_TITLE, famT, LS_TITLE, COL_W),
+      W_TITLE, MIN_TITLE, famT, LS_TITLE, COL_W, MAX_TITLE_LINES,
+    );
+    return evaluate(MIN_TITLE, tiny, 20, []);
+  }
+
+  function render(data) {
+    const d = data || {};
+    document.title = `封面 · ${d.title || ''}`;
+    els.art.src = d.cover || '';
+    els.ver.textContent = (d.versionLabel || d.version || '').toUpperCase();
+    if (d.claim) els.claim.textContent = d.claim;
+    const titleText = d.title || '';
+    // 作者行默认不排：曲名折行后它容易压到「全等级」上，用户 2026-10-05 定的是「干脆去掉」。
+    // 想加回来：URL 带 ?artist=1（cover.mjs 里给 --artist 就是加这个参数）。
+    const artistText = SHOW_ARTIST ? (d.artist || '') : '';
+
+    // 版本名：单行，放不下就收紧字距/字号
+    const verSize = fitOneLine(els.ver.textContent, els.ver, 600, px('--ver-size', 36), 20, COL_W, LS_VER);
+    place(els.ver, BASE.ver, verSize, 600, verSize);
+
+    const plan = layoutTitleArtist(titleText, artistText);
+    lastPlan = plan;
+    els.title.textContent = plan.tLines.join('\n');
+    place(els.title, plan.firstBase, plan.ts, W_TITLE, plan.lhT);
+    if (plan.aLines.length) {
+      els.artist.textContent = plan.aLines.join('\n');
+      place(els.artist, plan.artistBase, plan.as, W_ARTIST, plan.lhA);
+    } else {
+      els.artist.textContent = '';
+      els.artist.removeAttribute("style");
+    }
+
+    // 「全等级 / 谱面确认」：固定文案，固定基线，不参与自动排版
+    const claimSize = px('--claim-size', 81);
+    els.claim.style.fontSize = `${claimSize}px`;
+    els.claim.style.lineHeight = `${px('--claim-lh', 115)}px`;
+    place(els.claim, BASE.claim, claimSize, 800, px('--claim-lh', 115));
+  }
+
+  window.__cover = (data) => { render(data); return true; };
+  /** 自检用：报出封面图真实位置 + 文字块的 ink 边界，脚本据此验证「封面没动、文字没越界」。 */
+  window.__coverInfo = () => {
+    const b = els.art.getBoundingClientRect();
+    const plan = lastPlan || {};
+    const inkBottom = (lines, size, lh, weight, family, ls, lastBase) =>
+      lines && lines.length ? lastBase + inkExtent(lines[lines.length - 1], weight, size, family, ls).down : 0;
+    const titleBase = plan.firstBase != null && plan.tLines
+      ? plan.firstBase + (plan.tLines.length - 1) * plan.lhT : 0;
+    const artLeft = parseFloat(cs.getPropertyValue("--art-left"));
+    const artTop = parseFloat(cs.getPropertyValue("--art-top"));
+    const artSize = parseFloat(cs.getPropertyValue("--art-size"));
+    return {
+      art: { left: b.left, top: b.top, w: b.width, h: b.height },
+      artPinned: Math.abs(b.left - artLeft) < 0.6 && Math.abs(b.top - artTop) < 0.6
+              && Math.abs(b.width - artSize) < 0.6,
+      textRightMax: Math.max(
+        ...(plan.tLines || []).map((l) => measure(l, W_TITLE, plan.ts || 0, familyOf(els.title), LS_TITLE)),
+        ...(plan.aLines || []).map((l) => measure(l, W_ARTIST, plan.as || 0, familyOf(els.artist), LS_ARTIST)),
+        0) + px("--pad-left", 90),
+      titleSize: plan.ts || 0,
+      titleLines: plan.tLines ? plan.tLines.length : 0,
+      titleShift: plan.shift || 0,
+      titleInkTop: plan.firstBase != null ? plan.firstBase - inkExtent(plan.tLines[0], W_TITLE, plan.ts, familyOf(els.title), LS_TITLE).up : 0,
+      titleInkBottom: inkBottom(plan.tLines, plan.ts, plan.lhT, W_TITLE, familyOf(els.title), LS_TITLE, titleBase),
+      artistSize: plan.as || 0,
+      artistLines: plan.aLines ? plan.aLines.length : 0,
+      artistInkBottom: inkBottom(plan.aLines, plan.as, plan.lhA, W_ARTIST, familyOf(els.artist), LS_ARTIST, plan.artistBase),
+      safeBottom: SAFE_BOTTOM,
+      safeTop: SAFE_TOP,
+      safeLeft: px("--pad-left", 90),
+      safeRight: px("--pad-left", 90) + SAFE_W,
+      layoutFits: plan.fits === true,
+      artLeft,
+      gutter: 40,
+    };
+  };
+  /** 渲染并等封面图解码完（返回图片宽度，0 = 图没加载出来） */
+  window.__coverSet = async (data) => {
+    render(data);
+    const img = els.art;
+    if (data && data.cover) {
+      img.src = data.cover;
+      try { await img.decode(); } catch (_) { /* 下面用 naturalWidth 判断 */ }
+    } else {
+      img.removeAttribute('src');
+    }
+    return img.naturalWidth || 0;
+  };
+  window.__coverReady = document.fonts.ready.then(() => {
+    render({ version: 'JUBEAT-SAUCER', title: 'Windy Fairy', artist: 'DJ TOTTO' });
+    return true;
+  });
+})();
+</script>
+</body>
+</html>

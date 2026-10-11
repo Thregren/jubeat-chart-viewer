@@ -52,9 +52,12 @@ run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
 run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs tools/test_marker_window.mjs tools/test_audio_loading.mjs
-run "横向节奏轴" node --test tools/test_rhythm_timeline.mjs
+
+run "横向节奏轴拍点几何" node --test tools/test_rhythm_timeline.mjs
 
 run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
+
+run "资源预算与增量索引" "$PY" tools/test_resource_limits.py
 
 run "缓存并发与原子写入" "$PY" tools/test_media_concurrency.py
 
@@ -87,6 +90,11 @@ if [ "$WANT_SITE" = 1 ]; then
 fi
 
 if [ "$WANT_FULL" = 1 ]; then
+  if [ -d android ]; then
+    run "Android 事务导入与连接回收" "$PY" tools/test_android_resources.py --network
+  fi
+  run "Python 服务连接回收" "$PY" tools/test_python_server.py
+  run "静态服务连接与流释放" node --test tools/test_server_resources.mjs
   run "端到端冒烟（tools/smoke_test.py --build --fixture）" "$PY" tools/smoke_test.py --build --fixture
 fi
 

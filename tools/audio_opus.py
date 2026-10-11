@@ -21,6 +21,8 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import tempfile
 from pathlib import Path
 
 # 目标码率。实测（40 首随机样本、77 分钟音频）：
@@ -34,6 +36,16 @@ def _bitrate() -> str:
     raw = (os.environ.get("JUBEAT_OPUS_BITRATE") or "").strip()
     return raw if _BITRATE_RE.match(raw) else DEFAULT_BITRATE
 
+
+_LOCKS = tuple(threading.Lock() for _ in range(64))
+_ENCODE_SLOTS = threading.BoundedSemaphore(2)
+
+def configure_jobs(jobs: int) -> None:
+    """Configure before starting build workers; keep encoders separately bounded."""
+    global _ENCODE_SLOTS
+    _ENCODE_SLOTS = threading.BoundedSemaphore(max(1, min(8, jobs)))
+
+_VERSION_LOCK = threading.Lock()
 
 _ffmpeg_path: str | None | bool = False      # False = 还没查过
 _ffmpeg_ver: str | None | bool = False
@@ -50,17 +62,18 @@ def ffmpeg() -> str | None:
 def _version() -> str:
     """ffmpeg 版本行（进缓存键：不同版本的 libopus 输出不一样）。"""
     global _ffmpeg_ver
-    if _ffmpeg_ver is False:
-        _ffmpeg_ver = ""
-        exe = ffmpeg()
-        if exe:
-            try:
-                out = subprocess.run([exe, "-hide_banner", "-version"], capture_output=True,
-                                     timeout=20, check=False)
-                first = out.stdout.decode("utf-8", "replace").splitlines()
-                _ffmpeg_ver = first[0].strip() if first else ""
-            except (OSError, subprocess.SubprocessError):
-                _ffmpeg_ver = ""
+    with _VERSION_LOCK:
+        if _ffmpeg_ver is False:
+            _ffmpeg_ver = ""
+            exe = ffmpeg()
+            if exe:
+                try:
+                    out = subprocess.run([exe, "-hide_banner", "-version"], capture_output=True,
+                                         timeout=20, check=False)
+                    first = out.stdout.decode("utf-8", "replace").splitlines()
+                    _ffmpeg_ver = first[0].strip() if first else ""
+                except (OSError, subprocess.SubprocessError):
+                    _ffmpeg_ver = ""
     return _ffmpeg_ver or ""
 
 
@@ -113,6 +126,12 @@ def _valid(path: Path) -> bool:
 
 
 def encode(data: bytes, cache_dir: Path) -> tuple[bytes, str]:
+    key = hashlib.sha256(data).digest()
+    with _LOCKS[int.from_bytes(key[:2], "big") % len(_LOCKS)]:
+        return _encode(data, cache_dir)
+
+
+def _encode(data: bytes, cache_dir: Path) -> tuple[bytes, str]:
     """把一份 Ogg Vorbis 转成 Ogg Opus。
 
     返回 (数据, 状态)，状态取值：cached / encoded / already-opus / no-ffmpeg / failed。
@@ -135,17 +154,20 @@ def encode(data: bytes, cache_dir: Path) -> tuple[bytes, str]:
         cache_dir.mkdir(parents=True, exist_ok=True)
     except OSError:
         return data, "failed"
-    tmp = dest.with_name(dest.name + f".tmp{os.getpid()}")
+    fd, name = tempfile.mkstemp(prefix=dest.name + ".tmp-", dir=cache_dir)
+    os.close(fd)
+    tmp = Path(name)
     cmd = [
         exe, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-        "-i", "pipe:0", "-map", "0:a:0",
+        "-threads", "1", "-i", "pipe:0", "-map", "0:a:0", "-threads", "1",
         "-c:a", "libopus", "-b:a", _bitrate(), "-vbr", "on",
         "-compression_level", "10", "-application", "audio", "-frame_duration", "20",
         "-map_metadata", "-1",
         "-f", "ogg", str(tmp),
     ]
     try:
-        proc = subprocess.run(cmd, input=data, capture_output=True, timeout=900, check=False)
+        with _ENCODE_SLOTS:
+            proc = subprocess.run(cmd, input=data, capture_output=True, timeout=900, check=False)
         if proc.returncode != 0:
             return data, "failed"
         if not _valid(tmp):

@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 
 import config
-from media import read_member, safe_join, write_atomic, zip_name
+from media import read_member, read_zip_member, safe_join, write_atomic, zip_name, MAX_ARCHIVE_ENTRIES
 
 DIFF_RE = re.compile(r"_([A-Z]{3})\s*Lv([0-9]+(?:\.[0-9]+)?)", re.I)
 DIFF_ORDER = {"BSC": 0, "BAS": 0, "ADV": 1, "EXT": 2}
@@ -162,6 +162,8 @@ def scan_song(mcz_path: Path, root: Path) -> dict | None:
         # 等级兜底表只在这首歌真的缺等级时才查（绝大多数曲子成员名里就有 Lv）
         fallback: dict[str, str] | None = None
         with zipfile.ZipFile(mcz_path) as zf:
+            if len(zf.infolist()) > MAX_ARCHIVE_ENTRIES:
+                raise ValueError("Archive has too many entries")
             names = [zip_name(i) for i in zf.infolist() if not i.is_dir()]
             charts = []
             title = ""
@@ -192,7 +194,7 @@ def scan_song(mcz_path: Path, root: Path) -> dict | None:
                 # 所以 notes 要把长押的尾巴也加进去。以前只数头判，长押多的谱面
                 # （袖手旁棺、iris 这种整首都是长押的）按物量排序时会少掉一半。
                 try:
-                    data = json.loads(zf.read(name).decode("utf-8"))
+                    data = json.loads(read_zip_member(zf, name).decode("utf-8"))
                     notes = [n for n in (data.get("note") or []) if n.get("index") is not None]
                     holds = sum(1 for n in notes if n.get("endbeat") is not None)
                     entry["notes"] = len(notes) + holds
@@ -266,6 +268,11 @@ def fingerprint(paths: list[Path]) -> dict:
 
 
 
+def valid_cached_song(song) -> bool:
+    return (isinstance(song, dict) and all(isinstance(song.get(k), str) for k in ("id", "title", "version"))
+            and isinstance(song.get("charts"), list) and all(isinstance(c, dict) for c in song["charts"]))
+
+
 class Library:
     """曲库索引 + 查询。索引结果缓存到 cache/library_index.json。"""
 
@@ -279,6 +286,8 @@ class Library:
         self._lock = threading.RLock()
         # 扫描串行化：第一个请求慢慢扫，后来的请求在锁外等，不会各自再扫一遍
         self._scan_lock = threading.Lock()
+        self._loaded = False
+        self._revision = 0
 
     @property
     def root(self) -> Path:
@@ -294,18 +303,15 @@ class Library:
         注意扫描**不在** self._lock 里：以前整段 rglob + 解压都在锁内，首次索引
         几十秒里所有走 load() 的请求（含 /api/health）都排队等同一把锁。
         """
-        if self.songs and not force:
+        if self._loaded and not force:
             return
-        paths = mcz_paths(self.root)
-        if not force:
-            cached = self._read_cache(paths)
-            if cached is not None:
-                self._install(cached)
-                return
+        revision = self._revision
         with self._scan_lock:
-            if self.songs and not force:      # 排队期间别人已经扫好了
+            if self._loaded and (not force or revision != self._revision):
                 return
-            self._install(self._scan(paths))
+            paths = mcz_paths(self.root)
+            cached = None if force else self._read_cache(paths)
+            self._install(cached if cached is not None else self._scan(paths))
 
     def _read_cache(self, paths: list[Path]) -> list[dict] | None:
         try:
@@ -316,14 +322,16 @@ class Library:
         # 当没缓存处理、老老实实重扫，别让 .get 抛出把请求打成 500。
         if not isinstance(raw, dict):
             return None
-        if raw.get("version") != config.INDEX_VERSION:
+        if raw.get("version") != config.INDEX_VERSION or raw.get("scanSchema") != 1:
+            return None
+        if raw.get("levelsFingerprint") != fingerprint([OFFICIAL_LEVELS_FILE]):
             return None
         if raw.get("library") != str(self.root):
             return None
         if raw.get("fingerprint") != fingerprint(paths):
             return None
         songs = raw.get("songs")
-        if not isinstance(songs, list) or not songs:
+        if not isinstance(songs, list) or not all(valid_cached_song(song) for song in songs):
             return None
         return songs
 
@@ -331,20 +339,39 @@ class Library:
         print(f"[index] scanning {self.root} …", file=sys.stderr)
         songs: list[dict] = []
         before = fingerprint(paths)
+        try:
+            previous = json.loads(config.INDEX_CACHE.read_text(encoding="utf-8"))
+            reusable = previous.get("members", {}) if (previous.get("library") == str(self.root)
+                and previous.get("version") == config.INDEX_VERSION and previous.get("scanSchema") == 1
+                and previous.get("levelsFingerprint") == fingerprint([OFFICIAL_LEVELS_FILE])) else {}
+        except (OSError, ValueError, AttributeError):
+            reusable = {}
+        if not isinstance(reusable, dict):
+            reusable = {}
+        members = {}
+        def scan(path):
+            key = path.relative_to(self.root).as_posix()
+            stamp = fingerprint([path])
+            old = reusable.get(key)
+            cached = old.get("song") if isinstance(old, dict) else None
+            reusable_song = isinstance(old, dict) and old.get("stamp") == stamp and (cached is None or valid_cached_song(cached))
+            meta = cached if reusable_song else scan_song(path, self.root)
+            return key, {"stamp": stamp, "song": meta}
         if paths:
-            # 每个 zip 都要开关一次，多线程扫能明显加快首次启动
-            workers = min(16, max(4, (os.cpu_count() or 4) * 2))
+            workers = min(8, max(1, (os.cpu_count() or 2)))
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                for meta in pool.map(lambda p: scan_song(p, self.root), paths, chunksize=8):
-                    if meta:
-                        songs.append(meta)
+                for key, member in pool.map(scan, paths):
+                    members[key] = member
+                    if member["song"]:
+                        songs.append(member["song"])
         songs.sort(key=lambda s: (s["title"].lower(), s["version"]))
         if before != fingerprint(mcz_paths(self.root)):
             raise RuntimeError("索引扫描期间曲库发生变化，请重新读取")
         try:
             write_atomic(config.INDEX_CACHE, json.dumps(
                 {"version": config.INDEX_VERSION, "library": str(self.root),
-                 "fingerprint": before, "songs": songs},
+                 "fingerprint": before, "songs": songs, "members": members, "scanSchema": 1,
+                 "levelsFingerprint": fingerprint([OFFICIAL_LEVELS_FILE])},
                 ensure_ascii=False).encode("utf-8"))
         except OSError as exc:
             print(f"[index] 缓存写入失败: {exc}", file=sys.stderr)
@@ -364,6 +391,8 @@ class Library:
             self.by_id = by_id
             self.by_stem = by_stem
             self.versions = versions
+            self._loaded = True
+            self._revision += 1
 
     # —— 查询 ——
     def query(self, q: str = "", version: str = "") -> list[dict]:

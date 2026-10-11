@@ -33,6 +33,7 @@
     dur: 0,               // 时间轴总长 = max(音频, 末判) + 1s
     rect: null,           // 画布 CSS 尺寸 {w, h}
     dpr: 1,
+    cropSides: false,      // 录制构图去掉左右留白，115 列铺满；计数与播放逻辑保持一致
     pitch: 5,             // 列距 = 亮面 + 1px 暗缝；横纵同一个值，方块才是正方形
     plotH: 39,            // 8 层码起来的高度
     graphW: 0,            // 115 列实际占的宽度（= cols × pitch）
@@ -66,6 +67,7 @@
    * 一些，但方块仍然是正方形）。
    */
   function densityPitch(w) {
+    if (density.cropSides) return w / OFFICIAL_COLS;
     const ref = Math.min(w, MAX_REF_W);
     return Math.max(3, Math.round(OFFICIAL_PITCH * (ref / OFFICIAL_REF_W)));
   }
@@ -77,7 +79,7 @@
 
   /** 条子该多高：官方那张图的高度 + 顶部留白 + 底部时间刻度（不再是写死的 36px） */
   function densityHeight(w) {
-    return densityPlotH(densityPitch(w)) + PAD_TOP + LABEL_H;
+    return densityPlotH(densityPitch(w)) + PAD_TOP + (density.cropSides ? 0 : LABEL_H);
   }
 
   /**
@@ -187,7 +189,7 @@
       return true;
     }
     const dur = density.dur || 1;
-    const baseY = h - LABEL_H;                     // 方块从这条线往上码，贴底
+    const baseY = h - (density.cropSides ? 0 : LABEL_H);                     // 方块从这条线往上码，贴底
     // 官方把整张图按「条子宽 / 768」等比放大后水平居中：768 宽时 115 列正好 575px（75%）。
     // 时间轴（刻度 / 播放头 / A–B / 点击跳转）全都按同一张图的左右边界换算，
     // 否则播放头走到两端时会和柱子错开一截。
@@ -200,7 +202,7 @@
     ctx2.fillStyle = "#5b6478";
     ctx2.font = "9px monospace";
     ctx2.lineWidth = 1;
-    const showTicks = h >= 40;
+    const showTicks = h >= 40 && !density.cropSides;
     for (let sec = 30; sec < dur; sec += 30) {
       const x = Math.round(xOf(sec)) + 0.5;
       ctx2.beginPath();
@@ -227,7 +229,7 @@
     const pitch = density.pitch;
     const block = Math.max(1, pitch - GAP);
     const bevel = block >= 4;
-    const baseY = density.rect.h - LABEL_H;
+    const baseY = density.rect.h - (density.cropSides ? 0 : LABEL_H);
     const ox = density.graphX;
     // 方块：底部对齐、由下往上码，几层就是这一列的 note 数（封顶 8 层，不归一化）。
     // 长押的头判、尾判各自所在的列各 +1，中间那段什么都不画 —— 和官方一模一样。

@@ -1,11 +1,14 @@
 /* 录制模式（?rec=1）—— 把界面收成一张固定像素的「卡片」：
-   歌曲信息 + 4×4 面板，其余元素（曲库、控制条、物量条、加载进度、
+   歌曲信息、物量条 + 4×4 面板，其余元素（曲库、控制条、加载进度、
    窄屏抽屉）全部不参与录制。
 
    构图是「类横屏」：整卡 1830 × 1372（≈ 4:3 宽扁），顶部一条信息栏，
    4×4 面板在下方居中。逐帧录制时由 tools/rec 按 #recCard 的包围盒截图，
    所以这里所有尺寸都写成固定 px，不跟窗口大小走 —— 换台机器录出来的
    构图必须一样。
+
+   这些 px 是 1830×1372 的基准，--rec-scale 将字体、间距和面板统一缩放。
+   默认 1440×1080 直接绘制较小 Canvas，原尺寸可通过 rw/rh 指定。
 
    卡内的字号 / 间距取播放器样式的 2 倍（播放器 26px 的曲名 → 52px），
    用 1 倍设备像素比截出来就等价于「播放器在 2 倍屏上」的清晰度。 */
@@ -28,75 +31,87 @@ html.rec #app { display: none !important; }
   background: var(--void);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 28px;
+  font-size: calc(28px * var(--rec-scale, 1));
 }
 
 /* —— 歌曲信息 —— */
 #recCard .now-playing {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr) minmax(560px, 840px);
-  gap: 36px;
+  grid-template-columns: calc(264px * var(--rec-scale, 1)) calc(404px * var(--rec-scale, 1)) minmax(0, 1fr);
+  gap: calc(36px * var(--rec-scale, 1));
   align-items: center;
-  padding: 28px 46px 20px;
+  padding: calc(28px * var(--rec-scale, 1)) calc(46px * var(--rec-scale, 1)) calc(20px * var(--rec-scale, 1));
 }
 
 #recCard .cover-wrap {
-  width: 264px;
-  height: 264px;
-  border-width: 2px;
-  border-radius: 24px;
+  width: calc(264px * var(--rec-scale, 1));
+  height: calc(264px * var(--rec-scale, 1));
+  border-width: calc(2px * var(--rec-scale, 1));
+  border-radius: calc(24px * var(--rec-scale, 1));
   align-self: center;
 }
 
 #recCard .np-main {
-  gap: 12px;
+  gap: calc(12px * var(--rec-scale, 1));
   justify-content: center;
 }
 
 #recCard .np-kicker {
-  font-size: 22px;
+  font-size: calc(22px * var(--rec-scale, 1));
   font-weight: 700;
   letter-spacing: 0.16em;
 }
 
 #recCard .np-main h2 {
-  font-size: 52px;
+  font-size: calc(52px * var(--rec-scale, 1));
   font-weight: 700;
   line-height: 1.15;
 }
 
 #recCard .np-artist {
-  font-size: 26px;
-  margin-bottom: 8px;
+  font-size: calc(26px * var(--rec-scale, 1));
+  margin-bottom: calc(8px * var(--rec-scale, 1));
 }
 
 #recCard .diff-row {
-  gap: 20px;
+  gap: calc(16px * var(--rec-scale, 1));
+  flex-wrap: nowrap;
   margin-bottom: 0;
 }
 
 #recCard .diff-btn {
-  padding: 12px 28px;
-  font-size: 24px;
-  border-width: 2px;
-  border-radius: 999px;
+  padding: calc(12px * var(--rec-scale, 1)) calc(28px * var(--rec-scale, 1));
+  font-size: calc(24px * var(--rec-scale, 1));
+  border-width: calc(2px * var(--rec-scale, 1));
+  border-radius: calc(999px * var(--rec-scale, 1));
 }
 
 #recCard .np-side {
-  justify-content: center;
+  justify-content: flex-end;
+  align-self: end;
+  margin-bottom: calc(14px * var(--rec-scale, 1));
+  gap: calc(16px * var(--rec-scale, 1));
 }
 
+/* 直接搬入播放器物量图；不复制统计或播放进度逻辑。 */
+#recCard .density-wrap {
+  margin: 0;
+  border-radius: 0;
+  cursor: default;
+}
+#recCard .density-hud { display: none; }
+
 #recCard .stat-row {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px 28px;
+  grid-template-columns: repeat(3, max-content) minmax(0, 1fr);
+  gap: calc(20px * var(--rec-scale, 1)) calc(50px * var(--rec-scale, 1));
 }
 
 #recCard .stat label {
-  font-size: 20px;
+  font-size: calc(20px * var(--rec-scale, 1));
 }
 
 #recCard .stat value {
-  font-size: 36px;
+  font-size: calc(36px * var(--rec-scale, 1));
   font-weight: 700;
 }
 
@@ -106,39 +121,39 @@ html.rec #app { display: none !important; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 8px 46px 16px;
+  justify-content: flex-start;
+  padding: 0 calc(46px * var(--rec-scale, 1)) calc(16px * var(--rec-scale, 1));
 }
 
 #recCard .panel-bezel {
-  padding: 28px;
-  border-width: 2px;
-  border-radius: 40px;
+  padding: calc(28px * var(--rec-scale, 1));
+  border-width: calc(2px * var(--rec-scale, 1));
+  border-radius: calc(40px * var(--rec-scale, 1));
 }
 
 #recCard .panel-inner {
-  width: 962px !important;
-  height: 962px !important;
-  gap: 16px;
-  padding: 20px;
-  border-width: 2px;
-  border-radius: 28px;
+  width: calc(962px * var(--rec-scale, 1)) !important;
+  height: calc(962px * var(--rec-scale, 1)) !important;
+  gap: calc(16px * var(--rec-scale, 1));
+  padding: calc(20px * var(--rec-scale, 1));
+  border-width: calc(2px * var(--rec-scale, 1));
+  border-radius: calc(28px * var(--rec-scale, 1));
 }
 
-#recCard .pad { border-radius: 16px; }
+#recCard .pad { border-radius: calc(16px * var(--rec-scale, 1)); }
 
 #recCard .marker-canvas {
-  border-radius: 28px;
+  border-radius: calc(28px * var(--rec-scale, 1));
 }
 
 #recCard .panel-glow {
-  border-radius: 52px;
+  border-radius: calc(52px * var(--rec-scale, 1));
 }
 
 #recCard .pad .idx {
-  right: 12px;
-  bottom: 8px;
-  font-size: 18px;
+  right: calc(12px * var(--rec-scale, 1));
+  bottom: calc(8px * var(--rec-scale, 1));
+  font-size: calc(18px * var(--rec-scale, 1));
 }
 
 /* 成片不带底部说明条（参考构图里没有它） */

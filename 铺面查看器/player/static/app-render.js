@@ -122,9 +122,10 @@
 
     // marker 接近 / 判定动画 + 节拍指示
     drawMarkers(mediaT);
-    A.drawFirstMarker(mediaT);
+    if(!A.mode?.ownsFrame)A.drawFirstMarker(mediaT);
     updateComboDisplay();
-    drawDensity(mediaT);
+    if(A.mode?.ownsFrame&&A.mode.paintDensity)A.mode.paintDensity();
+    else drawDensity(mediaT);
     A.drawTimeline?.(mediaT);
   }
 
@@ -147,6 +148,7 @@
 
   function updateFrame(now) {
     state.raf = 0;
+    if(A.mode?.ownsFrame)return;
     // 完全空闲（暂停、没在拖、没有外部指定帧时间、没开调试面板）且没有脏标记
     // → 这一帧不画，也不再排下一帧。
     if (!paintDirty && !state.playing && !state.scrubbing

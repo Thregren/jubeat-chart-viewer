@@ -5,7 +5,7 @@
  *   1. 预设：在 app.js 之前把 marker / 速度 / 三个显示开关 / 静音写进 localStorage，
  *      保证画面参数一致，且不受本机历史设置影响；
  *   2. 版面：把「歌曲信息 + 4×4 面板」搬进固定像素的卡片 `#recCard`（样式见 record.css），
- *      曲库 / 控制条 / 物量条等界面元素不参与录制；
+ *      曲库 / 控制条等界面元素不参与录制，物量条沿用播放器最新版；
  *   3. 接口：暴露 `window.__rec`（契约见文件末尾）。
  *
  * 画面完全由时间决定：setFrameTime(t) 把画面时间钉在 t，seekTo(t) 按 t 重建连击 /
@@ -22,8 +22,10 @@
 
   // 成片构图：类横屏（4:3 宽扁），尺寸由录制脚本通过 rw / rh 传进来，缺省与
   // tools/rec/record.mjs 的 --card-w / --card-h 一致。
-  const CARD_W = Number(query.get("rw")) || 1830;
-  const CARD_H = Number(query.get("rh")) || 1372;
+  const CARD_W = Number(query.get("rw")) || 1440;
+  const CARD_H = Number(query.get("rh")) || 1080;
+  // 固定构图按目标画幅同比例布局，Canvas 也按实际尺寸绘制；不是先画大图再缩片。
+  const LAYOUT_SCALE = Math.min(CARD_W / 1830, CARD_H / 1372);
 
   // ── 1. 录制预设（必须早于 app.js：它一启动就读这些键）──────────────
   const PRESET = {
@@ -38,7 +40,7 @@
     numScale: "100",
     numAlpha: "100",
     numColor: "#ffffff",                  // 序号颜色也钉死，成片不受录制机历史设置影响
-    numGlowAlpha: "80",                   // 光晕透明度 80%
+    numGlowAlpha: "70",                   // 与播放器最新版默认光晕透明度一致
     numCorner: "1",                       // 序号放右下角
     showChordGlow: "1",
     chordGlowStyle: "frame",              // 同押高亮样式：加粗面板框
@@ -101,6 +103,16 @@
     card.id = "recCard";
     card.style.width = `${CARD_W}px`;
     card.style.height = `${CARD_H}px`;
+    document.documentElement.style.setProperty("--rec-scale", String(LAYOUT_SCALE));
+    const side = nowPlaying.querySelector(".np-side");
+    const densityWrap = document.getElementById("densityWrap");
+    const stats = nowPlaying.querySelector(".stat-row");
+    for (const id of ["statNotes", "statHolds", "statBpm", "statTime"]) {
+      const stat = document.getElementById(id)?.closest(".stat");
+      if (stat) stats.append(stat);
+    }
+    if (side && densityWrap) side.append(densityWrap);
+    window.JubeatApp.density.cropSides = true;
     card.append(nowPlaying, panelStage);
     document.documentElement.classList.add("rec");   // record.css 靠这个类藏掉其余 UI
     document.body.append(card);
@@ -130,6 +142,7 @@
     // 卡片换了位置和尺寸：canvas 尺寸与 padRects 都得重新量
     await raf();
     window.__player.layoutCanvas();
+    window.JubeatApp.layoutDensity();
 
     if (document.fonts && document.fonts.ready) {
       try { await document.fonts.ready; } catch (_) { /* 字体加载失败不影响录制 */ }
@@ -138,6 +151,7 @@
     await waitUntil("marker 素材", markerImagesReady, 10000);
 
     window.__player.layoutCanvas();
+    window.JubeatApp.layoutDensity();
     await raf();
     await raf();
     return info();
@@ -228,13 +242,26 @@
     const c0 = app && app.paintCount != null ? app.paintCount : null;
     window.__player.setFrameTime(Number(t));
     window.__player.seekTo(Number(t));
+    // Synchronous screenshots request a fresh compositor frame themselves. Drive
+    // the existing renderer at the exact chart time instead of waiting for two
+    // display vsyncs first. Never use this path with asynchronous screencast.
+    if (clock?.direct && app && typeof app.updateFrame === "function") {
+      cancelAnimationFrame(window.__player.state.raf);
+      window.__player.state.raf = 0;
+      app.updateFrame(performance.now());
+      return c0 == null || app.paintCount !== c0;
+    }
     await raf();
     if (c0 == null) return true;          // 老页面没有计数：按「已经画了」处理
     // 极端情况下这一帧可能被合并掉（同一个 vsync 里又排了一次 updateFrame）。
     // 再等两帧确认；确实是「本来就该静止」才回 false，让录制端直接沿用上一帧，
     // 而不是白等 grabScreencast 的超时。
     for (let k = 0; k < 2 && app.paintCount === c0; k++) await raf();
-    return app.paintCount !== c0;
+    const painted = app.paintCount !== c0;
+    // rAF 回调结束才提交本轮 Canvas；再跨一个完整绘制周期，确保合成器已接收
+    // 本时刻的面板和物量图。推帧的时间戳只说明编码/交换时间，不能证明内容已提交。
+    if (painted) await raf();
+    return painted;
   }
 
   /**
@@ -247,6 +274,7 @@
   async function remeasure() {
     await raf();
     window.__player.layoutCanvas();
+    window.JubeatApp.layoutDensity();
     await raf();
     await raf();
     return info();

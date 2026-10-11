@@ -25,7 +25,7 @@
   async function readBytes(res, maxBytes, onProgress = () => {}) {
     if (!res.ok) throw new Error(`读取失败（${res.status}）`);
     const total = Number(res.headers.get("Content-Length")) || 0;
-    if (total > maxBytes) throw new Error("资源超过允许大小");
+    if (total > maxBytes) { await res.body?.cancel().catch(() => {}); throw new Error("资源超过允许大小"); }
     if (!res.body || !res.body.getReader) {
       const bytes = await res.arrayBuffer();
       if (bytes.byteLength > maxBytes) throw new Error("资源超过允许大小");

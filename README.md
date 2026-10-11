@@ -4,9 +4,9 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.24`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.25`，由 `tools/set_version.py` 同步）。
 
-[![v0.6.24 界面：同押面板框与灰黄物量进度条](docs/screenshot.jpg)](docs/screenshot.jpg)
+[![v0.6.25 界面：横向节奏轴与物量条共存](docs/rhythm-timeline.png)](docs/rhythm-timeline.png)
 
 > **桌面版下载（含全量曲库）**：<https://pan.quark.cn/s/e9c12157e039>
 >
@@ -19,7 +19,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.24`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.24** · [Release notes](docs/release-v0.6.24.md) ·
+当前版本：**v0.6.25** · [Release notes](docs/release-v0.6.25.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -60,6 +60,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.24`，由 `tools/set_
 | 练谱前先看一遍节奏 | 变速（0.25×–2×）+ 循环 + 打点音 + 总连击 |
 | 反复啃某一段 | `A-B` 段落循环（同一键打 A / B 两点，第三下清除） |
 | 看一堆同押到底哪几个键一起按 | marker 顺序数字 + 同押双色面板框 / 光晕 |
+| 分辨附点与三连音 | 默认隐藏的横向节奏轴 + 四分拍线的 2 / 3 / 4 等分 |
 | 手机上随手看一眼 | 窄屏布局（曲库抽屉 / 折叠选项 / 半高物量条） |
 
 键盘快捷键（界面上没写，但有）：
@@ -119,6 +120,8 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 ├── static/app-audio.js           前端第 2 层：打点音素材 + 输出总线（9.2 KB）
 ├── static/app-marker.js          前端第 3 层：官方逐帧 marker / 长押箭头 / 顺序数字
 ├── static/app-density.js         前端第 4 层：物量条 / 拖动定位 / 连击 / A–B 打点（10 KB）
+├── static/rhythm-timeline.js     横向节奏轴的拍点几何
+├── static/app-timeline.js        节奏轴绘制、拖动与键盘定位
 ├── static/app-library.js         前端第 5 层：锁缩放 / 侧栏 / 列表 / 选曲（23 KB）
 ├── static/app-player.js          前端第 6 层：播放后端 / 加载进度 / seek（27 KB）
 ├── static/app-render.js          前端第 7 层：渲染循环（9.7 KB）
@@ -130,7 +133,7 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 ├── static/record.css             录制模式版面：整页只剩一张卡片（3 KB）
 ├── data/library.json             曲库索引（696 KB，gzip 后约 104 KB）
 ├── data/markers.json             marker 清单（45 套 + 1 种判定特效）
-├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 6761 个）
+├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 6797 个）
 ├── media/audio/<曲目>.ogg        音源（Ogg Opus 80k，2.4 GB）
 ├── media/cover/<曲目>.<ext>      封面原图（351 MB）
 ├── media/thumb/<曲目>.jpg        列表缩略图 96px（17 MB）
@@ -139,7 +142,7 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 
 - **一次展开，到处跑**：构建做两件事 —— 解 zip 改名，加索引；音源顺手从 mcz 里的
   **Vorbis 转成 Ogg Opus 80k**（体积砍掉三分之一，听感基本一样，见 `tools/audio_opus.py`）。
-  当前曲库（2257 首）首次约 6 分钟（其中转码约 5 分钟，之后有内容哈希缓存），增量 30 秒左右；
+  当前曲库（2269 首）首次约 6 分钟（其中转码约 5 分钟，之后有内容哈希缓存），增量 30 秒左右；
   本机没装 `ffmpeg` 时不转码、原样复制，站点照跑，只是包大一圈
 - **索引里就带 note / hold 数**，列表排序、筛选、物量条都不用再读谱面
 - 曲库（`music/`）和产物（`site/` 等）都**不入库**，仓库里只有代码和 marker 素材
@@ -317,6 +320,18 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 
 切难度（BSC / ADV / EXT 按钮，或按 `1`–`4`）会重新读谱面并重建物量图；同一首歌换难度
 **不会重新下载音源**。右上角常驻 BPM（多 BPM 时显示 `起始~`）、NOTE、HOLD、TIME。
+
+### 横向节奏轴
+
+展开底部选项，点击“节奏轴”即可开启；每次刷新默认隐藏。它按音符所在拍点显示横向间距，
+同时展示 16 个按键位置和长押长度，用来辨认附点、三连音及密集节奏。
+
+默认拍线为四分音符，可切换为八分音符（2 等分）、十二分音符（3 等分）或十六分音符（4 等分）；
+可见范围可选 4、8 或 16 拍。红线表示当前播放位置，变速和 BPM 变化时仍按谱面拍点对齐。
+
+桌面上节奏轴和物量条同时显示；屏幕宽度不超过 600px 时，节奏轴覆盖物量条，关闭后恢复。
+点击可定位，左右拖动可回看；播放中拖动会暂停预览，松开后继续播放。聚焦节奏轴时，
+左右方向键按所选细分移动一格，`Home` / `End` 跳到开头或结尾。
 
 ### 口径：物量怎么算
 
@@ -755,6 +770,30 @@ NO_WINE=1 npm run dist:win    # 没有 wine 的机器上打 Windows 包（跳过
 
 注意：轻量包**不含 site/ 也不含前端**，只是同版本的桌面壳（首次启动自己选 site 目录）。
 
+### 安卓版（最小包 + 资源包）
+
+安卓分两个产物：**最小安装包**只带界面，**资源包**带曲库，分开传、分开更新。
+换前端不用重下 2.8 GB 曲库，换曲库也不用重装 App。
+
+```bash
+sh tools/setup_android_sdk.sh                          # 一次性：装 cmdline-tools + platforms;android-34 + build-tools;35.0.0
+sh android/build.sh                                    # → android/out/dist/jubeat-viewer-<版本>-android-min.apk（约 150 KB）
+python3 tools/pack_android_res.py                      # → android/out/dist/jubeat-library-<版本>.zip（约 2.8 GB）
+python3 tools/pack_android_res.py --verify             # 同上，打完把整包 CRC 校一遍
+```
+
+* **最小包**：`index.html` + `static/` 编译进 APK 的 assets，配一个只监听 `127.0.0.1` 的手写静态服务
+  （`android/app/src/.../LocalServer.java`），WebView 指过去。不含任何曲库，所以只有一两百 KB。
+* **资源包**：站点目录去掉前端（`index.html`、`static/`、`robots.txt`）后的部分 —— `media/`、`markers/`、
+  `data/`，包内路径就是站点根开始的相对路径。
+* App 里两条路都行：① 首屏「导入资源包」直接选这个 zip（支持多选、带流式进度）；
+  ② 插 USB 把 zip 解压到 `Android/media/world.thregren.jubeatviewer/site/`。
+  前者每启动一次都会用 APK 里的前端覆盖站点目录，所以前端版本永远跟着 App 走。
+* 资源包 2.8 GB，**超过 GitHub Release 的单文件上限（2 GB）**，别往 Release 传（`tools/release.py`
+  也会挡住带曲库的桌面包），走网盘或本地交付。
+* 打包不用 Gradle：`android/build.sh` 就是 aapt2 → javac → d8 → zipalign → apksigner 五步，没有第三方依赖。
+  唯一要求是 build-tools **≥ 35**（34.0.0 的 R8 碰到 JDK 21 编译的匿名内部类会 NPE）。
+
 ## 部署
 
 ### 服务器：纯静态（推荐）
@@ -878,7 +917,7 @@ python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= / 
 # 抓一张界面截图（README 顶部那张就是这么来的）
 cd electron && npx electron ../tools/screenshot.js \
     "http://127.0.0.1:8124/?song=jubeat-saucer%2FWindy%20Fairy.mcz&chart=EXT&t=84.02&paused=1" \
-    ../docs/screenshot.jpg 1280x720
+    ../docs/rhythm-timeline.png 1280x720
 ```
 
 这几个脚本都会临时起服务、造 fixture、自己清理，不需要真实曲库（PHP 那个需要机器上有 `php`，
@@ -934,6 +973,11 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 
 ## 性能与体积
 
+曲库列表只保留可见行和当前焦点行，支持键盘导航；谱面缓存同时受 40 份和 24 MiB 预算约束，
+贴图缓存同时受帧数和 48 MiB 预算约束。音频解码串行处理，超出解码预算时使用原生媒体播放。
+曲库索引按单个归档指纹复用，重复转码复用同一缓存任务；构建失败取消排队任务并保留原站点。
+本地服务在客户端取消请求或服务关闭时回收文件流和连接，并校验符号链接的真实路径。
+
 | 项 | 做法 |
 |---|---|
 | 体积 | 3.1 GB 里 2.4 GB 是音源（**Ogg Opus 80k**，比原来的 Vorbis 128k 小三成半且听感相当）；封面原图按需加载，列表只用 96px 缩略图（17 MB） |
@@ -962,7 +1006,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 
 - **代码：[MIT](LICENSE) © 2026 Thregren** —— 可以自由使用、修改、再分发，保留版权声明即可
 - **素材不在 MIT 范围内**：`marker/` 里的 marker 图案 / banner / 官方 marker 一览，
-  以及界面截图里的曲目封面（`docs/screenshot.jpg`），版权归各权利人，
+  以及界面截图里的曲目封面（`docs/rhythm-timeline.png`），版权归各权利人，
   明细与出处见 [THIRD-PARTY.md](THIRD-PARTY.md)
 - **曲库来源**：[Swan416ya/Jubeat2Malody-GUI](https://github.com/Swan416ya/Jubeat2Malody-GUI/tree/mcz-releases)
   整理并打包的 jubeat `.mcz`（Malody 谱面格式）；本项目只做浏览与回放，曲库本身不入库

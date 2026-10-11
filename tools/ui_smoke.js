@@ -194,7 +194,7 @@ async function runPage(win, errors) {
     "fire('frame'); const frame = cfg.style;" +
     "fire('both'); const both = cfg.style;" +
     "fire('垃圾值'); const junk = cfg.style;" +
-    "const echo = sel.value;" +                  // 畸形值要回显成生效的那个（光晕）
+    "const echo = sel.value;" +                  // 畸形值要回显成生效的默认值（面板框）
     "const saved = localStorage.getItem('jubeat.chordGlowStyle');" +
     "return {opts, frame, both, junk, echo, saved};" +
     "})()");
@@ -202,8 +202,8 @@ async function runPage(win, errors) {
     glowStyle.opts.join(",") === "glow,frame,both", glowStyle.opts.join("/"));
   check("切样式立刻改画法并记住",
     glowStyle.frame === "frame" && glowStyle.both === "both"
-      && glowStyle.junk === "glow" && glowStyle.echo === "glow"
-      && glowStyle.saved === "glow",
+      && glowStyle.junk === "frame" && glowStyle.echo === "frame"
+      && glowStyle.saved === "frame",
     `frame=${glowStyle.frame} both=${glowStyle.both} 畸形→${glowStyle.junk} 存=${glowStyle.saved}`);
 
   const filtered = await js("(() => {" +

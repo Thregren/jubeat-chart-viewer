@@ -9,6 +9,7 @@ import re
 import threading
 import tempfile
 import zipfile
+import shutil
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -74,27 +75,42 @@ def safe_join(root: Path, rel: str) -> Path:
     return dest
 
 
+MAX_ARCHIVE_ENTRIES = 4096
+MAX_CHART_BYTES = 8 * 1024 * 1024
+MAX_MEMBER_BYTES = 64 * 1024 * 1024
+
+
+def member_info(zf: zipfile.ZipFile, member: str) -> zipfile.ZipInfo:
+    infos = zf.infolist()
+    if len(infos) > MAX_ARCHIVE_ENTRIES:
+        raise ValueError("Archive has too many entries")
+    base = os.path.basename(member)
+    target = next((i for i in infos if not i.is_dir() and
+                   (i.filename == member or zip_name(i) == member)), None)
+    if target is None:
+        matches = [i for i in infos if not i.is_dir() and os.path.basename(zip_name(i)) == base]
+        if len(matches) != 1:
+            raise FileNotFoundError("Missing or ambiguous archive member: " + member)
+        target = matches[0]
+    limit = MAX_CHART_BYTES if member.lower().endswith((".mc", ".json")) else MAX_MEMBER_BYTES
+    if target.file_size > limit:
+        raise ValueError("Archive member exceeds size budget: " + member)
+    return target
+
+
+def read_zip_member(zf: zipfile.ZipFile, member: str) -> bytes:
+    info = member_info(zf, member)
+    with zf.open(info) as source:
+        data = source.read(info.file_size + 1)
+    if len(data) != info.file_size:
+        raise ValueError("Archive member length mismatch")
+    return data
+
+
 def read_member(zip_path: Path, member: str) -> bytes:
-    """读取 zip 成员；先精确匹配，再按 basename 兜底（兼容不同打包工具）。"""
+    """Read a bounded member; ambiguous basename fallbacks are rejected."""
     with zipfile.ZipFile(zip_path) as zf:
-        target = None
-        base = os.path.basename(member)
-        for info in zf.infolist():
-            if info.is_dir():
-                continue
-            if info.filename == member or zip_name(info) == member:
-                target = info
-                break
-        if target is None:
-            for info in zf.infolist():
-                if info.is_dir():
-                    continue
-                if os.path.basename(zip_name(info)) == base:
-                    target = info
-                    break
-        if target is None:
-            raise FileNotFoundError(member)
-        return zf.read(target)
+        return read_zip_member(zf, member)
 
 
 def member_is_fresh(cached: Path, zip_path: Path) -> bool:
@@ -114,9 +130,19 @@ def cached_member_file(zip_path: Path, member: str, dest: Path) -> Path:
     with lock_for(str(dest)):
         if member_is_fresh(dest, zip_path):  # 等锁期间别人已经解好了
             return dest
-        data = read_member(zip_path, member)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        write_atomic(dest, data)
+        fd, name = tempfile.mkstemp(prefix=dest.name + ".tmp-", dir=dest.parent)
+        tmp = Path(name)
+        try:
+            with os.fdopen(fd, "wb") as out, zipfile.ZipFile(zip_path) as zf:
+                info = member_info(zf, member)
+                with zf.open(info) as source:
+                    shutil.copyfileobj(source, out, 256 * 1024)
+                if out.tell() != info.file_size:
+                    raise ValueError("Archive member length mismatch")
+            os.replace(tmp, dest)
+        finally:
+            tmp.unlink(missing_ok=True)
         return dest
 
 

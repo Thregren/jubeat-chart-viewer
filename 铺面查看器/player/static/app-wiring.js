@@ -469,6 +469,7 @@
     });
 
     document.addEventListener("keydown", (e) => {
+      if(A.mode?.ownsFrame)return;
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
         if (e.code === "Space" && e.target === els.search) return;
@@ -511,7 +512,7 @@
     if (narrowMq.addEventListener) narrowMq.addEventListener("change", onBreakpoint);
     else if (narrowMq.addListener) narrowMq.addListener(onBreakpoint);
     if (window.ResizeObserver && els.panel) {
-      const ro = new ResizeObserver(() => layoutCanvas());
+      const ro = new ResizeObserver(() => A.mode?.scheduleLayout ? A.mode.scheduleLayout() : layoutCanvas());
       ro.observe(els.panel);
       // 同时 observe 所在区块：歌曲信息 / 断点布局改变中间行时也要重新量一次，
       // 不能只盯着面板自身，否则会留下一个偏大或偏小的旧尺寸。
@@ -519,7 +520,7 @@
       if (panelStage) ro.observe(panelStage);
     }
     if (window.ResizeObserver && els.densityWrap) {
-      const ro2 = new ResizeObserver(() => layoutDensity());
+      const ro2 = new ResizeObserver(() => {if(!A.mode?.ownsFrame)layoutDensity();});
       ro2.observe(els.densityWrap);
     }
   }

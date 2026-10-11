@@ -71,8 +71,11 @@
   }
 
   let playGeneration = 0;
+  let cancelSeekCompletion = null;
+  let decodeQueue = Promise.resolve();
 
   function stopBufferSource() {
+    cancelSeekCompletion?.(); cancelSeekCompletion=null;
     playGeneration++;
     if (!backend.src) return;
     try {
@@ -264,6 +267,7 @@
     backend.objectUrl = "";
   }
   function cancelAudioLoad() { audioRequests.cancel(); releaseMediaObject(); }
+  function releaseDecodedAudio() { stopBufferSource();backend.buf=null;backend.mode='element';A.metrics=A.metrics||{};A.metrics.audioPCMBytes=0; }
   window.addEventListener("pagehide", (event) => {
     if (!event.persisted) cancelAudioLoad();
   });
@@ -400,7 +404,7 @@
   }
 
   /** 把音源解码成 AudioBuffer（换歌时调用；失败就继续用 <audio> 直出） */
-  async function prepareBuffer(url) {
+  async function prepareBuffer(url, options = {}) {
     const request = audioRequests.start(90000);
     const started = performance.now();
     const current = () => audioRequests.current(request) && backend.url === url;
@@ -434,7 +438,13 @@
       audioLoad.decoding = true;
       updateLoadMeter();
       A.audioCtx = A.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const buf = await A.audioCtx.decodeAudioData(bytes);
+      const wantsPCM=()=>options.decode!==false&&!A.mode?.preferNativeAudio&&selectedRate()===1;
+      if(!wantsPCM()) {audioLoad.decoding=false;loadElementSource(url);return true;}
+      const decode=decodeQueue.then(()=>current()&&wantsPCM()?A.audioCtx.decodeAudioData(bytes):null);
+      decodeQueue=decode.catch(()=>null);
+      const buf = await decode;
+      if(!buf){if(current())loadElementSource(url);return false;}
+      if(!wantsPCM()||buf.length*buf.numberOfChannels*4>192*1024*1024){if(current())loadElementSource(url);return true;}
       if (!current()) return;
       A.metrics = A.metrics || {}; A.metrics.audioReadyMs = performance.now() - started;
       A.metrics.audioPCMBytes = buf.length * buf.numberOfChannels * 4;
@@ -561,6 +571,7 @@
    * 这时候什么都不做 —— 重建源会听出一次断音。
    */
   function keepAudioAlive() {
+    if(A.mode?.ownsFrame){if(A.audioCtx?.state!=="running")A.mode.interrupt?.("音频恢复请求");return;}
     if (document.hidden) {
       suspendedPos = state.playing ? audioNow() : null;
       return;
@@ -666,6 +677,7 @@
   }
 
   function seekTo(sec) {
+    if(A.mode?.ownsFrame)return;
     const s = Math.max(0, Math.min(sec, state.duration || 0));
     const off = (Number(els.offset.value) || 0) / 1000;
     const audioT = s + (state.baseOffset || 0) - off;
@@ -695,6 +707,7 @@
   }
 
   async function play() {
+    if(A.mode?.ownsFrame)return;
     if (!state.song) {
       toast("先从左侧选择一首曲目");
       return;
@@ -780,6 +793,7 @@
    * 听起来就是「整体错位」。等 seeked / canplay 之后再播放，并重新锚定打点音。
    */
   function resumeAfterSeek(fallbackMs = 800) {
+    cancelSeekCompletion?.(); cancelSeekCompletion=null;
     if (backend.mode === "webaudio") {       // 没有媒体管线，位置已经精确落好，直接续播
       sfxReset();
       play();
@@ -793,6 +807,7 @@
       return;
     }
     let fired = false;
+    const cancel = () => {fired=true;el.removeEventListener("seeked",fire);el.removeEventListener("canplay",fire);clearTimeout(timer);clearTimeout(deadline);if(cancelSeekCompletion===cancel)cancelSeekCompletion=null;};
     const fire = () => {
       if (fired) return;
       if (generation === playGeneration && url === backend.url && (el.seeking || el.readyState < 3)) return;
@@ -813,27 +828,19 @@
       el.removeEventListener("seeked", fire);
       el.removeEventListener("canplay", fire);
     }, 10000);
+    cancelSeekCompletion=cancel;
   }
 
   /** 暂停状态下跳转：等 seek 落地后按最终位置重建一次状态 */
   function settleAfterSeek() {
-    if (backend.mode === "webaudio") {
-      rebuildVisualState(renderMediaTime());
-      sfxReset();
-      return;
-    }
-    const el = els.audio;
-    if (!el.seeking) {
-      rebuildVisualState(renderMediaTime());
-      sfxReset();
-      return;
-    }
-    const fire = () => {
-      el.removeEventListener("seeked", fire);
-      rebuildVisualState(renderMediaTime());
-      sfxReset();
-    };
-    el.addEventListener("seeked", fire, { once: true });
+    cancelSeekCompletion?.(); cancelSeekCompletion=null;
+    const el=els.audio,generation=playGeneration,url=backend.url;
+    if(backend.mode==='webaudio'||!el.seeking){rebuildVisualState(renderMediaTime());sfxReset();return;}
+    let timer;
+    const clean=()=>{clearTimeout(timer);el.removeEventListener('seeked',fire);el.removeEventListener('error',clean);if(cancelSeekCompletion===clean)cancelSeekCompletion=null;};
+    const fire=()=>{clean();if(generation===playGeneration&&url===backend.url){rebuildVisualState(renderMediaTime());sfxReset();}};
+    el.addEventListener('seeked',fire,{once:true});el.addEventListener('error',clean,{once:true});
+    timer=setTimeout(clean,10000);cancelSeekCompletion=clean;
   }
 
   function stop() {
@@ -870,6 +877,8 @@
     bindLoadEvents,
     prepareBuffer,
     cancelAudioLoad,
+    releaseDecodedAudio,
+    loadElementSource,
     startBufferAt,
     applyPlaybackRate,
     keepAudioAlive,

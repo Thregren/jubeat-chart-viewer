@@ -242,10 +242,6 @@ button:focus-visible,
 }
 
 .song-item {
-  /* 上千行时浏览器只为接近可视区的行做完整布局/绘制；
-     老浏览器忽略这三条，退化回现在的完整列表。 */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 68px;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -1211,3 +1207,8 @@ input[type="range"] {
   .transport { padding: 6px 10px max(8px, env(safe-area-inset-bottom)); }
   .panel-caption { font-size: 10px; }
 }
+
+.song-list.virtual { overflow-anchor: none; }
+.song-list.virtual .song-row { height: 80px; }
+.song-list.virtual .song-item { height: 76px; }
+.song-list .song-spacer { pointer-events: none; padding: 0; margin: 0; }

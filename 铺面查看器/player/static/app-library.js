@@ -92,7 +92,7 @@
       const data = Runtime.validateLibrary(await Runtime.readJSON(res));
       if (!libraryRequests.current(request)) return;
       state.songs = data.songs;
-      state.chartCache.clear();
+      state.chartCache.clear();chartSizes.clear();chartBytes=0;
       A.metrics = A.metrics || {}; A.metrics.libraryMs = performance.now() - started;
       invalidateSongCaches();
       {
@@ -227,59 +227,57 @@
     activeSongRowId = activeId;
   }
 
-  /** 列表行里当前的「选中项 id」，用于增量高亮（见 updateActiveSongRow） */
-  let activeSongRowId = "";
-  /** 分块渲染的令牌 + 取消句柄：新一次 renderList 会让上一次剩下的分块作废 */
-  let renderToken = 0;
-  let renderCancel = null;
-
-  // 一次同步搭多少行。1371 首 × 每行约 11 个节点 ≈ 一万五千个节点，
-  // 一口气搭完再插进文档会阻塞主线程 100ms 以上（手机上更明显），
-  // 敲关键词时就表现为「一顿一顿」。分块之后每次只干一小段，中间能响应输入。
-  const LIST_CHUNK = 120;
-  const scheduleChunk = window.requestAnimationFrame
-    ? (fn) => window.requestAnimationFrame(fn)
-    : (fn) => setTimeout(fn, 16);
-  const cancelChunk = window.cancelAnimationFrame
-    ? (id) => window.cancelAnimationFrame(id)
-    : (id) => clearTimeout(id);
-
-  function renderList() {
-    const ul = els.songList;
-    const token = ++renderToken;
-    if (renderCancel) {
-      cancelChunk(renderCancel);
-      renderCancel = null;
+  let activeSongRowId = '';
+  const ROW_HEIGHT=80, OVERSCAN=8;
+  let virtualSongs=[],virtualRows=new Map(),listRaf=0,focusIndex=0;
+  const scheduleList=()=>{if(!listRaf)listRaf=requestAnimationFrame(()=>{listRaf=0;paintListWindow();});};
+  function spacer(height){const li=document.createElement('li');li.className='song-spacer';li.setAttribute('aria-hidden','true');li.style.height=height+'px';return li;}
+  function paintListWindow(){
+    const ul=els.songList;if(!virtualSongs.length)return;
+    const focused=document.activeElement?.closest?.('.song-item'),focusedId=focused?.dataset.songId;
+    const focusedIndex=focusedId?virtualSongs.findIndex(s=>s.id===focusedId):-1;
+    const first=Math.max(0,Math.floor(ul.scrollTop/ROW_HEIGHT)-OVERSCAN);
+    const last=Math.min(virtualSongs.length,Math.ceil((ul.scrollTop+(ul.clientHeight||640))/ROW_HEIGHT)+OVERSCAN);
+    const indexes=new Set();for(let i=first;i<last;i++)indexes.add(i);if(focusedIndex>=0)indexes.add(focusedIndex);
+    const wanted=new Set([...indexes].map(i=>virtualSongs[i].id));
+    for(const [id,row]of virtualRows)if(!wanted.has(id)){const img=row.querySelector('img');if(img)coverObserver?.unobserve(img);row.remove();virtualRows.delete(id);songButtonById.delete(id);}
+    for(const old of ul.querySelectorAll('.song-spacer'))old.remove();
+    let cursor=ul.firstChild,previous=0;
+    for(const index of [...indexes].sort((a,b)=>a-b)){
+      if(index>previous)ul.insertBefore(spacer((index-previous)*ROW_HEIGHT),cursor);
+      const song=virtualSongs[index];let row=virtualRows.get(song.id);
+      if(!row){row=buildSongRow(song);row.classList.add('song-row');virtualRows.set(song.id,row);}
+      const button=songButtonById.get(song.id);button.tabIndex=index===focusIndex?0:-1;button.dataset.listIndex=String(index);
+      row.setAttribute('aria-posinset',String(index+1));row.setAttribute('aria-setsize',String(virtualSongs.length));
+      if(row!==cursor)ul.insertBefore(row,cursor);else cursor=cursor.nextSibling;
+      previous=index+1;
     }
-    if (coverObserver) coverObserver.disconnect();
-    songButtonById.clear();
-    activeSongRowId = state.song ? state.song.id : "";
-    ul.replaceChildren();
-    const started = performance.now();
-    const songs = visibleSongs();
-    els.listCount.textContent = `${songs.length} / ${state.songs.length} 首`;
-    if (!songs.length) {
-      const li = document.createElement("li");
-      li.className = "empty-list";
-      li.textContent = state.songs.length
-        ? "没有匹配的曲目，换个关键词试试。"
-        : "曲库里没有曲目：把 .mcz 放进 music/ 后重新构建。";
-      ul.appendChild(li);
-      return;
-    }
-    let i = 0;
-    const step = () => {
-      // 期间又搜过一次 → 这次渲染已经过时，剩下的分块直接丢掉
-      if (token !== renderToken) return;
-      const frag = document.createDocumentFragment();
-      const end = Math.min(songs.length, i + LIST_CHUNK);
-      for (; i < end; i++) frag.appendChild(buildSongRow(songs[i]));
-      ul.appendChild(frag);
-      renderCancel = i < songs.length ? scheduleChunk(step) : null;
-      if (!renderCancel) { A.metrics = A.metrics || {}; A.metrics.listMs = performance.now() - started; }
-    };
-    step();
+    if(previous<virtualSongs.length)ul.appendChild(spacer((virtualSongs.length-previous)*ROW_HEIGHT));
+    if(focusedId&&document.activeElement!==focused&&focused?.isConnected)focused.focus({preventScroll:true});
+    A.metrics=A.metrics||{};A.metrics.listRows=virtualRows.size;
   }
+  function renderList(){
+    const started=performance.now(),ul=els.songList;
+    cancelAnimationFrame(listRaf);listRaf=0;coverObserver?.disconnect();songButtonById.clear();virtualRows.clear();
+    activeSongRowId=state.song?.id||'';virtualSongs=visibleSongs();focusIndex=0;
+    ul.classList.add('virtual');ul.replaceChildren();ul.scrollTop=0;
+    els.listCount.textContent=`${virtualSongs.length} / ${state.songs.length} 首`;
+    if(!virtualSongs.length){const li=document.createElement('li');li.className='empty-list';li.textContent=state.songs.length?'没有匹配的曲目，换个关键词试试。':'曲库里没有曲目：把 .mcz 放进 music/ 后重新构建。';ul.appendChild(li);}
+    else paintListWindow();
+    A.metrics=A.metrics||{};A.metrics.listMs=performance.now()-started;
+  }
+  els.songList.addEventListener('scroll',scheduleList,{passive:true});
+  els.songList.addEventListener('click',e=>{const button=e.target.closest?.('.song-item');if(!button)return;focusIndex=Number(button.dataset.listIndex);const song=virtualSongs[focusIndex];if(song?.id===button.dataset.songId){scheduleList();selectSong(song);}});
+  els.songList.addEventListener('keydown',e=>{
+    const button=e.target.closest?.('.song-item');if(!button)return;
+    const index=Number(button.dataset.listIndex),page=Math.max(1,Math.floor(els.songList.clientHeight/ROW_HEIGHT));
+    const target={ArrowDown:index+1,ArrowUp:index-1,PageDown:index+page,PageUp:index-page,Home:0,End:virtualSongs.length-1}[e.key];
+    if(target===undefined)return;e.preventDefault();focusIndex=Math.max(0,Math.min(virtualSongs.length-1,target));
+    const top=focusIndex*ROW_HEIGHT,bottom=top+ROW_HEIGHT;
+    if(top<els.songList.scrollTop)els.songList.scrollTop=top;else if(bottom>els.songList.scrollTop+els.songList.clientHeight)els.songList.scrollTop=bottom-els.songList.clientHeight;
+    paintListWindow();songButtonById.get(virtualSongs[focusIndex].id)?.focus({preventScroll:true});
+  });
+  if(window.ResizeObserver)new ResizeObserver(scheduleList).observe(els.songList);
 
   /** 把一首歌搭成一行（纯 DOM，不拼 HTML） */
   function buildSongRow(s) {
@@ -335,13 +333,14 @@
       lvset.appendChild(chip);
     }
     btn.dataset.songId = s.id;
-    btn.addEventListener("click", () => selectSong(s));
+
     songButtonById.set(s.id, btn);
     li.appendChild(btn);
     return li;
   }
 
   async function selectSong(song, preferredCode = null) {
+    A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts) || !song.charts.length) return;
     state.song = song;
     updateActiveSongRow();
@@ -386,7 +385,8 @@
   // 谱面 JSON 的缓存上限。一份 .mc 解析出来的 JSON 从几十 KB 到几百 KB，
   // 以前是只进不出的 Map：一首一首听下去，内存只涨不落（手机上很致命）。
   // 40 份够来回切歌不重读，同时把最早用过的挤出去。
-  const CHART_CACHE_MAX = 40;
+  const CHART_CACHE_MAX = 40, CHART_CACHE_BYTES = 24 * 1024 * 1024;
+  const chartSizes = new Map(); let chartBytes = 0;
 
   /** 读缓存，顺带把这一项挪到队尾（Map 保持插入序 → 队首就是最久没用过的） */
   function chartCacheGet(key) {
@@ -400,16 +400,20 @@
 
   function chartCachePut(key, payload) {
     const c = state.chartCache;
+    chartBytes-=chartSizes.get(key)||0;
+    const bytes=payload.bytes||JSON.stringify(payload.chart).length*4;
+    chartSizes.set(key,bytes);chartBytes+=bytes;
     c.delete(key);
     c.set(key, payload);
-    while (c.size > CHART_CACHE_MAX) {
+    while (c.size > CHART_CACHE_MAX || chartBytes>CHART_CACHE_BYTES) {
       const oldest = c.keys().next().value;
-      if (oldest === key) break;        // 理论上不会发生，兜一下防止无限循环
-      c.delete(oldest);
+      if(oldest===undefined)break;
+      c.delete(oldest);chartBytes-=chartSizes.get(oldest)||0;chartSizes.delete(oldest);
     }
   }
 
   async function loadChart(code) {
+    A.mode?.chartChanging?.();
     if (!state.song) return;
     const song = state.song;
     const request = chartRequests.start();

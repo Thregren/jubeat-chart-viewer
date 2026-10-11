@@ -4,14 +4,15 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.25`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.26`，由 `tools/set_version.py` 同步）。
 
 [![v0.6.25 界面：横向节奏轴与物量条共存](docs/rhythm-timeline.png)](docs/rhythm-timeline.png)
 
 > **桌面版下载（含全量曲库）**：<https://pan.quark.cn/s/e9c12157e039>
 >
 > 在网盘的 `v0.6.25` 文件夹选择对应平台的**全量曲库桌面包**，解压后即可浏览，不用自己构建 `site/`；
-> GitHub Release 上另放**不带曲库**的轻量包（约 120–151 MiB，需自行指向 `site/`）。
+> GitHub Release 上另放 **v0.6.26 不带曲库**的轻量包（需自行指向 `site/`）。
+> v0.6.26 六个平台的全量包已构建并通过内容、完整性、版本及架构校验，含 2,549 首歌曲、7,645 张谱面；夸克上传尚未完成，目前网盘仍提供 v0.6.25。
 
 **一句话架构**：构建期把曲库（`.mcz`）展开成一棵纯静态文件树 `site/`，运行期浏览器只跟 HTTP 打交道——
 没有数据库，也没有常驻后端。五种跑法（nginx 静态站 / PHP 整包 / Python 开发服务器 / Electron 桌面版 / Android WebView）
@@ -19,7 +20,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.25`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.25** · [Release notes](docs/release-v0.6.25.md) ·
+当前版本：**v0.6.26** · [Release notes](docs/release-v0.6.26.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -766,7 +767,7 @@ sh tools/pack_desktop.sh       # 打完自动收回 electron/dist（脚本没有
 想手工跑的话：
 
 ```bash
-npm run dist                  # 默认把 site/ 打进包里（本次全量包约 3.1–6.2 GB）
+npm run dist                  # 默认把 site/ 打进包里（本次全量包约 3.5–6.9 GB）
 NO_WINE=1 npm run dist:win    # 没有 wine 的机器上打 Windows 包（跳过 exe 图标/版本信息）
 ```
 
@@ -880,15 +881,15 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 **带全量曲库**的桌面版整包（解压即用，不必自备 `site/`）见
 [文首网盘链接](https://pan.quark.cn/s/e9c12157e039)；下面这批 Release 附件是**不带曲库**的轻量包
-（每个约 120–151 MiB；GitHub 单个附件上限 2 GB，本次带曲库的整包约 3.1–6.2 GB，使用网盘分发）：
+（每个约 120–151 MiB；GitHub 单个附件上限 2 GB，本次带曲库的整包约 3.5–6.9 GB；v0.6.26 夸克上传尚未完成）：
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.25-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.25-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.25-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.26-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.26-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.26-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.25）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.26）的轻量附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的

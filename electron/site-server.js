@@ -96,6 +96,9 @@ function resolveSafe(root, urlPath) {
  * 只能 destroy 掉这条响应，让客户端自己重试。
  */
 function sendFile(req, res, target, headers, code, opts = null) {
+  // realpath/stat finish asynchronously; a cancelled request may have closed its
+  // response by then. pipeline throws synchronously for an already closed target.
+  if (res.destroyed || res.writableEnded || res.socket?.destroyed) return;
   res.writeHead(code, headers);
   if (req.method === "HEAD") return res.end();
   const stream = opts ? fs.createReadStream(target, opts) : fs.createReadStream(target);

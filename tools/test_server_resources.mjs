@@ -22,3 +22,31 @@ test('static server rejects symlink escape, cancels streams and closes idle sock
   socket.write('GET / HTTP/1.1\r\nHost: localhost\r\n');await server.close();await closed;assert.equal(socket.destroyed,true);assert([undefined,'ECONNRESET'].includes(socketError?.code));
  }finally{fs.createReadStream=original;await server.close();fs.rmSync(tmp,{recursive:true,force:true});}
 });
+
+
+test('a cancelled request cannot open a file after delayed stat completes', {timeout:10000}, async()=>{
+ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'jubeat-cancel-before-send-'));
+ const target=path.join(fs.realpathSync(tmp),'index.html');fs.writeFileSync(target,'cancelled response');
+ const originalStat=fs.stat,originalRead=fs.createReadStream;let release,opened=0;
+ const statPending=new Promise(resolve=>{
+  fs.stat=(file,...args)=>{
+   const callback=args.pop();
+   return originalStat(file,...args,(error,value)=>{
+    if(file===target){release=()=>callback(error,value);resolve();}
+    else callback(error,value);
+   });
+  };
+ });
+ fs.createReadStream=(...args)=>{opened++;return originalRead(...args);};
+ const server=await serve(tmp);let req;
+ try{
+  req=http.get(server.url);req.on('error',()=>{});
+  await statPending;req.destroy();await server.close();
+  assert.doesNotThrow(()=>release());
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(opened,0,'do not open files for a response that has already closed');
+ }finally{
+  req?.destroy();fs.stat=originalStat;fs.createReadStream=originalRead;
+  await server.close();fs.rmSync(tmp,{recursive:true,force:true});
+ }
+});

@@ -58,7 +58,9 @@
     canvas.setAttribute("aria-valuemax",String(state.duration||0));
     canvas.setAttribute("aria-valuetext",`第 ${(view.beat+1).toFixed(2)} 拍，${A.fmtTime(sec)}`);
   }
-  const repaint=()=>A.requestPaint?.();
+  // Scripts can arrive across separate animation frames. Boot builds the pads before
+  // starting its render loop; early resize/visibility callbacks must wait for it.
+  const repaint=()=>{if(state.padEls.length===16)A.requestPaint?.();};
   function setShown(value) {
     if(drag)finish(null,true);
     shown=!!value&&!recording;

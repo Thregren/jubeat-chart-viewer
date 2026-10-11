@@ -23,6 +23,12 @@ app.whenReady().then(async()=>{try{
  server=await require('../electron/site-server').serve(site);
  win=new BrowserWindow({show:false,width:1280,height:900,webPreferences:{offscreen:true,backgroundThrottling:false,autoplayPolicy:'no-user-gesture-required'}});
  win.webContents.setAudioMuted(true);
+ // Delay the final boot script to exercise early ResizeObserver callbacks while
+ // the timeline module is loaded but the panel has not been constructed yet.
+ win.webContents.session.webRequest.onBeforeRequest({urls:['http://127.0.0.1/*']},(details,done)=>{
+  if(/\/static\/app\.js[.?]/.test(details.url))setTimeout(()=>done({}),300);
+  else done({});
+ });
  win.webContents.on('console-message',details=>{if(details.level==='error'||details.level===3)errors.push(details.message);});
  await win.loadURL(server.url);await until('!!window.__player && JubeatApp.state.songs.length>0');
  check('hidden on first load',await js("timelineWrap.hidden && btnTimeline.getAttribute('aria-pressed')==='false'"));

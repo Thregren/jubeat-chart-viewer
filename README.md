@@ -10,11 +10,11 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.25`，由 `tools/set_
 
 > **桌面版下载（含全量曲库）**：<https://pan.quark.cn/s/e9c12157e039>
 >
-> 网盘里是**自带全量曲库**的桌面版整包，解压就能直接看，不用自己构建 `site/`；
-> GitHub Release 上另放**不带曲库**的轻量包（约 100 MB，需自行指向 `site/`）。
+> 在网盘的 `v0.6.25` 文件夹选择对应平台的**全量曲库桌面包**，解压后即可浏览，不用自己构建 `site/`；
+> GitHub Release 上另放**不带曲库**的轻量包（约 120–151 MiB，需自行指向 `site/`）。
 
 **一句话架构**：构建期把曲库（`.mcz`）展开成一棵纯静态文件树 `site/`，运行期浏览器只跟 HTTP 打交道——
-没有数据库，也没有常驻后端。四种跑法（nginx 静态站 / PHP 整包 / Python 开发服务器 / Electron 桌面版）
+没有数据库，也没有常驻后端。五种跑法（nginx 静态站 / PHP 整包 / Python 开发服务器 / Electron 桌面版 / Android WebView）
 共用同一份前端和同一套 URL 布局，所以行为完全一致。
 
 线上实例：<https://ub.thregren.world>
@@ -28,7 +28,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.25`，由 `tools/set_
 
 - [这是什么](#这是什么)
 - [快速开始](#快速开始)
-- [四种跑法](#四种跑法)
+- [五种跑法](#五种跑法)
 - [架构一：构建期](#架构一构建期)
 - [架构二：运行期](#架构二运行期)
 - [目录结构](#目录结构)
@@ -95,7 +95,7 @@ cd electron && npm install && npm start
 三者都要求仓库根目录有 `music/`（曲库，见[构建](#构建)）。没有曲库时开发服务器也能起来，
 只是列表是空的。
 
-## 四种跑法
+## 五种跑法
 
 | 跑法 | 怎么跑 | 运行时依赖 | 适用 |
 |---|---|---|---|
@@ -103,8 +103,9 @@ cd electron && npm install && npm start
 | **PHP 整包** | `build_php_package.py` 打成 zip，丢到站点根目录解压 | 有 PHP 即可 | 宝塔「PHP 站点」、虚拟主机、改不了服务器配置 |
 | **桌面版** | `electron/` 打包成 mac / win / linux 的 App | 无 | 当成一个本地 App 用，双击就开 |
 | **开发服务器** | `cd 铺面查看器 && ./start.sh` | Python 3（标准库） | 本机调试：直接读 `.mcz`，改谱不用重新构建 |
+| **Android** | 构建最小 APK，再导入资源包（见[安卓版](#安卓版最小包--资源包)） | 系统 WebView | 手机上离线浏览完整曲库 |
 
-后三种跑的都是**同一个前端**，区别只是把 `site/` 换成「实时读 `.mcz`」或者「塞进 App 里」。
+后四种跑的都是**同一个前端**，区别只是把 `site/` 换成「实时读 `.mcz`」或者「塞进 App 里」。
 
 ## 架构一：构建期
 
@@ -113,7 +114,7 @@ music/<机台版本>/<曲名>.mcz      ← 曲库（zip：0/曲名_难度 Lv xx.
         │
         │  tools/build_site.py   展开 + 生成索引；增量（按 mtime 跳过已是最新的），--prune 清理删掉的曲
         ▼
-site/                           ← 唯一的「运行时数据」，约 3.1 GB
+site/                           ← 唯一的「运行时数据」，体积随曲库与兼容资源副本变化
 ├── index.html                    前端页面（15 KB）
 ├── static/core.js                纯逻辑：谱面解析 / 顺序数字 / 难度匹配（14 KB，node 可测）
 ├── static/app-base.js            前端第 1 层：DOM 句柄 / state / 常量 / 曲库元数据（17 KB）
@@ -131,13 +132,13 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 ├── static/sfx.js                 打点音合成（7 KB）
 ├── static/record.js              录制模式 `?rec=1`：预设 + 卡片 + `__rec` 接口（10 KB）
 ├── static/record.css             录制模式版面：整页只剩一张卡片（3 KB）
-├── data/library.json             曲库索引（696 KB，gzip 后约 104 KB）
+├── data/library.json             曲库索引（2269 首曲目）
 ├── data/markers.json             marker 清单（45 套 + 1 种判定特效）
 ├── data/charts/<曲目>/<难度>.json 谱面（当前曲库 6797 个）
-├── media/audio/<曲目>.ogg        音源（Ogg Opus 80k，2.4 GB）
-├── media/cover/<曲目>.<ext>      封面原图（351 MB）
-├── media/thumb/<曲目>.jpg        列表缩略图 96px（17 MB）
-└── markers/                     marker 逐帧素材（85 MB，45 套）
+├── media/audio/<曲目>.ogg        音源（Ogg Opus 80k）
+├── media/cover/<曲目>.<ext>      封面原图
+├── media/thumb/<曲目>.jpg        列表缩略图 96px
+└── markers/                     marker 逐帧素材（45 套）
 ```
 
 - **一次展开，到处跑**：构建做两件事 —— 解 zip 改名，加索引；音源顺手从 mcz 里的
@@ -162,7 +163,7 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 
 ## 架构二：运行期
 
-浏览器只做 HTTP，**URL 布局就是前后端之间唯一的契约**，四种跑法必须一模一样：
+浏览器只做 HTTP，**URL 布局就是前后端之间唯一的契约**，五种跑法必须一模一样：
 
 ```
 /                        前端页面（index.html）
@@ -177,7 +178,7 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 /markers/<sheet>         marker sprite sheet
 ```
 
-四种跑法各自怎么把文件发出来：
+五种跑法各自怎么把文件发出来：
 
 | 跑法 | 谁在发文件 | Range |
 |---|---|---|
@@ -185,6 +186,7 @@ site/                           ← 唯一的「运行时数据」，约 3.1 GB
 | PHP 整包 | `deploy/php/index.php`（或 nginx 直发） | 两者都实现 |
 | 桌面版 | `electron/site-server.js`（内置本地 HTTP 服务） | 实现 |
 | 开发服务器 | `铺面查看器/player/server.py` | 实现（从 `.mcz` 里按需读） |
+| Android | `android/app/src/.../LocalServer.java`（仅监听本机） | 实现 |
 
 开发服务器是唯一「运行时读 `.mcz`」的形态：按需解包，封面/音频缓存到 `cache/`，
 所以改谱面不用重新构建；代价是单进程 Python，只适合本机用。
@@ -738,7 +740,7 @@ python3 tools/build_site.py --rescan           # 丢掉曲库扫描缓存，重�
 ### PHP 整包
 
 ```bash
-python3 tools/build_php_package.py             # → dist-php/jubeat-site-php.zip（含曲库，约 2.6 GB）
+python3 tools/build_php_package.py             # → dist-php/jubeat-site-php.zip（含曲库，体积随曲库变化）
 python3 tools/build_php_package.py --no-zip    # 只准备目录，不压缩
 ```
 
@@ -747,7 +749,7 @@ python3 tools/build_php_package.py --no-zip    # 只准备目录，不压缩
 
 ### 桌面版打包
 
-Release 附件（轻量包，每个约 100 MB）用脚本打：
+Release 附件（轻量包，每个约 120–151 MiB）用脚本打：
 
 ```bash
 sh tools/pack_desktop.sh       # 打完自动收回 electron/dist（脚本没有可执行位，用 sh 跑）
@@ -764,7 +766,7 @@ sh tools/pack_desktop.sh       # 打完自动收回 electron/dist（脚本没有
 想手工跑的话：
 
 ```bash
-npm run dist                  # 默认把 site/ 打进包里（每个平台约 3 GB）
+npm run dist                  # 默认把 site/ 打进包里（本次全量包约 3.1–6.2 GB）
 NO_WINE=1 npm run dist:win    # 没有 wine 的机器上打 Windows 包（跳过 exe 图标/版本信息）
 ```
 
@@ -772,13 +774,15 @@ NO_WINE=1 npm run dist:win    # 没有 wine 的机器上打 Windows 包（跳过
 
 ### 安卓版（最小包 + 资源包）
 
+源码提供 Android 构建工具；本次 Release 附件是六份桌面轻量包，Android 可按下列步骤自行构建。
+
 安卓分两个产物：**最小安装包**只带界面，**资源包**带曲库，分开传、分开更新。
-换前端不用重下 2.8 GB 曲库，换曲库也不用重装 App。
+换前端不用重下整份曲库，换曲库也不用重装 App。
 
 ```bash
 sh tools/setup_android_sdk.sh                          # 一次性：装 cmdline-tools + platforms;android-34 + build-tools;35.0.0
 sh android/build.sh                                    # → android/out/dist/jubeat-viewer-<版本>-android-min.apk（约 150 KB）
-python3 tools/pack_android_res.py                      # → android/out/dist/jubeat-library-<版本>.zip（约 2.8 GB）
+python3 tools/pack_android_res.py                      # → android/out/dist/jubeat-library-<版本>.zip（体积随曲库变化）
 python3 tools/pack_android_res.py --verify             # 同上，打完把整包 CRC 校一遍
 ```
 
@@ -789,7 +793,7 @@ python3 tools/pack_android_res.py --verify             # 同上，打完把整�
 * App 里两条路都行：① 首屏「导入资源包」直接选这个 zip（支持多选、带流式进度）；
   ② 插 USB 把 zip 解压到 `Android/media/world.thregren.jubeatviewer/site/`。
   前者每启动一次都会用 APK 里的前端覆盖站点目录，所以前端版本永远跟着 App 走。
-* 资源包 2.8 GB，**超过 GitHub Release 的单文件上限（2 GB）**，别往 Release 传（`tools/release.py`
+* 全量资源包可能**超过 GitHub Release 的单文件上限（2 GB）**，大包请不要往 Release 传（`tools/release.py`
   也会挡住带曲库的桌面包），走网盘或本地交付。
 * 打包不用 Gradle：`android/build.sh` 就是 aapt2 → javac → d8 → zipalign → apksigner 五步，没有第三方依赖。
   唯一要求是 build-tools **≥ 35**（34.0.0 的 R8 碰到 JDK 21 编译的匿名内部类会 NPE）。
@@ -876,15 +880,15 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 **带全量曲库**的桌面版整包（解压即用，不必自备 `site/`）见
 [文首网盘链接](https://pan.quark.cn/s/e9c12157e039)；下面这批 Release 附件是**不带曲库**的轻量包
-（每个约 100 MB；GitHub 单个附件上限 2 GB，而带曲库的整包已经到 3 GB 上下，根本传不上去）：
+（每个约 120–151 MiB；GitHub 单个附件上限 2 GB，本次带曲库的整包约 3.1–6.2 GB，使用网盘分发）：
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.18-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.18-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.18-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.25-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.25-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.25-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.18）的附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.25）的附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
@@ -980,7 +984,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 
 | 项 | 做法 |
 |---|---|
-| 体积 | 3.1 GB 里 2.4 GB 是音源（**Ogg Opus 80k**，比原来的 Vorbis 128k 小三成半且听感相当）；封面原图按需加载，列表只用 96px 缩略图（17 MB） |
+| 体积 | 音源使用 **Ogg Opus 80k** 压缩；封面原图按需加载，列表只用 96px 缩略图。资源体积随曲库及兼容资源副本变化 |
 | 带宽 | 一首歌 ≈ 1.1 MB，听一遍 ≈ 1.1 MB；当前索引 gzip 后约 307 KiB，每次访问验证缓存 |
 | 并发 | 静态部署时由 nginx 发文件，2 核 2G 够用；HTML 音频回退支持 Range；WebAudio 首次载入整首，之后在本地跳转 |
 | 缓存 | 内容哈希资源缓存一年；旧路径重新验证，`markers/` 缓存 7 天；曲库索引与首页 no-cache |

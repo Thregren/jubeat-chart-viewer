@@ -10,7 +10,8 @@ function timers(){const pending=new Map();let id=0;return{pending,setTimeout(fn)
 function player(){
  const time=timers(),plays=[],sessions=[];
  const element=()=>({classList:{toggle(){}},style:{},setAttribute(){}});
- const audio={readyState:0,duration:NaN,paused:true,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(){},removeEventListener(){}};
+ const events=new Map();
+ const audio={readyState:0,duration:NaN,paused:true,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(name,fn){if(!events.has(name))events.set(name,new Set());events.get(name).add(fn)},removeEventListener(name,fn){events.get(name)?.delete(fn)},emit(name){for(const fn of [...(events.get(name)||[])])fn()}};
  const els={audio,rate:{value:'1'},offset:{value:'0'}};for(const k of ['loadRow','btnPlay','loadLabel','loadPct','loadFill','loadBar','statTime','timeTotal','playIcon','timeNow'])els[k]=element();
  const ctx={state:'running',currentTime:0,resume(){return Promise.resolve()},decodeAudioData(){return Promise.resolve({length:4096,numberOfChannels:2,duration:60})},createGain(){return{connect(){}}},createAnalyser(){return{connect(){}}},createBufferSource(){return{playbackRate:{value:1},connect(){},stop(){},disconnect(){},start(_,off){plays.push({url:A.backend.url,off})}}}};
  const A={els,state:{playing:false,song:{id:'first'},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,fmtTime:String,fmtBytes:String,toast(){},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(){}};
@@ -48,4 +49,15 @@ test('actual player cancels old recovery across song change, pause and seek',asy
 test('recovery merges repeated focus nudges and resumes once at original position',async()=>{
  const h=player();Object.assign(h.A.backend,{mode:'webaudio',url:'old.ogg',buf:{duration:200},anchorPos:42});h.A.state.playing=true;h.ctx.state='suspended';h.A.keepAudioAlive();h.A.keepAudioAlive();assert.equal(h.time.pending.size,1);
  h.ctx.state='running';h.time.run();await turn();assert.deepEqual(h.plays,[{url:'old.ogg',off:42}]);assert.equal(h.sessions[0].recovery,null);
+});
+
+test('deferred backend seek preserves rate-change resume, but user pause and seek cancel it',async()=>{
+ for(const action of ['none','pause','seek']){
+  const h=player();Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf:{duration:60},anchorPos:1});
+  h.A.bindLoadEvents();h.A.state.playing=true;h.A.els.rate.value='0.75';h.A.applyPlaybackRate();
+  assert.equal(h.A.backend.mode,'element');assert.equal(h.A.state.playing,false);
+  if(action==='pause')h.A.pause();if(action==='seek')h.A.seekTo(4);
+  h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');h.time.run();await turn();
+  assert.equal(h.A.state.playing,action==='none');assert.equal(h.audio.paused,action!=='none');
+ }
 });

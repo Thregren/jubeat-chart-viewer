@@ -658,12 +658,18 @@
     if (pendingSeek == null || !canSeekNow()) return;
     const sec = pendingSeek;
     pendingSeek = null;
-    seekTo(sec);
+    // Completing this source's deferred seek must preserve its scheduled resume.
+    seekPosition(sec);
   }
 
   function seekTo(sec) {
     if(A.mode?.ownsFrame)return;
     audioSession.invalidate();
+    seekPosition(sec);
+  }
+
+  function seekPosition(sec) {
+    if(A.mode?.ownsFrame)return;
     const s = Math.max(0, Math.min(sec, state.duration || 0));
     const off = (Number(els.offset.value) || 0) / 1000;
     const audioT = s + (state.baseOffset || 0) - off;

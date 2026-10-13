@@ -1212,3 +1212,6 @@ input[type="range"] {
 .song-list.virtual .song-row { height: 80px; }
 .song-list.virtual .song-item { height: 76px; }
 .song-list .song-spacer { pointer-events: none; padding: 0; margin: 0; }
+
+.brand-source a { color: inherit; font-weight: 600; text-decoration: none; }
+.brand-source a:hover { color: var(--text); text-decoration: underline; }

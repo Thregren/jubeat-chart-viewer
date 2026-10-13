@@ -8,4 +8,6 @@
 
 保留横向节奏轴、现有曲库和已发布的查看器交互。六份桌面附件为不带曲库的轻量包，分别覆盖 macOS、Windows 和 Linux 的两种架构；运行时请选择自己的 site 目录。macOS 包未经公证，Windows 跨平台构建未签名。
 
+发布前通过 79 项真实界面检查、18 项横向节奏轴检查及源站 PHP 的 32 项 HTTP 检查。播放中切换速度的自动续播已补充回归验证。
+
 [在线查看器](https://ub.thregren.world/) · [源码](https://github.com/Thregren/jubeat-chart-viewer)

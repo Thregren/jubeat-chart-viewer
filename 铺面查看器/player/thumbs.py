@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import shutil
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -62,15 +63,31 @@ def _with_sips(src: Path, dest: Path, size: int, quality: int) -> bool:
 
 
 def make(src: Path, dest: Path, size: int, quality: int) -> bool:
-    """把 src 缩成 size×size 的 JPEG 写到 dest；成功返回 True。"""
+    """Generate privately and publish only a completed thumbnail atomically."""
     kind = backend()
+    tmp = None
     try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix=dest.name + ".tmp-", suffix=".jpg", dir=dest.parent)
+        os.close(fd)
+        tmp = Path(name)
         if kind == "pillow":
-            return _with_pillow(src, dest, size, quality)
-        if kind == "sips":
-            return _with_sips(src, dest, size, quality)
+            success = _with_pillow(src, tmp, size, quality)
+        elif kind == "sips":
+            success = _with_sips(src, tmp, size, quality)
+        else:
+            return False
+        if success and tmp.is_file() and tmp.stat().st_size:
+            os.replace(tmp, dest)
+            return True
     except Exception:
         return False
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
     return False
 
 

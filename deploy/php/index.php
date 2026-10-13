@@ -25,6 +25,7 @@ const JUBEAT_CHUNK = 262144;
 
 function jubeat_mime(string $path): string
 {
+    if (preg_match('#^manifest\.json(?:\.[a-f0-9]{20}\.json)?$#D', basename($path))) return 'application/manifest+json; charset=utf-8';
     static $map = [
         'html' => 'text/html; charset=utf-8',
         'htm'  => 'text/html; charset=utf-8',
@@ -128,7 +129,9 @@ function jubeat_resolve(string $uri): ?array
     $resolvedRel = str_replace(DIRECTORY_SEPARATOR, '/', substr($real, strlen($root) + 1));
     if (preg_match('#(^|/)\.#', $resolvedRel)) { return null; }
     if (!in_array($resolvedRel, ['index.html', 'robots.txt'], true) && !preg_match('#^(data|media|markers|static)/#', $resolvedRel)) { return null; }
-    if (str_ends_with(strtolower($resolvedRel), '.json') && !str_starts_with($resolvedRel, 'data/')) { return null; }
+    // Only the install manifest may be JSON outside the data tree.
+    $isManifest = preg_match('#^static/manifest\.json(?:\.[a-f0-9]{20}\.json)?$#D', $resolvedRel) === 1;
+    if (str_ends_with(strtolower($resolvedRel), '.json') && !str_starts_with($resolvedRel, 'data/') && !$isManifest) { return null; }
     $ext = strtolower(pathinfo($real, PATHINFO_EXTENSION));
     $allowed = ['html','htm','css','js','mjs','json','txt','svg','png','jpg','jpeg','webp','gif','ico','ogg','oga','mp3','wav','m4a','flac','woff','woff2','ttf'];
     if (!in_array($ext, $allowed, true)) { return null; }

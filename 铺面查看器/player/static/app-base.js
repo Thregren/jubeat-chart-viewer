@@ -369,6 +369,20 @@
   ];
 
   function store(key, value) {
+    const bridge = window.__recActive ? null : window.JubeatPreferences;
+    if (bridge) {
+      try {
+        if (value === undefined) {
+          const saved = bridge.getItem(key);
+          if (saved != null) return saved;
+          const legacy = localStorage.getItem(key);
+          if (legacy != null) bridge.setItem(key, legacy);
+          return legacy;
+        }
+        if (value === null) bridge.removeItem(key);
+        else bridge.setItem(key, String(value));
+      } catch (_) { /* The web storage fallback remains available. */ }
+    }
     try {
       if (value === undefined) return localStorage.getItem(key);
       if (value === null) localStorage.removeItem(key);

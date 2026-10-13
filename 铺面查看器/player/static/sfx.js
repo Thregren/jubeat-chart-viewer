@@ -10,11 +10,27 @@
   "use strict";
 
   /** 一段白噪声，复用它做拍手/边击 */
+  const noisePools = new WeakMap();
+  const NOISE_POOL_ENTRIES = 8, NOISE_POOL_BYTES = 2 * 1024 * 1024;
   function noiseBuffer(ctx, seconds = 0.3) {
-    const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+    const duration = Number.isFinite(seconds) ? Math.max(0, Math.min(1, seconds)) : 0.3;
+    const len = Math.max(1, Math.min(NOISE_POOL_BYTES / 4, Math.floor(ctx.sampleRate * duration)));
+    let pool = noisePools.get(ctx);
+    if (!pool) { pool = { buffers: new Map(), bytes: 0 }; noisePools.set(ctx, pool); }
+    const key = `${ctx.sampleRate}:${len}`;
+    if (pool.buffers.has(key)) {
+      const cached = pool.buffers.get(key);
+      pool.buffers.delete(key); pool.buffers.set(key, cached);
+      return cached;
+    }
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    pool.buffers.set(key, buf); pool.bytes += len * 4;
+    while (pool.buffers.size > NOISE_POOL_ENTRIES || pool.bytes > NOISE_POOL_BYTES) {
+      const oldest = pool.buffers.keys().next().value;
+      pool.bytes -= pool.buffers.get(oldest).length * 4; pool.buffers.delete(oldest);
+    }
     return buf;
   }
 

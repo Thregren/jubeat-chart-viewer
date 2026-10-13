@@ -11,6 +11,7 @@ test('recording identity detects changed source, renderer and parameters',()=>{
   fs.writeFileSync(path.join(repo,'music/song.mcz'),'source');
   fs.writeFileSync(path.join(repo,'铺面查看器/player/static/record.js'),'renderer');
   for(const name of ['record.mjs','audio.mjs','cdp.mjs','cover.mjs','resources.mjs'])fs.writeFileSync(path.join(repo,'tools/rec',name),name);
+  for(const name of ['recording_cache.mjs','recording_processes.mjs','recording_resources.mjs','recording_fingerprint.mjs'])fs.writeFileSync(path.join(repo,'tools',name),name);
   const initial=fingerprint(repo,'song.mcz');assert.equal(initial,fingerprint(repo,'song.mcz'));
   assert.notEqual(initial,fingerprint(repo,'song.mcz',{'sfx-volume':60}));
   fs.writeFileSync(path.join(repo,'music/song.mcz'),'verified artist');assert.notEqual(initial,fingerprint(repo,'song.mcz'));

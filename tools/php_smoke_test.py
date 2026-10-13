@@ -73,6 +73,8 @@ def build_root(tmp: Path) -> tuple[Path, dict[str, bytes]]:
     (root / "data" / ".private.json").write_text("secret")
     (root / "package.json").write_text("secret")
     (root / "static" / "app.js.0123456789abcdef0123.js").write_bytes(js)
+    for name in ["manifest.json", "manifest.json.0123456789abcdef0123.json", "other.json", "manifest.json.invalid.json"]:
+        (root / "static" / name).write_bytes(b'{"name":"fixture","icons":[]}')
     return root, {"html": html, "blob": blob, "json": index_json}
 
 
@@ -110,6 +112,13 @@ def main() -> int:
 
             st, hd, body = request(port, "/static/app.js")
             check("js 200 + text/javascript", st == 200 and "javascript" in hd.get("content-type", ""), str(st))
+
+            for name in ["manifest.json", "manifest.json.0123456789abcdef0123.json"]:
+                st, hd, body = request(port, "/static/" + name)
+                check("PWA manifest route " + name, st == 200 and hd.get("content-type", "").startswith("application/manifest+json") and b'"icons"' in body, str(st))
+            for name in ["other.json", "manifest.json.invalid.json"]:
+                st, hd, body = request(port, "/static/" + name)
+                check("unlisted static JSON rejected " + name, st == 404, str(st))
 
             st, hd, body = request(port, "/data/library.json")
             check("json 200 + application/json", st == 200 and "json" in hd.get("content-type", ""), str(st))

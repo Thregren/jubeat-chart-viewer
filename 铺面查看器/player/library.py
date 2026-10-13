@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import concurrent.futures
+import gzip
 import json
 import hashlib
+import math
 import os
 import re
 import sys
@@ -15,6 +17,7 @@ from pathlib import Path
 
 import config
 from media import read_member, read_zip_member, safe_join, write_atomic, zip_name, MAX_ARCHIVE_ENTRIES
+from source_revision import source_revision
 
 DIFF_RE = re.compile(r"_([A-Z]{3})\s*Lv([0-9]+(?:\.[0-9]+)?)", re.I)
 DIFF_ORDER = {"BSC": 0, "BAS": 0, "ADV": 1, "EXT": 2}
@@ -258,10 +261,10 @@ def fingerprint(paths: list[Path]) -> dict:
     digest = hashlib.sha256()
     for path in sorted(paths):
         try:
-            st = path.stat()
+            revision = source_revision(path)
         except OSError:
             continue
-        digest.update(json.dumps([str(path), st.st_size, st.st_mtime_ns, st.st_ctime_ns],
+        digest.update(json.dumps([str(path), revision],
                                  ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
         digest.update(b"\0")
     return {"sha256": digest.hexdigest()}
@@ -269,8 +272,46 @@ def fingerprint(paths: list[Path]) -> dict:
 
 
 def valid_cached_song(song) -> bool:
-    return (isinstance(song, dict) and all(isinstance(song.get(k), str) for k in ("id", "title", "version"))
-            and isinstance(song.get("charts"), list) and all(isinstance(c, dict) for c in song["charts"]))
+    """Validate fields consumed by both public projection and archive lookup.
+
+    Invalid cache data is rescanned rather than installed as a permanently
+    broken library. Optional legacy fields retain their existing defaults.
+    """
+    if not isinstance(song, dict) or not all(isinstance(song.get(k), str)
+                                             for k in ("id", "title", "version")):
+        return False
+    song_id = song["id"]
+    if not song_id or song_id.startswith(("/", "\\")) or ".." in song_id.replace("\\", "/").split("/"):
+        return False
+    for key in ("artist", "path", "filename"):
+        if key in song and not isinstance(song[key], str):
+            return False
+    for key in ("audio", "cover"):
+        if song.get(key) is not None and not isinstance(song[key], str):
+            return False
+    charts = song.get("charts")
+    if not isinstance(charts, list) or len(charts) > MAX_ARCHIVE_ENTRIES:
+        return False
+    for chart in charts:
+        if not isinstance(chart, dict):
+            return False
+        if (not isinstance(chart.get("code"), str) or not re.fullmatch(r"[A-Z]{3}", chart["code"])
+                or not isinstance(chart.get("level"), str)
+                or not isinstance(chart.get("file"), str) or not chart["file"]):
+            return False
+        for key in ("notes", "holds"):
+            value = chart.get(key, 0)
+            if type(value) is not int or value < 0:
+                return False
+        if "notesKnown" in chart and not isinstance(chart["notesKnown"], bool):
+            return False
+        if "levelNum" in chart:
+            value = chart["levelNum"]
+            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+                return False
+        if "label" in chart and not isinstance(chart["label"], str):
+            return False
+    return True
 
 
 class Library:
@@ -288,6 +329,7 @@ class Library:
         self._scan_lock = threading.Lock()
         self._loaded = False
         self._revision = 0
+        self._public_response: tuple[bytes, bytes, str] | None = None
 
     @property
     def root(self) -> Path:
@@ -385,14 +427,28 @@ class Library:
         by_stem = {stem_key(s["id"][:-4] if s["id"].lower().endswith(".mcz") else s["id"]): s
                    for s in songs}
         versions = sorted({s["version"] for s in songs})
+        generated = int(time.time())
+        body = json.dumps(published_index(songs, generated=generated), ensure_ascii=False,
+                          separators=(",", ":")).encode("utf-8")
+        # A weak validator describes the JSON representation independently of
+        # transfer compression. The immutable tuple is swapped with the index.
+        public_response = (body, gzip.compress(body, compresslevel=6, mtime=0),
+                           'W/"%s"' % hashlib.sha256(body).hexdigest()[:20])
         with self._lock:
-            self.generated = int(time.time())
+            self.generated = generated
             self.songs = songs
             self.by_id = by_id
             self.by_stem = by_stem
             self.versions = versions
+            self._public_response = public_response
             self._loaded = True
             self._revision += 1
+
+    def published_response(self) -> tuple[bytes, bytes, str]:
+        """Return precomputed JSON, gzip bytes and ETag for the installed index."""
+        self.load()
+        assert self._public_response is not None
+        return self._public_response
 
     # —— 查询 ——
     def query(self, q: str = "", version: str = "") -> list[dict]:

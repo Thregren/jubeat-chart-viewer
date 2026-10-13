@@ -109,7 +109,9 @@
       if (n.t > last) last = n.t;
       if (n.endT != null && n.endT > last) last = n.endT;
     }
-    const dur = Math.max(audio, last) + 1;
+    // Defence in depth for callers that bypass the chart parser.
+    if (!Number.isFinite(last) || !Number.isFinite(audio)) return;
+    const dur = Math.min(Core.MAX_CHART_SECONDS || 21600, Math.max(audio, last)) + 1;
 
     const cols = OFFICIAL_COLS;
     const counts = new Array(cols).fill(0);
@@ -203,7 +205,9 @@
     ctx2.font = "9px monospace";
     ctx2.lineWidth = 1;
     const showTicks = h >= 40 && !density.cropSides;
-    for (let sec = 30; sec < dur; sec += 30) {
+    const tickStep = Math.max(30, Math.ceil(dur / (30 * 512)) * 30);
+    for (let tick = 1; tick <= 512 && tick * tickStep < dur; tick++) {
+      const sec = tick * tickStep;
       const x = Math.round(xOf(sec)) + 0.5;
       ctx2.beginPath();
       ctx2.moveTo(x, PAD_TOP);

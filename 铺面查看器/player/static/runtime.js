@@ -22,6 +22,39 @@
       this.active = null;
     }
   }
+  // Owns asynchronous transport work, independently of DOM and AudioContext.
+  // Decode results belong to callers; the serialization tail only retains completion.
+  class AudioSession {
+    constructor(timers = { setTimeout, clearTimeout }) {
+      this.timers = timers; this.generation = 0; this.recovery = null;
+      this.decodeTail = Promise.resolve();
+    }
+    invalidate() { this.cancelRecovery(); return ++this.generation; }
+    current(token) { return token === this.generation; }
+    decode(job) {
+      const result = this.decodeTail.then(job);
+      this.decodeTail = result.then(() => undefined, () => undefined);
+      return result;
+    }
+    cancelRecovery() {
+      if (this.recovery) this.timers.clearTimeout(this.recovery.timer);
+      this.recovery = null;
+    }
+    recover({ running, resume, restore, current = () => true }, tries = 12) {
+      const nudge = () => { try { Promise.resolve(resume()).catch(() => {}); } catch (_) {} };
+      // A fresh gesture must still unlock audio, but must not add another retry loop.
+      if (this.recovery) { nudge(); return; }
+      const task = { generation: this.generation, timer: null };
+      this.recovery = task;
+      const tick = () => {
+        if (this.recovery !== task) return;
+        if (!this.current(task.generation) || !current()) { this.cancelRecovery(); return; }
+        if (running() || tries-- <= 0) { this.cancelRecovery(); restore(); return; }
+        nudge(); task.timer = this.timers.setTimeout(tick, 120);
+      };
+      tick();
+    }
+  }
   async function readBytes(res, maxBytes, onProgress = () => {}) {
     if (!res.ok) throw new Error(`读取失败（${res.status}）`);
     const total = Number(res.headers.get("Content-Length")) || 0;
@@ -78,13 +111,13 @@
     if (!object(data) || !object(data.meta) || !Array.isArray(data.note) || !Array.isArray(data.time)
       || data.note.length > 200000 || data.time.length > 20000) throw new Error("谱面格式无效");
     const validBeat = (beat) => Array.isArray(beat) && beat.length === 3
-      && beat.every(Number.isFinite) && beat[2] > 0;
+      && beat.every(Number.isFinite) && beat[2] > 0 && Number.isFinite(beat[0] + beat[1] / beat[2]);
     for (const events of [data.time, data.note]) {
       for (const event of events) {
         if (!object(event) || !validBeat(event.beat)
           || (event.endbeat != null && !validBeat(event.endbeat))
           || (event.bpm != null && (!Number.isFinite(event.bpm) || event.bpm <= 0))
-          || (event.offset != null && !Number.isFinite(event.offset))
+          || (event.offset != null && (!Number.isFinite(event.offset) || Math.abs(event.offset) > 21600 * 1000))
           || (event.index != null && (!Number.isInteger(event.index) || event.index < 0 || event.index > 15)))
           throw new Error("谱面拍点、速度或按键无效");
       }
@@ -104,5 +137,5 @@
   function markerRate(rate, normal) {
     return normal && Number.isFinite(rate) && rate > 0 ? rate : 1;
   }
-  return { markerRate, RequestScope, readBytes, readJSON, validateLibrary, validateChart, safePath, Semaphore };
+  return { markerRate, RequestScope, AudioSession, readBytes, readJSON, validateLibrary, validateChart, safePath, Semaphore };
 });

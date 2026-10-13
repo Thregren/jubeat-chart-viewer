@@ -6,12 +6,29 @@
 //     NO_SITE=1 npm run dist:mac
 const path = require("node:path");
 const fs = require("node:fs");
+const os = require("node:os");
+const { execFile } = require("node:child_process");
 
 const bundleSite = process.env.NO_SITE !== "1";
 // 在 macOS 上交叉打包 Windows 需要 wine 去改 exe 的版本信息 / 图标；
 // 沙箱、CI 之类没有 wine 的环境设 NO_WINE=1 跳过这一步（zip 照样能出，exe 用默认图标）。
 const noWine = process.env.NO_WINE === "1";
 const siteDir = path.resolve(__dirname, "..", "site");
+let portableRoot = null;
+let portableReady = null;
+function cleanPortable() {
+  if (portableRoot) { fs.rmSync(portableRoot, { recursive: true, force: true }); portableRoot = null; }
+}
+async function preparePortable() {
+  if (!bundleSite) return;
+  // Every architecture sees the same immutable snapshot. Only the first hook builds it.
+  if (!portableReady) portableReady = new Promise((resolve, reject) => {
+    execFile(process.env.PYTHON || "python3", [path.resolve(__dirname, "../tools/package_site.py"),
+      "--source", siteDir, "--out", path.join(portableRoot, "site")],
+      { maxBuffer: 1024 * 1024 }, error => error ? reject(error) : resolve());
+  }).catch(error => { cleanPortable(); throw error; });
+  await portableReady;
+}
 
 // 打包就是把代码发出去，许可 / 素材说明跟着走（MIT 要求随副本附带版权与许可声明）
 const extraResources = [
@@ -23,15 +40,19 @@ if (bundleSite) {
   if (!fs.existsSync(path.join(siteDir, "index.html"))) {
     throw new Error("BUNDLE_SITE=1 但找不到 ../site：先跑 python3 tools/build_site.py");
   }
-  extraResources.push({ from: "../site", to: "site", filter: ["**/*"] });
+  portableRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jubeat-desktop-site-"));
+  process.once("exit", cleanPortable);
+  extraResources.push({ from: path.join(portableRoot, "site"), to: "site", filter: ["**/*"] });
 }
 
 module.exports = {
   appId: "com.thregren.jubeat.viewer",
   productName: "jubeatViewer",
   directories: { output: "dist", buildResources: "build" },
-  files: ["main.js", "site-server.js", "package.json"],
+  files: ["main.js", "site-server.js", "preload.js", "preferences.js", "package.json"],
   extraResources,
+  beforePack: preparePortable,
+  afterAllArtifactBuild: async () => { cleanPortable(); return []; },
   asar: true,
   mac: {
     category: "public.app-category.music",

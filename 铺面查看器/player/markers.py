@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import json
 import threading
+import sys
 from typing import Any
 
 from config import MARKERS_ROOT
 from media import safe_join
+from source_revision import source_revision
 
 # 一个引擎时间单位 = 多少毫秒（实机逐帧比对得出，见 marker/jubeat_official/README.md）。
 # manifest 里缺字段时用它兜底，避免坏 json 把动画速度拖回错的默认值。
@@ -116,7 +118,7 @@ def _normalize(raw: dict) -> dict:
 def manifest() -> dict:
     manifest_path = MARKERS_ROOT / "manifest.json"
     try:
-        stamp = manifest_path.stat().st_mtime_ns
+        stamp = source_revision(manifest_path)
     except OSError:
         stamp = 0
     with _lock:
@@ -125,12 +127,14 @@ def manifest() -> dict:
 
     data: dict = {"format": "", "designs": [], "error": None}
     if not manifest_path.is_file():
-        data["error"] = f"marker 清单不存在：{MARKERS_ROOT}"
+        print(f"[markers] missing manifest: {manifest_path}", file=sys.stderr)
+        data["error"] = "marker 清单不可用"
     else:
         try:
             data = _normalize(json.loads(manifest_path.read_text(encoding="utf-8")))
         except Exception as exc:  # 坏 json / 坏字段：宁可空清单，别让接口 500
-            data = {"format": "", "designs": [], "error": f"manifest.json: {exc}"}
+            print(f"[markers] invalid manifest {manifest_path}: {exc}", file=sys.stderr)
+            data = {"format": "", "designs": [], "error": "marker 清单不可用"}
     if not data["designs"] and not data["error"]:
         data["error"] = "manifest.json 里没有一个可用设计"
 

@@ -9,6 +9,23 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from contextlib import contextmanager
+
+
+@contextmanager
+def read_site(target: Path):
+    """Keep a published tree stable while a portable archive is being read."""
+    target = target.resolve()
+    with (target.parent / ("." + target.name + ".build.lock")).open("a+") as lock:
+        try:
+            if fcntl:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+            else:
+                lock.write("0"); lock.flush(); lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            raise RuntimeError("站点正在构建，完成后再打包") from None
+        yield
 
 class SiteTransaction:
     def __init__(self, target: Path):

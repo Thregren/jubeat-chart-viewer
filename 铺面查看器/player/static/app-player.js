@@ -70,13 +70,12 @@
     return p;
   }
 
-  let playGeneration = 0;
+  const audioSession = new window.JubeatRuntime.AudioSession();
   let cancelSeekCompletion = null;
-  let decodeQueue = Promise.resolve();
 
   function stopBufferSource() {
     cancelSeekCompletion?.(); cancelSeekCompletion=null;
-    playGeneration++;
+    audioSession.invalidate();
     if (!backend.src) return;
     try {
       backend.src.stop();
@@ -440,8 +439,7 @@
       A.audioCtx = A.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       const wantsPCM=()=>options.decode!==false&&!A.mode?.preferNativeAudio&&selectedRate()===1;
       if(!wantsPCM()) {audioLoad.decoding=false;loadElementSource(url);return true;}
-      const decode=decodeQueue.then(()=>current()&&wantsPCM()?A.audioCtx.decodeAudioData(bytes):null);
-      decodeQueue=decode.catch(()=>null);
+      const decode=audioSession.decode(()=>current()&&wantsPCM()?A.audioCtx.decodeAudioData(bytes):null);
       const buf = await decode;
       if(!buf){if(current())loadElementSource(url);return false;}
       if(!wantsPCM()||buf.length*buf.numberOfChannels*4>192*1024*1024){if(current())loadElementSource(url);return true;}
@@ -488,7 +486,7 @@
   /** 从音频秒 pos 起播（webaudio 模式）；打点音和音乐挂在同一条输出上 */
   async function startBufferAt(pos) {
     if (!backend.buf || !A.audioCtx) return false;
-    const generation = ++playGeneration;
+    const generation = audioSession.invalidate();
     const buffer = backend.buf;
     const url = backend.url;
     try {
@@ -500,7 +498,7 @@
     } catch (_) {
       /* ignore */
     }
-    if (generation !== playGeneration || buffer !== backend.buf || url !== backend.url) return false;
+    if (!audioSession.current(generation) || buffer !== backend.buf || url !== backend.url) return false;
     const rate = 1;  // AudioBuffer 调速会改变音高，变速统一走保音调媒体后端
     const off = Math.max(0, Math.min(pos, Math.max(0, backend.buf.duration - 0.02)));
     stopBufferSource();
@@ -537,26 +535,6 @@
     return backend.mode === "webaudio" && !!backend.buf;
   }
 
-  /**
-   * 等 AudioContext 真的回到 running 再回调。
-   * iOS 上 resume() 是异步的，而且可能先 resolve、状态还停在 interrupted，
-   * 所以这里「resume + 轮询」一起上，最多等约 1.5 秒，到点就照办（别把播放卡死）。
-   */
-  function whenAudioRunning(cb, tries = 12) {
-    const ctx = A.audioCtx;
-    if (!ctx) return;
-    if (ctx.state === "running") {
-      cb();
-      return;
-    }
-    ctx.resume().catch(() => {});
-    if (tries <= 0) {
-      cb();
-      return;
-    }
-    setTimeout(() => whenAudioRunning(cb, tries - 1), 120);
-  }
-
   /** AudioContext 被系统挂起时把播放接回来（挂着的时候调它才有意义） */
   function reviveAudio(pos) {
     const at = pos != null ? pos : audioNow();
@@ -573,6 +551,7 @@
   function keepAudioAlive() {
     if(A.mode?.ownsFrame){if(A.audioCtx?.state!=="running")A.mode.interrupt?.("音频恢复请求");return;}
     if (document.hidden) {
+      audioSession.cancelRecovery();
       suspendedPos = state.playing ? audioNow() : null;
       return;
     }
@@ -584,7 +563,13 @@
     }
     const pos = suspendedPos != null ? suspendedPos : audioNow();
     suspendedPos = null;
-    whenAudioRunning(() => reviveAudio(pos));
+    const url = backend.url, buffer = backend.buf;
+    audioSession.recover({
+      running: () => ctx.state === "running",
+      resume: () => ctx.resume(),
+      current: () => state.playing && backend.url === url && backend.buf === buffer && A.audioCtx === ctx,
+      restore: () => reviveAudio(pos),
+    });
   }
 
   // audio 元素的 currentTime 大约每 30~40ms 才更新一次，直接拿来驱动渲染会一顿一顿的
@@ -678,6 +663,7 @@
 
   function seekTo(sec) {
     if(A.mode?.ownsFrame)return;
+    audioSession.invalidate();
     const s = Math.max(0, Math.min(sec, state.duration || 0));
     const off = (Number(els.offset.value) || 0) / 1000;
     const audioT = s + (state.baseOffset || 0) - off;
@@ -744,14 +730,14 @@
 
   /** element 后端起播（音频已经可以出声了） */
   async function startElementPlay() {
-    const generation = ++playGeneration;
+    const generation = audioSession.invalidate();
     const url = backend.url;
     try {
       preservePitch();
       els.audio.playbackRate = selectedRate();
       backend.rate = els.audio.playbackRate;
       await els.audio.play();
-      if (generation !== playGeneration || url !== backend.url) return;
+      if (!audioSession.current(generation) || url !== backend.url) return;
       setPlaying(true);
       els.playIcon.textContent = "❚❚";
       els.btnPlay.setAttribute("aria-label", "暂停");
@@ -764,7 +750,7 @@
   }
 
   function pause() {
-    playGeneration++;
+    audioSession.invalidate();
     if (backend.mode === "webaudio") {
       backend.anchorPos = audioNow();       // 先记下位置再停
       stopBufferSource();
@@ -800,7 +786,7 @@
       return;
     }
     const el = els.audio;
-    const generation = playGeneration, url = backend.url;
+    const generation = audioSession.generation, url = backend.url;
     if (!el.seeking && el.readyState >= 3) {
       sfxReset();
       play();
@@ -810,13 +796,13 @@
     const cancel = () => {fired=true;el.removeEventListener("seeked",fire);el.removeEventListener("canplay",fire);clearTimeout(timer);clearTimeout(deadline);if(cancelSeekCompletion===cancel)cancelSeekCompletion=null;};
     const fire = () => {
       if (fired) return;
-      if (generation === playGeneration && url === backend.url && (el.seeking || el.readyState < 3)) return;
+      if (audioSession.current(generation) && url === backend.url && (el.seeking || el.readyState < 3)) return;
       fired = true;
       el.removeEventListener("seeked", fire);
       el.removeEventListener("canplay", fire);
       clearTimeout(timer);
       clearTimeout(deadline);
-      if (generation !== playGeneration || url !== backend.url || backend.mode !== "element") return;
+      if (!audioSession.current(generation) || url !== backend.url || backend.mode !== "element") return;
       sfxReset();                       // 位置定了，再按最终位置锚打点音
       play();
     };
@@ -834,11 +820,11 @@
   /** 暂停状态下跳转：等 seek 落地后按最终位置重建一次状态 */
   function settleAfterSeek() {
     cancelSeekCompletion?.(); cancelSeekCompletion=null;
-    const el=els.audio,generation=playGeneration,url=backend.url;
+    const el=els.audio,generation=audioSession.generation,url=backend.url;
     if(backend.mode==='webaudio'||!el.seeking){rebuildVisualState(renderMediaTime());sfxReset();return;}
     let timer;
     const clean=()=>{clearTimeout(timer);el.removeEventListener('seeked',fire);el.removeEventListener('error',clean);if(cancelSeekCompletion===clean)cancelSeekCompletion=null;};
-    const fire=()=>{clean();if(generation===playGeneration&&url===backend.url){rebuildVisualState(renderMediaTime());sfxReset();}};
+    const fire=()=>{clean();if(audioSession.current(generation)&&url===backend.url){rebuildVisualState(renderMediaTime());sfxReset();}};
     el.addEventListener('seeked',fire,{once:true});el.addEventListener('error',clean,{once:true});
     timer=setTimeout(clean,10000);cancelSeekCompletion=clean;
   }

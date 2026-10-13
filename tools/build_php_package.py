@@ -19,7 +19,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pack_zip import pack  # noqa: E402  （同目录下的打包工具，保证文件名 UTF-8 安全）
+from pack_zip import pack  # noqa: E402
+from package_site import stage_portable
+from site_transaction import SiteTransaction
 
 ROOT = Path(__file__).resolve().parent.parent
 PHP_FILES = ["index.php", ".htaccess", "nginx-php.conf.example", "start.sh", "README.txt"]
@@ -35,30 +37,23 @@ def human(n: float) -> str:
 
 def stage(site: Path, pkg: Path) -> tuple[int, int]:
     """把 site/ 铺到 pkg/（同盘用硬链接，省一份 2.9 GB 的拷贝）。"""
-    if pkg.exists():
-        shutil.rmtree(pkg)
-    pkg.mkdir(parents=True)
-    files = links = 0
-    for src in sorted(site.rglob("*")):
-        rel = src.relative_to(site)
-        if src.is_dir():
-            (pkg / rel).mkdir(parents=True, exist_ok=True)
-            continue
-        dst = pkg / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.link(src, dst)          # 硬链接：不占额外空间
-            links += 1
-        except OSError:
-            shutil.copy2(src, dst)     # 跨盘 / 不支持硬链接时退化成拷贝
-        files += 1
-    for name in PHP_FILES:
-        src = ROOT / "deploy" / "php" / name
-        if not src.exists():
-            sys.exit(f"缺少 deploy/php/{name}")
-        shutil.copy2(src, pkg / name)
-        if name.endswith(".sh"):
-            os.chmod(pkg / name, 0o755)      # 解压出来就能直接 ./start.sh
+    if site.resolve().is_relative_to(pkg.resolve()) or pkg.resolve().is_relative_to(site.resolve()):
+        raise ValueError("Package staging must be separate from source site")
+    with SiteTransaction(pkg) as transaction:
+        staged_root = transaction.stage
+        shutil.rmtree(staged_root)
+        stage_portable(site, staged_root)
+        staged = [p for p in staged_root.rglob('*') if p.is_file()]
+        files = len(staged)
+        links = sum(os.path.samefile(p, site / p.relative_to(staged_root)) for p in staged)
+        for name in PHP_FILES:
+            src = ROOT / "deploy" / "php" / name
+            if not src.exists():
+                sys.exit(f"缺少 deploy/php/{name}")
+            shutil.copy2(src, staged_root / name)
+            if name.endswith(".sh"):
+                os.chmod(staged_root / name, 0o755)      # 解压出来就能直接 ./start.sh
+        transaction.publish()
     return files, links
 
 

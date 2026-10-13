@@ -27,7 +27,8 @@ import config
 import markers
 import media
 import thumbs
-from library import Library, published_index
+from library import Library
+from source_revision import source_revision
 
 JSON_CT = "application/json; charset=utf-8"
 
@@ -147,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_bytes(code, body, JSON_CT, extra, compress=True)
 
     def _error(self, message: str, code: int = 400) -> None:
-        self._json({"error": message}, code)
+        self._json({"error": message}, code, cache="no-store", etag=False)
 
     def _fail(self, message: object, code: int) -> None:
         """出错时回一个 JSON 错误 —— 但仅限于「还没开始写响应」的时候。
@@ -159,7 +160,10 @@ class Handler(BaseHTTPRequestHandler):
         if getattr(self, "_responded", False):
             self.close_connection = True
             return
-        self._error(str(message) or "error", code)
+        ref = os.urandom(4).hex()
+        print(f"[{code} {ref}] {message}", file=sys.stderr)
+        public_error = "not found" if code == 404 else "invalid request"
+        self._json({"error": public_error, "ref": ref}, code, cache="no-store", etag=False)
 
     def _hdr(self, extra: dict | None = None) -> dict:
         """给要用 media.stream_file 直接发文件的响应凑一份带头（含安全头）。"""
@@ -175,6 +179,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # —— 路由 ——
     def do_GET(self) -> None:
+        self._responded = False
         try:
             self._route(urlparse(self.path))
         except FileNotFoundError as exc:
@@ -254,9 +259,20 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def _data_library(self) -> None:
-        LIB.load()
-        # 和 static 站同一个形状：只发前端要读的字段（见 library.published_index）
-        return self._json(published_index(LIB.songs, generated=LIB.generated))
+        body, compressed, tag = LIB.published_response()
+        headers = {"Cache-Control": "no-cache", "ETag": tag, "Vary": "Accept-Encoding"}
+        validators = [value.strip().removeprefix("W/")
+                      for value in self.headers.get("If-None-Match", "").split(",")]
+        if "*" in validators or tag.removeprefix("W/") in validators:
+            self.send_response(304)
+            for key, value in self._hdr(headers).items():
+                self.send_header(key, value)
+            self.end_headers()
+            return
+        if len(body) >= config.GZIP_MIN_BYTES and self._accepts_gzip():
+            body = compressed
+            headers["Content-Encoding"] = "gzip"
+        return self._send_bytes(200, body, JSON_CT, headers)
 
     def _media_chart(self, rel: str) -> None:
         """data/charts/<曲目>/<难度>.json"""
@@ -311,6 +327,7 @@ class Handler(BaseHTTPRequestHandler):
         member = song.get("cover")
         if not member:
             raise FileNotFoundError("no cover")
+        revision = source_revision(zip_path)
         cover = self._cached(config.COVER_CACHE_DIR, song["id"], member, zip_path)
         if kind == "cover":
             return media.stream_file(self, cover, media.guess_ctype(member),
@@ -321,14 +338,16 @@ class Handler(BaseHTTPRequestHandler):
             return media.stream_file(self, cover, media.guess_ctype(member),
                                      self._hdr({"Cache-Control": "public, max-age=604800"}))
         size = config.THUMB_SIZE
-        thumb = config.THUMB_CACHE_DIR / f"{media.cache_key(song['id'], member, str(size))}.jpg"
+        quality = config.THUMB_QUALITY
+        thumb = config.THUMB_CACHE_DIR / f"{media.cache_key(song['id'], member, str(size), str(quality))}.jpg"
         if not media.member_is_fresh(thumb, zip_path):
             with media.lock_for(str(thumb)):
                 if not media.member_is_fresh(thumb, zip_path):
-                    if not thumbs.make(cover, thumb, size, config.THUMB_QUALITY):
+                    if not thumbs.make(cover, thumb, size, quality):
                         return media.stream_file(
                             self, cover, media.guess_ctype(member),
                             self._hdr({"Cache-Control": "public, max-age=604800"}))
+                    media.mark_member_fresh(thumb, zip_path, revision)
         return media.stream_file(self, thumb, "image/jpeg",
                                  self._hdr({"Cache-Control": "public, max-age=604800"}))
 

@@ -170,8 +170,17 @@ public final class LocalServer {
         for (int i = 1; i < lines.length; i++) {
             int c = lines[i].indexOf(':');
             if (c <= 0) continue;
-            headers.put(lines[i].substring(0, c).trim().toLowerCase(Locale.ROOT),
-                        lines[i].substring(c + 1).trim());
+            String key = lines[i].substring(0, c).trim().toLowerCase(Locale.ROOT);
+            if ((key.equals("host") || key.equals("origin")) && headers.containsKey(key)) {
+                plain(out, 400, "Bad Request", "duplicate authority"); return;
+            }
+            headers.put(key, lines[i].substring(c + 1).trim());
+        }
+
+        String expectedHost = "127.0.0.1:" + s.getLocalPort();
+        if (!expectedHost.equals(headers.get("host")) ||
+                (headers.containsKey("origin") && !("http://" + expectedHost).equals(headers.get("origin")))) {
+            plain(out, 403, "Forbidden", "forbidden"); return;
         }
 
         String target = req[1];

@@ -16,28 +16,25 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${WORK:-/Users/Shared/jubeat-dist-build}"
 MIRROR_ELECTRON="${ELECTRON_MIRROR:-https://npmmirror.com/mirrors/electron/}"
 MIRROR_BINARIES="${ELECTRON_BUILDER_BINARIES_MIRROR:-https://npmmirror.com/mirrors/electron-builder-binaries/}"
-REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
+REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
 
 echo "仓库：$REPO"
 echo "工作目录：$WORK"
 
 mkdir -p "$WORK/electron" "$WORK/docs"
-cp "$REPO/electron/main.js" "$REPO/electron/site-server.js" "$REPO/electron/package.json" \
+cp "$REPO/electron/main.js" "$REPO/electron/site-server.js" "$REPO/electron/preload.js" "$REPO/electron/preferences.js" "$REPO/electron/package.json" \
    "$REPO/electron/package-lock.json" "$REPO/electron/electron-builder.config.js" "$WORK/electron/"
+rm -rf "$WORK/electron/vendor"
+cp -R "$REPO/electron/vendor" "$WORK/electron/"
 rm -rf "$WORK/electron/build"
 cp -R "$REPO/electron/build" "$WORK/electron/"
 cp "$REPO/docs/README-electron.txt" "$WORK/docs/"
 cp "$REPO/LICENSE" "$REPO/THIRD-PARTY.md" "$WORK/"
 
-if [ ! -d "$WORK/electron/node_modules/electron-builder" ]; then
-  if [ -d "$REPO/electron/node_modules/electron-builder" ]; then
-    echo "从仓库复制依赖到工作目录（排除 exFAT 的 ._ 边车文件）…"
-    rsync -a --exclude '._*' "$REPO/electron/node_modules/" "$WORK/electron/node_modules/"
-  else
-    echo "工作目录里没有依赖，走国内镜像安装…"
-    ( cd "$WORK/electron" && npm install --registry="$REGISTRY" --no-audit --no-fund )
-  fi
-fi
+# Validate the complete lock/vendor identity instead of reusing stale dependencies.
+# npm ci is deterministic and removes any obsolete transitive versions.
+( cd "$WORK/electron" && ELECTRON_MIRROR="$MIRROR_ELECTRON" npm ci --registry="$REGISTRY" --no-fund )
+( cd "$WORK/electron" && npm audit --audit-level=moderate --registry=https://registry.npmjs.org )
 
 # 顺手体检：被 iCloud 抽水的依赖文件会读不动，早点报出来比静默卡死好
 dataless=$(find "$WORK/electron/node_modules" -flags +dataless 2>/dev/null | wc -l | tr -d ' ')

@@ -18,6 +18,38 @@ public final class ArchiveImportTest {
         try { ArchiveImport.extract(new ByteArrayInputStream(zip("data/library.json","../escape")),root,null); throw new AssertionError(); }
         catch(IOException expected) { check(new String(Files.readAllBytes(old),"UTF-8").equals("old")); }
         try { ArchiveImport.extract(new ByteArrayInputStream(zip("static/app.js")),root,null); throw new AssertionError(); } catch(IOException expected) {}
+        for (String[] paths : new String[][] {
+            {"data/library.json", "data//library.json"}, {"data//library.json", "data/library.json"},
+            {"data/library.json", "data///library.json"}, {"media/audio", "media//audio"},
+            {"data/./library.json"}, {"data/library.json/"}
+        }) {
+            try { ArchiveImport.extract(new ByteArrayInputStream(zip(paths)),root,null); throw new AssertionError("accepted path alias"); }
+            catch(IOException expected) { check(new String(Files.readAllBytes(old),"UTF-8").equals("old")); }
+        }
+        // A damaged old journal must be rejected before any restore/delete occurs.
+        File badWork = temp.resolve(".site-import").toFile();
+        File saved = new File(badWork,"backup/data/library.json"); saved.getParentFile().mkdirs();
+        Files.write(saved.toPath(),"backup".getBytes("UTF-8"));
+        try(DataOutputStream out=new DataOutputStream(new FileOutputStream(new File(badWork,"journal")))) {
+            out.writeInt(2); out.writeUTF("data/library.json"); out.writeBoolean(true);
+            out.writeUTF("data//library.json"); out.writeBoolean(true);
+        }
+        try { ArchiveImport.recoverPending(root); throw new AssertionError("accepted ambiguous journal"); }
+        catch(IOException expected) {
+            check(new String(Files.readAllBytes(old),"UTF-8").equals("old"));
+            check(new String(Files.readAllBytes(saved.toPath()),"UTF-8").equals("backup"));
+            check(new File(badWork,"journal").isFile());
+        }
+        Files.walk(badWork.toPath()).sorted(Comparator.reverseOrder()).forEach(p->{try{Files.delete(p);}catch(IOException e){throw new RuntimeException(e);}});
+        // Even an unexpected earlier backup must never be overwritten by move().
+        java.lang.reflect.Method move=ArchiveImport.class.getDeclaredMethod("move",File.class,File.class);move.setAccessible(true);
+        File from=temp.resolve("from").toFile(),to=temp.resolve("backup").toFile();
+        Files.write(from.toPath(),"replacement".getBytes("UTF-8"));Files.write(to.toPath(),"original backup".getBytes("UTF-8"));
+        try { move.invoke(null,from,to); throw new AssertionError("clobbered backup"); }
+        catch(java.lang.reflect.InvocationTargetException expected) {
+            check(expected.getCause() instanceof IOException);
+            check(new String(Files.readAllBytes(to.toPath()),"UTF-8").equals("original backup"));check(from.isFile());
+        }
         Thread.currentThread().interrupt();
         try { ArchiveImport.extract(new ByteArrayInputStream(zip("data/library.json")),root,null); throw new AssertionError(); }
         catch(InterruptedIOException expected) { check(new String(Files.readAllBytes(old),"UTF-8").equals("old")); }

@@ -1,0 +1,8 @@
+{
+  "name": "@jubeat-viewer/safe-sprintf",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local bounded build-tool fork of sprintf-js 1.1.3",
+  "main": "sprintf.js",
+  "license": "BSD-3-Clause"
+}

@@ -51,6 +51,7 @@ import markers  # noqa: E402
 import thumbs  # noqa: E402
 import version as version_mod  # noqa: E402
 from media import read_member, write_atomic  # noqa: E402
+from source_revision import source_revision  # noqa: E402
 
 # 音源转码缓存（内容哈希命名，跨构建复用；cache/ 整个目录不入库）
 AUDIO_CACHE_DIR = config.CACHE_DIR / "audio-opus"
@@ -82,17 +83,31 @@ def fresh(dest: Path, src_mtime: float, force: bool) -> bool:
         return False
 
 
-def copy_fresh(src: Path, dest: Path, force: bool) -> bool:
-    """复制文件（时间戳保持），已是最新则跳过。返回是否写入。"""
-    if fresh(dest, src.stat().st_mtime, force):
-        return False
+def copy_fresh(src: Path, dest: Path, force: bool, state_root: Path | None = None) -> bool:
+    """Bind copied markers/sounds to source identity, not just mtime."""
+    revision = source_revision(src)
+    state_root = state_root or dest.parent / '.copy-state'
+    stamp = state_root / (hashlib.sha256((str(src.resolve()) + '\0' + dest.name).encode()).hexdigest() + '.json')
+    if not force:
+        try:
+            saved = json.loads(stamp.read_text())
+            st = dest.stat()
+            if saved == {'source': revision, 'size': st.st_size, 'mtime': st.st_mtime_ns} and st.st_size > 0:
+                return False
+        except (OSError, ValueError):
+            pass
     dest.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix=dest.name + ".tmp-", dir=dest.parent)
     os.close(fd)
     tmp = Path(name)
     try:
         shutil.copyfile(src, tmp)
+        if source_revision(src) != revision:
+            raise RuntimeError('资源在复制过程中发生变化，请重试')
         os.replace(tmp, dest)
+        if not force:
+            st = dest.stat()
+            write_atomic(stamp, json.dumps({'source': revision, 'size': st.st_size, 'mtime': st.st_mtime_ns}).encode())
     finally:
         tmp.unlink(missing_ok=True)
     return True
@@ -197,6 +212,7 @@ def build_song(song: dict, out: Path, force: bool, force_audio: bool, stats: Sta
     """展开一首歌的音频 / 封面 / 缩略图 / 谱面。"""
     mcz = config.LIBRARY / song["id"]
     stem = nfc(stem_of(song["id"]))
+    revision = source_revision(mcz)
     previous = stats.previous_sources.get(song["id"], {})
     current = {}
     stats.sources[song["id"]] = current
@@ -273,6 +289,9 @@ def build_song(song: dict, out: Path, force: bool, force_audio: bool, stats: Sta
                 stats.added(len(data))
             remember(key, dest)
 
+    if source_revision(mcz) != revision:
+        raise RuntimeError("曲包在构建过程中发生变化，请重试")
+
 
 def build_markers(out: Path, force: bool, stats: Stats) -> list[str]:
     """复制官方 marker 逐帧贴图 + 生成站内 data/markers.json。"""
@@ -291,7 +310,7 @@ def build_markers(out: Path, force: bool, stats: Stats) -> list[str]:
                 continue
             copied.append(rel)
             dest = out / "markers" / rel
-            if copy_fresh(src, dest, force):
+            if copy_fresh(src, dest, force, out / ".build-state" / "copies"):
                 stats.added(dest.stat().st_size)
             else:
                 stats.skipped += 1
@@ -321,7 +340,7 @@ def build_se(out: Path, force: bool, stats: Stats) -> list[str]:
         if path.suffix.lower() not in (".ogg", ".oga", ".mp3", ".wav", ".m4a", ".flac"):
             continue
         dest = out / "media" / "se" / path.name
-        if copy_fresh(path, dest, force):
+        if copy_fresh(path, dest, force, out / ".build-state" / "copies"):
             stats.added(dest.stat().st_size)
         else:
             stats.skipped += 1
@@ -343,6 +362,32 @@ def asset_alias(out: Path, rel: str, flat: bool = False) -> str:
     return dest.relative_to(out).as_posix()
 
 
+
+def retain_hashes(out: Path, current: set[str], days: int) -> set[str]:
+    """Keep current assets plus a bounded grace period measured from last use."""
+    history = out / ".build-state" / "hashed-history.json"
+    now = time.time()
+    try:
+        seen = json.loads(history.read_text())
+        if not isinstance(seen, dict): seen = {}
+    except (OSError, ValueError):
+        seen = {}
+    retained = set()
+    next_seen = {}
+    for file in out.rglob("*"):
+        if not file.is_file() or not ("_hashed" in file.parts or re.search(r"\.[a-f0-9]{20}\.", file.name)):
+            continue
+        rel = file.relative_to(out).as_posix()
+        # Legacy assets get one migration grace window, not their old source mtime.
+        last = now if rel in current else seen.get(rel, now)
+        if not isinstance(last, (int, float)) or not 0 <= last <= now: last = now
+        if rel in current or now - last < days * 86400:
+            retained.add(rel); next_seen[rel] = last
+        else:
+            file.unlink()
+    write_atomic(history, json.dumps(next_seen, sort_keys=True).encode())
+    return retained
+
 def main(extension=None) -> int:
     ap = argparse.ArgumentParser(description="把曲库展开成纯静态站点")
     ap.add_argument("--out", default=str(REPO / "site"), help="输出目录（默认 ./site）")
@@ -353,11 +398,14 @@ def main(extension=None) -> int:
                     help="并行度（默认 CPU 数，最多 8）")
     ap.add_argument("--prune", action="store_true",
                     help="删掉输出目录里已不需要的文件（曲库删歌后同步用）")
+    ap.add_argument("--retain-days", type=int, default=30, help="旧哈希资源保留天数（默认30；当前引用始终保留）")
     ap.add_argument("--rescan", action="store_true",
                     help="无视索引缓存，重新解压扫描每个 .mcz（默认走 cache/library_index.json）")
     ap.add_argument("--thumb-size", type=int, default=config.THUMB_SIZE)
     if extension: extension.arguments(ap)
     args = ap.parse_args()
+    if args.retain_days < 0:
+        ap.error("--retain-days 必须非负")
     if args.limit < 0 or not 1 <= args.jobs <= 32 or not 1 <= args.encode_jobs <= 8:
         ap.error("--limit 必须非负，--jobs 范围 1–32，--encode-jobs 范围 1–8")
     if args.limit and args.prune:
@@ -442,13 +490,14 @@ def run_build(args, out: Path, extension=None) -> int:
     # 曲目），媒体文件会互相覆盖，必须报出来而不是静默丢一份。
     stem_owner: dict[str, str] = {}
     for s in index["songs"]:
-        s["id"] = nfc(s["id"])
-        stem = nfc(stem_of(s["id"]))
+        original_id = s["id"]
+        s["id"] = nfc(original_id)
+        stem = stem_of(s["id"])
         other = stem_owner.get(stem)
-        if other and other != s["id"]:
+        if other is not None and other != original_id:
             stats.failed.append(f"NFC 规范化后路径撞车：{other} ↔ {s['id']}")
         else:
-            stem_owner[stem] = s["id"]
+            stem_owner[stem] = original_id
     # Publish the catalog only after every asset has built successfully.
     stats.songs = len(songs)
     print(f"曲目 {len(songs)} 首，开始展开音频/封面/谱面（{args.jobs} 线程）…")
@@ -481,6 +530,7 @@ def run_build(args, out: Path, extension=None) -> int:
         print("构建失败，保留原站点和索引：", *stats.failed[:10], sep="\n", file=sys.stderr)
         return 2
 
+    current_hashes = set()
     # Content-addressed references avoid stale audio/frontend caches after updates.
     for song in index["songs"]:
         stem = stem_of(song["id"])
@@ -490,6 +540,8 @@ def run_build(args, out: Path, extension=None) -> int:
             paths.update(cover=f"media/cover/{stem}{ext}", thumb=f"media/thumb/{stem}.jpg")
         paths.update({f"chart:{c['code']}": f"data/charts/{stem}/{c['code']}.json" for c in song["charts"]})
         song["assets"] = {key: asset_alias(out, rel) for key, rel in paths.items() if (out/rel).is_file()}
+    for song in index["songs"]:
+        current_hashes.update(song["assets"].values())
     if extension: extra_paths.extend(extension.assets(args, out, index, sys.modules[__name__]))
     index_html_path = out / "index.html"
     html = index_html_path.read_text(encoding="utf-8")
@@ -498,6 +550,7 @@ def run_build(args, out: Path, extension=None) -> int:
         if not src.is_file():
             raise RuntimeError(f"前端引用缺失：{match}")
         alias = asset_alias(out, "static/" + match, flat=True)
+        current_hashes.add(alias)
         html = html.replace("static/" + match + "?", alias + "?")
     # Older open clients look for app.js?v= when checking for new releases.
     html = html.replace("</head>", "<!-- app.js?v=" + version_mod.read_version() + " -->\n</head>")
@@ -507,10 +560,14 @@ def run_build(args, out: Path, extension=None) -> int:
     write_atomic(out / ".build-sources.json", json.dumps({"schema": 1, "songs": stats.sources}, ensure_ascii=False).encode())
     from site_gc import record_snapshot
     record_snapshot(out, expected_paths(index["songs"], marker_files, se_files) | set(extra_paths))
+    from site_gc import read_history
+    protected = set(current_hashes) | set(extra_paths)
+    for snapshot in read_history(out):
+        protected.update(snapshot['paths'])
+    retained_hashes = retain_hashes(out, protected, getattr(args, "retain_days", 30))
     if args.prune:
         wanted = expected_paths(songs, marker_files, se_files) | set(extra_paths)
-        # Keep prior hashed resources for already-open browser sessions.
-        wanted.update(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file() and ("_hashed" in p.parts or re.search(r"\.[a-f0-9]{20}\.", p.name)))
+        wanted.update(retained_hashes)
         removed = prune(out, wanted)
         if removed:
             print(f"  清理旧文件 {removed} 个")
@@ -531,6 +588,7 @@ def run_build(args, out: Path, extension=None) -> int:
         "markers": len(marker_files),
         "se_files": len(se_files),
         "audio_codec": audio_opus.describe(),
+        "audio_profile": audio_opus.profile(),
         "audio_encoded": stats.audio_encoded,
         "audio_cached": stats.audio_cached,
         "audio_kept": stats.audio_kept,

@@ -1,9 +1,9 @@
 """Reusable chapter, frame timeline and active-play freeze verification."""
-import json, re, shutil, subprocess, unicodedata, urllib.parse, urllib.request
+import json, math, re, shutil, subprocess, unicodedata, urllib.parse, urllib.request
 from pathlib import Path
 FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
 FFPROBE = shutil.which("ffprobe") or "ffprobe"
-AUDIT_VERSION = 4
+AUDIT_VERSION = 5
 OVERLAP = 0.8
 CHAPTER_RE = re.compile(r"(\d+):(\d+(?:\.\d+)?)\s+([A-Z]{3})\b")
 def sanitize(name: str) -> str:
@@ -96,31 +96,39 @@ def probe_duration(path: Path) -> float:
     out = subprocess.run(
         [FFPROBE, "-v", "error", "-show_entries", "format=duration",
          "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True)
+        capture_output=True, text=True, timeout=60)
     try:
-        return float(out.stdout.strip())
+        value = float(out.stdout.strip())
+        return value if math.isfinite(value) and value > 0 else 0.0
     except ValueError:
         return 0.0
 
 
-def freeze_scan(path: Path, min_freeze: float) -> list[tuple[float, float]]:
+def freeze_scan(path: Path, min_freeze: float, duration: float | None = None) -> list[tuple[float, float]]:
     """跑一遍 freezedetect，返回 [(start, end)]。"""
     proc = subprocess.run(
         [FFMPEG, "-nostdin", "-v", "info", "-threads", "1", "-i", str(path),
          "-filter_threads", "1",
          "-vf", f"freezedetect=n=-60dB:d={min_freeze:g}", "-an", "-f", "null", "-"],
-        capture_output=True, text=True, errors="replace")
+        capture_output=True, text=True, errors="replace", timeout=1800)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg 定格扫描失败（退出码 {proc.returncode}）：{(proc.stderr or chr(32))[-500:]}")
     log = proc.stderr or ""
-    starts = [float(x) for x in re.findall(r"freeze_start:\s*([0-9.]+)", log)]
-    ends = [float(x) for x in re.findall(r"freeze_end:\s*([0-9.]+)", log)]
+    duration = probe_duration(path) if duration is None else duration
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("无法核验有效的视频时长")
     spans = []
-    for i, start in enumerate(starts):
-        end = ends[i] if i < len(ends) else None
-        if end is None:
-            break
-        spans.append((start, end))
+    start = None
+    for kind, value in re.findall(r"freeze_(start|end):\s*([0-9.]+)", log):
+        value = float(value)
+        if kind == "start":
+            start = value if start is None else min(start, value)
+        elif start is not None:
+            if min(value, duration) > start:
+                spans.append((start, min(value, duration)))
+            start = None
+    if start is not None and duration > start:
+        spans.append((start, duration))
     return spans
 
 
@@ -149,6 +157,10 @@ def audit_one(rel: str, out_dir: Path, library: dict, base_url: str,
 
     duration = probe_duration(path)
     row["duration"] = round(duration, 3)
+    if not math.isfinite(duration) or duration <= 0:
+        row["faults"].append("无法核验有效的视频时长")
+        row["verdict"] = "bad"
+        return row
 
     # 分段区间：第 i 段的结尾 = 下一段起点 + 重叠量；最后一段到片尾。
     segments = {}
@@ -211,7 +223,7 @@ def audit_one(rel: str, out_dir: Path, library: dict, base_url: str,
             if spans and last < start - 0.1:
                 row["faults"].append(f"{code} 最后一个音符 {last:.2f}s 早于分段起点 {start:.2f}s（这一段没录进去）")
 
-    for start, end in freeze_scan(path, min_freeze):
+    for start, end in freeze_scan(path, min_freeze, duration):
         item = {"start": round(start, 3), "end": round(end, 3), "notes": None}
         # 有身份匹配的元数据才能认定准备画面；仍检查超出播放起点的任何静止。
         if any(segments[c][0] <= start and end <= p + 1e-6

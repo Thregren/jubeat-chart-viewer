@@ -16,7 +16,7 @@ public final class ArchiveImport {
         if (name == null || name.isEmpty() || name.startsWith("/") || name.indexOf('\\') >= 0
                 || name.indexOf('\n') >= 0 || name.indexOf('\r') >= 0 || name.indexOf('\0') >= 0)
             throw new IOException("非法资源路径");
-        for (String part : name.split("/")) if (part.equals("..") || part.equals("."))
+        for (String part : name.split("/", -1)) if (part.isEmpty() || part.equals("..") || part.equals("."))
             throw new IOException("资源路径越界");
         File f = new File(root, name);
         String base = root.getCanonicalPath() + File.separator;
@@ -29,6 +29,8 @@ public final class ArchiveImport {
     }
     private static void move(File from, File to) throws IOException {
         mkdir(to.getParentFile());
+        // The import lock serializes our writers; never overwrite an earlier backup.
+        if (to.exists()) throw new IOException("提交目标已存在，保留恢复材料：" + to);
         if (!from.renameTo(to)) throw new IOException("无法提交文件：" + to);
     }
     private static void remove(File f) throws IOException {
@@ -50,7 +52,15 @@ public final class ArchiveImport {
         try (DataInputStream in = new DataInputStream(new FileInputStream(file))) {
             int n = in.readInt();
             if (n < 0 || n > MAX_FILES) throw new IOException("导入恢复记录损坏");
-            for (int i = 0; i < n; i++) { names.add(in.readUTF()); existed.add(in.readBoolean()); }
+            Set<String> unique = new HashSet<String>();
+            for (int i = 0; i < n; i++) {
+                String name = in.readUTF(); boolean wasPresent = in.readBoolean();
+                // Validate the entire journal before restoring or removing any file.
+                String identity = fileAt(new File(work, "backup"), name).getCanonicalPath();
+                if (!unique.add(identity)) throw new IOException("导入恢复记录路径冲突，保留恢复材料");
+                names.add(name); existed.add(wasPresent);
+            }
+            if (in.read() != -1) throw new IOException("导入恢复记录损坏");
         }
         return names;
     }
@@ -58,6 +68,9 @@ public final class ArchiveImport {
         if (new File(work, "committed").exists()) { remove(work); return; }
         List<Boolean> existed = new ArrayList<Boolean>();
         List<String> names = journal(work, existed);
+        Set<String> destinations = new HashSet<String>();
+        for (String name : names) if (!destinations.add(fileAt(root, name).getCanonicalPath()))
+            throw new IOException("导入恢复目标冲突，保留恢复材料");
         for (int i = names.size() - 1; i >= 0; i--) {
             File dest = fileAt(root, names.get(i)), old = fileAt(new File(work, "backup"), names.get(i));
             if (old.exists()) { remove(dest); move(old, dest); }
@@ -96,11 +109,13 @@ public final class ArchiveImport {
                         while ((entry = zip.getNextEntry()) != null) {
                             cancelled();
                             if (++entries > MAX_FILES) throw new IOException("资源文件过多");
-                            String name = entry.getName(); File dest = fileAt(stage, name);
-                            if (!(name.startsWith("data/") || name.startsWith("media/") || name.startsWith("markers/")))
+                            String name = entry.getName();
+                            if (entry.isDirectory() && name.endsWith("/")) name = name.substring(0, name.length() - 1);
+                            File dest = fileAt(stage, name);
+                            if (!(name.startsWith("data/") || name.startsWith("media/") || name.startsWith("markers/") || (entry.isDirectory() && (name.equals("data") || name.equals("media") || name.equals("markers")))))
                                 throw new IOException("资源包含非曲库文件：" + name);
                             if (entry.isDirectory()) continue;
-                            if (!unique.add(name)) throw new IOException("资源路径重复：" + name);
+                            if (!unique.add(fileAt(root, name).getCanonicalPath())) throw new IOException("资源路径重复：" + name);
                             if (entry.getSize() > MAX_FILE) throw new IOException("单个资源过大");
                             mkdir(dest.getParentFile()); long size = 0;
                             try (OutputStream out = new BufferedOutputStream(new FileOutputStream(dest))) {

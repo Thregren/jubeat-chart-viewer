@@ -172,6 +172,7 @@ def main() -> int:
     ap.add_argument("--out", default=str(REPO / "site"))
     ap.add_argument("--strict", action="store_true", help="连多余的文件也报出来")
     ap.add_argument("--quiet", action="store_true", help="只打结论")
+    ap.add_argument("--min-markers", type=int, default=40, help="要求的最少 marker 套数（小型测试库可覆盖）")
     args = ap.parse_args()
 
     out = Path(args.out).resolve()
@@ -254,7 +255,7 @@ def main() -> int:
                 want.add(f"markers/{rel}")
                 if not (out / "markers" / rel).is_file():
                     missing.append(rel)
-        r.check("marker 设计数量", len(designs) >= 40, f"{len(designs)} 套")
+        r.check("marker 设计数量", len(designs) >= args.min_markers, f"{len(designs)} 套")
         r.check("marker 贴图齐全", not missing,
                 f"缺 {len(missing)}/{total} 张，例如 {missing[:2]}")
 

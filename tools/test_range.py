@@ -32,6 +32,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PLAYER_DIR = REPO / "铺面查看器" / "player"
+sys.path.insert(0, str(PLAYER_DIR))
 NODE_SERVER = REPO / "electron" / "site-server.js"
 PHP_ENTRY = REPO / "deploy" / "php" / "index.php"
 

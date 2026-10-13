@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """Regressions for pre-play stills versus freezes during active chart playback."""
-import importlib.util
 import json
 import pathlib
 import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location("audit", pathlib.Path(__file__).parent / "recording_audit.py")
-audit = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(audit)
+import recording_audit as audit
 
 class TimelineTests(unittest.TestCase):
     def run_case(self, freezes=(), identity=True, playback=3):

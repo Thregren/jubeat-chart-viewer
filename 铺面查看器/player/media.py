@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import mimetypes
 import os
 import posixpath
@@ -12,6 +13,8 @@ import zipfile
 import shutil
 from pathlib import Path
 from urllib.parse import unquote
+
+from source_revision import source_revision
 
 # Fixed lock stripes stay bounded and cannot be evicted while a caller holds
 # a reference but has not acquired it yet. Hash collisions only serialize work.
@@ -114,13 +117,29 @@ def read_member(zip_path: Path, member: str) -> bytes:
 
 
 def member_is_fresh(cached: Path, zip_path: Path) -> bool:
-    """缓存文件是否还跟得上源 zip（zip 更新过就重新解）。"""
+    """A cache is valid only for the exact source and fully published file."""
     try:
         if not cached.is_file() or cached.stat().st_size == 0:
             return False
-        return cached.stat().st_mtime >= zip_path.stat().st_mtime
-    except OSError:
+        stamp = json.loads(_revision_file(cached).read_text(encoding="utf-8"))
+        return (isinstance(stamp, dict)
+                and stamp.get("source") == source_revision(zip_path)
+                and stamp.get("cached") == source_revision(cached))
+    except (OSError, ValueError, TypeError):
         return False
+
+
+def _revision_file(cached: Path) -> Path:
+    return cached.with_name(cached.name + ".revision.json")
+
+
+def mark_member_fresh(cached: Path, source: Path, revision: str) -> None:
+    """Publish validation last; interrupted writes are never reusable caches."""
+    if source_revision(source) != revision:
+        raise OSError("Source changed while generating media")
+    write_atomic(_revision_file(cached), json.dumps({
+        "source": revision, "cached": source_revision(cached),
+    }, separators=(",", ":")).encode("utf-8"))
 
 
 def cached_member_file(zip_path: Path, member: str, dest: Path) -> Path:
@@ -130,6 +149,7 @@ def cached_member_file(zip_path: Path, member: str, dest: Path) -> Path:
     with lock_for(str(dest)):
         if member_is_fresh(dest, zip_path):  # 等锁期间别人已经解好了
             return dest
+        revision = source_revision(zip_path)
         dest.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=dest.name + ".tmp-", dir=dest.parent)
         tmp = Path(name)
@@ -140,7 +160,10 @@ def cached_member_file(zip_path: Path, member: str, dest: Path) -> Path:
                     shutil.copyfileobj(source, out, 256 * 1024)
                 if out.tell() != info.file_size:
                     raise ValueError("Archive member length mismatch")
+            if source_revision(zip_path) != revision:
+                raise OSError("Source changed while extracting media")
             os.replace(tmp, dest)
+            mark_member_fresh(dest, zip_path, revision)
         finally:
             tmp.unlink(missing_ok=True)
         return dest
@@ -207,51 +230,37 @@ def stream_file(handler, path: Path, ctype: str, extra: dict | None = None) -> N
     这里刻意只用 read+write：os.sendfile 在 macOS 上必须传 offset，而且和
     http.server 的缓冲/keep-alive 混用容易出坑，实测收益也只有零点几毫秒。
     """
-    size = path.stat().st_size
-    rng = parse_range(handler.headers.get("Range", ""), size)
-    base = {"Content-Type": ctype, "Accept-Ranges": "bytes"}
-    base.update(extra or {})
-
-    if rng is None:
-        handler.send_response(200)
-        for k, v in base.items():
-            handler.send_header(k, v)
-        handler.send_header("Content-Length", str(size))
-        handler.end_headers()
+    # Open first: headers and body must describe the same inode when a cache is
+    # atomically replaced. A missing file can still receive a normal error here.
+    with open(path, "rb") as fh:
+        size = os.fstat(fh.fileno()).st_size
+        rng = parse_range(handler.headers.get("Range", ""), size)
+        base = {"Content-Type": ctype, "Accept-Ranges": "bytes"}
+        base.update(extra or {})
         start, length = 0, size
-    else:
-        start, end = rng
-        length = end - start + 1
-        handler.send_response(206)
-        for k, v in base.items():
-            handler.send_header(k, v)
-        handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        if rng is not None:
+            start, end = rng
+            length = end - start + 1
+            base["Content-Range"] = f"bytes {start}-{end}/{size}"
+        handler.send_response(206 if rng is not None else 200)
+        for key, value in base.items():
+            handler.send_header(key, value)
         handler.send_header("Content-Length", str(length))
         handler.end_headers()
-
-    if handler.command == "HEAD":
-        return
-    # stat 与 open 之间文件可能被删掉 / 换掉（缓存清理、曲库重读）：这时响应头
-    # 已经发出去了，补不了 404，只能断开连接让客户端重来。异常要是冒到
-    # server.py 的兜底里，就会变成「一条连接上两个响应」。
-    try:
-        fh = open(path, "rb")
-    except OSError:
-        handler.close_connection = True
-        return
-    try:
-        with fh:
+        if handler.command == "HEAD":
+            return
+        try:
             fh.seek(start)
             out = handler.wfile
             remaining = length
             while remaining > 0:
                 data = fh.read(min(COPY_CHUNK, remaining))
                 if not data:
+                    handler.close_connection = True
                     break
                 out.write(data)
                 remaining -= len(data)
-    except (BrokenPipeError, ConnectionResetError):
-        pass  # 客户端提前断开（拖进度条时很常见）
-    except OSError:
-        # 读到一半磁盘出错（外接盘掉了之类）：同理，只能断流
-        handler.close_connection = True
+        except OSError:
+            # Broken pipes, device removal and short reads cannot share this
+            # connection with a later response: Content-Length was already sent.
+            handler.close_connection = True

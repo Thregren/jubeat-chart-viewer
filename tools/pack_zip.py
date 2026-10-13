@@ -15,7 +15,11 @@ import argparse
 import sys
 import time
 import zipfile
+import os
+import tempfile
 from pathlib import Path
+from package_site import portable_files, safe_file
+from site_transaction import read_site
 
 # 已经压缩过的格式：直接存
 STORED_EXT = {
@@ -54,25 +58,39 @@ def pack(
     extra: tuple[tuple[Path, str], ...] = (),
 ) -> tuple[int, int]:
     """把 src 打进 out；prefix 是包内前缀（"" = 文件直接落在 zip 根）。"""
-    if out.exists():
-        out.unlink()
+    with read_site(src):
+        return _pack(src, out, prefix, excludes, extra)
+
+
+def _pack(src, out, prefix, excludes, extra):
+    if out.resolve().is_relative_to(src.resolve()):
+        raise ValueError("Archive output must be outside its source directory")
+    wanted, replacements = portable_files(src)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=out.name + ".tmp-", dir=out.parent)
+    os.close(fd)
     files = 0
     total = 0
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        for path in sorted(src.rglob("*")):
-            if path.is_dir():
-                continue
-            rel = path.relative_to(src).as_posix()
+    try:
+      with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for rel in sorted(wanted):
+            path = safe_file(src, rel)
             if any(rel == e or rel.startswith(e.rstrip("/") + "/") for e in excludes):
                 continue
             if path.name == ".DS_Store" or path.name.startswith("._"):
                 continue
-            _write(zf, path, prefix + rel)
+            if rel in replacements:
+                zf.writestr(prefix + rel, replacements[rel])
+            else:
+                _write(zf, path, prefix + rel)
             files += 1
-            total += path.stat().st_size
+            total += len(replacements[rel]) if rel in replacements else path.stat().st_size
         for src_file, arcname in extra:
             _write(zf, src_file, arcname)
             files += 1
+      os.replace(temporary, out)
+    finally:
+      Path(temporary).unlink(missing_ok=True)
     return files, total
 
 

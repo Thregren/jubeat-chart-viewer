@@ -20,6 +20,9 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import java.io.ByteArrayInputStream;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -55,7 +58,7 @@ public final class MainActivity extends Activity {
     private boolean importing;
     private volatile boolean destroyed;
     private Thread importThread;
-    private String serverUrl;
+    private volatile String serverUrl;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -107,7 +110,17 @@ public final class MainActivity extends Activity {
         // 谱面播放里有脚本触发的打点音，没有这句 WebView 会把它们当成「没手势的自动播放」拦掉
         s.setMediaPlaybackRequiresUserGesture(false);
         web.setBackgroundColor(0xFF101014);
+        web.addJavascriptInterface(new PreferencesBridge(getSharedPreferences("viewer-settings", MODE_PRIVATE)), "JubeatPreferences");
         web.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest request) {
+                // The app is a local site. Prevent foreign documents/subframes from seeing the bridge.
+                String url = request.getUrl().toString();
+                if (serverUrl != null && url.startsWith(serverUrl)) return null;
+                if (url.startsWith("blob:" + serverUrl)) return null;
+                return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null,
+                        new ByteArrayInputStream(new byte[0]));
+            }
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, String url) {
                 if (url != null && serverUrl != null && url.startsWith(serverUrl)) return false;

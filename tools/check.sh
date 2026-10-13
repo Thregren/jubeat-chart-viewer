@@ -4,7 +4,7 @@
 #   tools/check.sh              快：JS 语法 / core 单测 / Range 三实现一致性 / 版本号
 #   tools/check.sh --site       再加上已有 ./site 的完整性检查（构建完、部署后）
 #   tools/check.sh --full       再加上「临时建一个小站点 + 两种部署模式的接口冒烟」
-#   tools/check.sh --release    = --full + PHP 入口冒烟（装了 php 才跑）
+#   tools/check.sh --release    = --full + PHP 入口冒烟（必须安装 php）
 #
 # 这里不含 Electron 打包（那要 GUI / 几分钟），打包单独跑 tools/pack_desktop.sh。
 set -u
@@ -27,6 +27,7 @@ for arg in "$@"; do
 done
 
 FAILED=""
+SKIPPED=""
 
 run() {                       # run <说明> <命令…>
   desc=$1
@@ -39,7 +40,8 @@ run() {                       # run <说明> <命令…>
   ✗ $desc"
 }
 
-skip() { printf '\n\033[2m▸ %s —— 跳过（%s）\033[0m\n' "$1" "$2"; }
+skip() { SKIPPED="$SKIPPED
+  · $1: $2"; printf '\n\033[2m▸ %s —— 跳过（%s）\033[0m\n' "$1" "$2"; }
 
 # ── 1. 前端语法 ───────────────────────────────────────────────
 check_js() {
@@ -51,19 +53,20 @@ check_js() {
 run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
-run "core.js 单测（node --test）" node --test tools/test_core.mjs tools/test_runtime.mjs tools/test_first_marker.mjs tools/test_marker_lifetime.mjs tools/test_marker_window.mjs tools/test_audio_loading.mjs tools/test_watch_options.mjs tools/test_recording_fingerprint.mjs tools/test_recording_resources.mjs
-
-run "横向节奏轴拍点几何" node --test tools/test_rhythm_timeline.mjs
-
-run "共享版本资料一致性" "$PY" tools/version_data.py --check
+run "前端、平台与录制纯逻辑单测" node --test tools/test_*.mjs
 
 run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
 
 run "资源预算与增量索引" "$PY" tools/test_resource_limits.py
+run "录制合流时间核验" "$PY" tools/test_recording_audit.py
+run "录制时间轴" "$PY" tools/test_recording_timeline.py
+run "录制片尾定格" "$PY" tools/test_recording_freeze.py
+run "资源版本、历史清理与便携包" "$PY" tools/test_build_assets.py
+run "HTTP、缓存与公开索引完整性" "$PY" tools/test_server_integrity.py
 
 run "缓存并发与原子写入" "$PY" tools/test_media_concurrency.py
 
-run "录制章节与定格判定" "$PY" tools/test_recording_timeline.py
+run "共享版本资料一致性" "$PY" tools/version_data.py --check
 
 run "内容增量、封面门禁与缓存清理" "$PY" tools/test_asset_build.py
 
@@ -108,7 +111,7 @@ if [ "$WANT_PHP" = 1 ]; then
   if command -v php >/dev/null 2>&1; then
     run "PHP 入口冒烟（tools/php_smoke_test.py）" "$PY" tools/php_smoke_test.py
   else
-    skip "PHP 入口冒烟" "本机没装 php"
+    run "PHP 发布检查要求解释器" sh -c 'echo "--release 必须安装 php；本地开发可运行 --full" >&2; exit 1'
   fi
 fi
 
@@ -117,4 +120,5 @@ if [ -n "$FAILED" ]; then
   printf '\033[31m检查未通过：%s\033[0m\n' "$FAILED"
   exit 1
 fi
-printf '\033[32m✓ 全部检查通过\033[0m\n'
+if [ -n "$SKIPPED" ]; then printf "已跳过（未验证）：%s\n" "$SKIPPED"; fi
+printf '\033[32m✓ 已执行检查全部通过\033[0m\n'

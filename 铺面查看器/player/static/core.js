@@ -28,6 +28,13 @@
   // 4×4 面板的键位范围（.mc 里的 index）
   const PAD_MIN = 0;
   const PAD_MAX = 15;
+  // Generous resource bound (six hours), independent of the judgement algorithm.
+  const MAX_CHART_SECONDS = 21600;
+  function boundedTime(value) {
+    if (!Number.isFinite(value) || Math.abs(value) > MAX_CHART_SECONDS)
+      throw new Error("谱面时间超出允许范围（最长六小时）");
+    return value;
+  }
 
   function beatToFloat(beat) {
     if (Array.isArray(beat)) {
@@ -54,6 +61,7 @@
         const prev = evs[i - 1];
         t += ((cur.beat - prev.beat) * 60) / prev.bpm;
       }
+      boundedTime(t);
       const endBeat = i + 1 < evs.length ? evs[i + 1].beat : Infinity;
       segs.push({ startBeat: cur.beat, endBeat, startSec: t, bpm: cur.bpm });
     }
@@ -61,7 +69,7 @@
     function beatToSec(bf) {
       if (bf <= segs[0].startBeat) {
         const s = segs[0];
-        return s.startSec + ((bf - s.startBeat) * 60) / s.bpm;
+        return boundedTime(s.startSec + ((bf - s.startBeat) * 60) / s.bpm);
       }
       let lo = 0;
       let hi = segs.length - 1;
@@ -71,7 +79,7 @@
         else hi = mid - 1;
       }
       const s = segs[lo];
-      return s.startSec + ((bf - s.startBeat) * 60) / s.bpm;
+      return boundedTime(s.startSec + ((bf - s.startBeat) * 60) / s.bpm);
     }
 
     function secToBeat(sec) {
@@ -196,6 +204,7 @@
       if (raw.endbeat != null) {
         endBeat = beatToFloat(raw.endbeat);
         endT = map.beatToSec(endBeat);
+        if (endT < t) throw new Error("长押结束早于开始");
         nHold++;
         // 尾判时刻只收有限数：脏谱面里算出 NaN 的话，二分会被它带偏
         if (Number.isFinite(endT)) holdEnds.push(endT);
@@ -455,6 +464,7 @@
   }
 
   return {
+    MAX_CHART_SECONDS,
     soundEffectVolume,
     SFX_VOLUME_LEVELS,
     rhythmColors,

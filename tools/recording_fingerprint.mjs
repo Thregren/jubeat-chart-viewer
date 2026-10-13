@@ -33,6 +33,9 @@ export function recordingFingerprint(repo, song, args = {}) {
   for (const name of ['record.mjs', 'audio.mjs', 'cdp.mjs', 'cover.mjs', 'resources.mjs']) {
     add('rec/' + name, path.join(repo, 'tools/rec', name));
   }
+  for (const name of ['recording_cache.mjs', 'recording_processes.mjs', 'recording_resources.mjs', 'recording_fingerprint.mjs']) {
+    add('tools/' + name, path.join(repo, 'tools', name));
+  }
   const performanceFile = path.join(repo, 'tools/rec/performance.json');
   if (fs.existsSync(performanceFile)) add('performance', performanceFile);
   const number = (key, fallback) => Number(args[key] ?? fallback);

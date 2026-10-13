@@ -114,7 +114,7 @@ def inspect(path: Path) -> str:
     files = _asar_files(blob)
     if files is None:
         return "app.asar 头读不出来"
-    for want in ("main.js", "site-server.js", "package.json"):
+    for want in ("main.js", "site-server.js", "preload.js", "preferences.js", "package.json"):
         if want not in files:
             return f"app.asar 里没有 {want}"
     if "site" in files:

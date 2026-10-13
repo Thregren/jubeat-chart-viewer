@@ -4,14 +4,14 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.26`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.27`，由 `tools/set_version.py` 同步）。
 
 [![v0.6.25 界面：横向节奏轴与物量条共存](docs/rhythm-timeline.png)](docs/rhythm-timeline.png)
 
 > **桌面版下载（含全量曲库）**：<https://pan.quark.cn/s/e9c12157e039>
 >
 > 在网盘的 `v0.6.26` 文件夹选择对应平台的**全量曲库桌面包**，解压后即可浏览，不用自己构建 `site/`；
-> GitHub Release 上另放 **v0.6.26 不带曲库**的轻量包（需自行指向 `site/`）。
+> GitHub Release 上另放 **v0.6.27 不带曲库**的轻量包（需自行指向 `site/`）。
 > v0.6.26 六个平台的全量包已构建并通过内容、完整性、版本及架构校验，含 2,549 首歌曲、7,645 张谱面；已上传夸克，并逐项核对六个平台全量包、使用说明、SHA256SUMS 及校验报告共 10 个文件。
 
 **一句话架构**：构建期把曲库（`.mcz`）展开成一棵纯静态文件树 `site/`，运行期浏览器只跟 HTTP 打交道——
@@ -20,7 +20,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.26`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.26** · [Release notes](docs/release-v0.6.26.md) ·
+当前版本：**v0.6.27** · [Release notes](docs/release-v0.6.27.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---
@@ -219,7 +219,7 @@ site/                           ← 唯一的「运行时数据」，体积随�
 │   ├── smoke_test.py          端到端自测（静态 + 开发两种模式，32 项）
 │   ├── ui_smoke.js            界面自测：真 Electron 渲染进程里把页面跑起来（52 项）
 │   ├── mobile_touch_smoke.js  手机端自测：CDP 真触摸事件走一遍抽屉 / 选曲（14 项）
-│   └── php_smoke_test.py      PHP 入口自测（21 项：Range / gzip / 304 / 目录穿越）
+│   └── php_smoke_test.py      PHP 入口自测（25 项：Range / gzip / 304 / 目录穿越）
 ├── .github/workflows/ci.yml   每次 push 跑 tools/check.sh --release
 ├── deploy/
 │   ├── README.md              服务器部署步骤 + 流量估算
@@ -885,11 +885,11 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 
 | 平台 | 文件 |
 |---|---|
-| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.26-mac-arm64.zip` / `-mac-x64.zip` |
-| Windows（x64 / ARM64） | `jubeatViewer-0.6.26-win-x64.zip` / `-win-arm64.zip` |
-| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.26-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
+| macOS（Apple Silicon / Intel） | `jubeatViewer-0.6.27-mac-arm64.zip` / `-mac-x64.zip` |
+| Windows（x64 / ARM64） | `jubeatViewer-0.6.27-win-x64.zip` / `-win-arm64.zip` |
+| Linux（x86_64 / ARM64） | `jubeatViewer-0.6.27-linux-x86_64.AppImage` / `-linux-arm64.AppImage` |
 
-上面是当前版本（v0.6.26）的轻量附件名，版本号跟着 tag 走；最新附件以
+上面是当前版本（v0.6.27）的轻量附件名，版本号跟着 tag 走；最新附件以
 [Releases 页](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)为准。
 
 解压后直接运行；如果提示还没找到站点数据，用菜单「文件 → 选择站点目录（site/）」指向自己构建的
@@ -904,7 +904,7 @@ nginx 给 js/css 挂了 12 小时缓存，不改这个数字，浏览器会一�
 tools/check.sh              # JS 语法 / core 单测 / Range 四份实现一致性 / 版本号
 tools/check.sh --site       # 再加上已有 ./site 的完整性检查（构建完、部署后）
 tools/check.sh --full       # 再加上端到端接口冒烟（临时造一个小站点）
-tools/check.sh --release    # 发版前：--full + PHP 入口冒烟（本机没 php 就跳过）
+tools/check.sh --release    # 发版前：--full + PHP 入口冒烟（必须安装 php）
 ```
 
 单独跑某一项：
@@ -915,7 +915,7 @@ python3 tools/test_range.py            # Range 解析 + 路径穿越：同一张
 python3 tools/smoke_test.py --build    # 静态 + 开发两种模式，32 项（首页/索引/谱面/音源 Range/封面/缩略图/缓存/gzip/404）
 cd electron && npx electron ../tools/ui_smoke.js   # 界面自测 52 项：真渲染进程里跑一遍页面并点关键路径
 cd electron && npx electron ../tools/mobile_touch_smoke.js   # 手机端自测 14 项：真触摸事件（light tap）打开抽屉 / 选曲
-python3 tools/php_smoke_test.py        # PHP 入口，21 项（各种 Range、416、gzip、ETag/304、HEAD、目录穿越）
+python3 tools/php_smoke_test.py        # PHP 入口，25 项（各种 Range、416、gzip、ETag/304、HEAD、目录穿越）
 python3 tools/verify_site.py --strict  # 已有 ./site 的完整性（索引里每一项都要落到磁盘上）
 python3 tools/set_version.py --check   # VERSION 是否已同步到前端 ?v= / 侧栏版本号徽章 / site 构建产物 / electron 包版本
 
@@ -1030,7 +1030,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 - 换歌、切难度和音源准备使用取消请求及状态校验，过期结果不会覆盖新选择；播放速度改变不再造成时间跳位。
 - Marker 下载最多 6 路；已完成的图片按最近使用顺序保留最多 256 张，并保护当前及正在切换的设计。曲目列表采用可见行虚拟化，并保留搜索和键盘访问。
 - 构建先在临时目录完成，失败保留原站点，发布失败回滚；`--limit` 与 `--prune` 不能一起使用。前端和曲库资源使用内容哈希文件名，索引发布在资源之后，旧哈希文件保留以支持已打开的页面。
-- Electron 固定为 44.6.0，electron-builder 固定为 26.15.3。构建依赖的 `sprintf-js` 存在尚无已发布修复的中风险精度参数拒绝服务问题；不在网站运行时使用，审计见 `npm audit --registry=https://registry.npmjs.org`。
+- Electron 固定为 44.6.0，electron-builder 固定为 26.15.3。构建依赖的 `sprintf-js` 使用仓库内带许可证的修补包，限制精度、宽度和解析缓存；锁文件与实际安装的日志依赖均有回归检查。审计命令：`npm audit --registry=https://registry.npmjs.org`。
 - PHP 入口仅公开站点文件，禁止编码后的隐藏路径、源文件和根目录配置；HEAD 请求不读取文件正文，错误响应不缓存。
 
 检查：`sh tools/check.sh --full`、`electron/node_modules/.bin/electron tools/ui_smoke.js`、`electron/node_modules/.bin/electron tools/mobile_touch_smoke.js`。PHP 入口需额外运行 `python3 tools/php_smoke_test.py --php <php-cli>`。

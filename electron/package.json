@@ -1,7 +1,7 @@
 {
   "name": "jubeat-viewer",
   "productName": "jubeatViewer",
-  "version": "0.6.26",
+  "version": "0.6.27",
   "description": "jubeat 谱面（铺面）确认播放器 —— 本地静态站点 + Electron 外壳",
   "author": "Thregren",
   "license": "MIT",
@@ -17,6 +17,10 @@
   },
   "devDependencies": {
     "electron": "44.6.0",
-    "electron-builder": "26.15.3"
+    "electron-builder": "26.15.3",
+    "sprintf-js": "file:vendor/safe-sprintf"
+  },
+  "overrides": {
+    "sprintf-js": "$sprintf-js"
   }
 }

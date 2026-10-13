@@ -111,6 +111,15 @@ function serve(rootDir) {
   const root = fs.realpathSync(rootDir);
   const connections = new Set();
   const server = http.createServer((req, res) => {
+    const expectedHost = `127.0.0.1:${server.address().port}`;
+    const hosts = req.rawHeaders.filter((_, i) => i % 2 === 0 && req.rawHeaders[i].toLowerCase() === "host");
+    if (hosts.length !== 1 || req.headers.host !== expectedHost ||
+        (req.headers.origin != null && req.headers.origin !== `http://${expectedHost}`)) {
+      res.writeHead(403, { ...BASE_HEADERS, "Connection": "close" }).end("forbidden"); return;
+    }
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405, { ...BASE_HEADERS, "Allow": "GET, HEAD" }).end(); return;
+    }
     let rel;
     try {
       rel = decodeURIComponent(new URL(req.url, "http://127.0.0.1").pathname);

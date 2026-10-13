@@ -1,7 +1,9 @@
-const { app, BrowserWindow, Menu, dialog, shell, session } = require("electron");
+const { app, BrowserWindow, Menu, dialog, shell, session, ipcMain } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { serve } = require("./site-server");
+const { Preferences, registerPreferences } = require("./preferences");
+let preferences;
 
 let win = null;
 let server = null;
@@ -160,6 +162,7 @@ async function createWindow() {
     backgroundColor: "#07090f",
     title: "jubeat 铺面查看器",
     webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false,
@@ -201,6 +204,8 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  preferences = new Preferences(path.join(app.getPath("userData"), "viewer-preferences.json"));
+  registerPreferences(ipcMain, preferences, () => win, () => server?.url);
   // 这个应用不需要任何系统权限（麦克风 / 摄像头 / 屏幕录制 / 定位…），一律拒绝，
   // 免得 macOS 弹出「录屏权限」之类的授权框。
   try {

@@ -25,7 +25,7 @@
   // Owns asynchronous transport work, independently of DOM and AudioContext.
   // Decode results belong to callers; the serialization tail only retains completion.
   class AudioSession {
-    constructor(timers = { setTimeout, clearTimeout }) {
+    constructor(timers = { setTimeout: (...args) => setTimeout(...args), clearTimeout: id => clearTimeout(id) }) {
       this.timers = timers; this.generation = 0; this.recovery = null;
       this.decodeTail = Promise.resolve();
     }

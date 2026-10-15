@@ -6,6 +6,23 @@ import {createRequire} from 'node:module';
 const R=createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
 const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-player.js',import.meta.url),'utf8');
 const turn=()=>new Promise(setImmediate);
+test('default browser recovery timers preserve the global receiver',()=>{
+ const runtime=fs.readFileSync(new URL('../铺面查看器/player/static/runtime.js',import.meta.url),'utf8');
+ const context=vm.createContext({});
+ vm.runInContext(`
+  const pending=new Map();let nextId=0;
+  globalThis.setTimeout=function(fn){if(this!==globalThis)throw TypeError('Illegal invocation');pending.set(++nextId,fn);return nextId;};
+  globalThis.clearTimeout=function(id){if(this!==globalThis)throw TypeError('Illegal invocation');pending.delete(id);};
+ `,context);
+ vm.runInContext(runtime,context);
+ vm.runInContext(`
+  const session=new JubeatRuntime.AudioSession();
+  session.recover({running:()=>false,resume(){},restore(){}});
+  if(pending.size!==1)throw Error('recovery timer missing');
+  session.invalidate();
+  if(pending.size!==0)throw Error('recovery timer not cancelled');
+ `,context);
+});
 function timers(){const pending=new Map();let id=0;return{pending,setTimeout(fn){pending.set(++id,fn);return id},clearTimeout(id){pending.delete(id)},run(){const jobs=[...pending.values()];pending.clear();jobs.forEach(fn=>fn())}};}
 function player(){
  const time=timers(),plays=[],sessions=[];

@@ -148,6 +148,10 @@ except BaseException:
   old.rename(target)
  subprocess.run(['/www/server/nginx/sbin/nginx','-s','reload'],capture_output=True)
  raise
+# aaPanel may mark this retired control file immutable. Only clear the
+# attribute on the retired copy after the new site has passed its checks.
+user_ini=old/'.user.ini'
+if user_ini.is_file():subprocess.run(['chattr','-i',str(user_ini)],check=True,capture_output=True)
 shutil.rmtree(old)
 print('activated; old website resources removed')
 '''

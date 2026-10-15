@@ -48,6 +48,8 @@ def deploy(a):
     signature=[a.bucket,a.region,a.instance,a.instance_region,a.target,a.prefix,fingerprint]
     state=json.loads(state_file.read_text()) if state_file.exists() else dict(signature=signature,uploaded={},staged={})
     if state['signature']!=signature:raise ValueError('发布状态与目标或包清单不一致')
+    if state.get('status')=='complete':
+        print('同一批曲库已完成发布；保留现有站点，不重复切换',flush=True);return state
     def save():state_file.write_text(json.dumps(state,ensure_ascii=False,indent=2)+'\n')
     target=Path(a.target)
     if not target.is_absolute() or len(target.parts)<4 or target.name in ('wwwroot','www','root'):raise ValueError('目标必须是明确的站点根目录')

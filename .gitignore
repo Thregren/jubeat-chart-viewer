@@ -52,3 +52,8 @@ electron/out/
 
 # 开放目录曲库（只提交程序，不提交歌曲素材）
 directory-library/
+
+# 安卓构建与私有签名材料
+android/out/
+android/keystore/
+frontend/

@@ -52,6 +52,8 @@ public final class ResImporter {
         return ArchiveImport.extract(raw, siteDir, new ArchiveImport.Progress() { public void update(long bytes, String name) {
             // ZIP length is compressed bytes; never compare it to decompressed progress.
             if (cb != null) cb.onStep(bytes, 0, name);
+        }}, new ArchiveImport.Validator() { public void validate(File stage) throws IOException {
+            ResourceCatalog.validate(stage);
         }});
     }
 

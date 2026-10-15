@@ -8,6 +8,7 @@ import java.util.zip.*;
 /** Bounded, cancellable import with a durable rollback journal. No Android dependencies. */
 public final class ArchiveImport {
     public interface Progress { void update(long bytes, String name); }
+    public interface Validator { void validate(File stage) throws IOException; }
     static final long MAX_TOTAL = 8L << 30, MAX_FILE = 128L << 20, RESERVE = 32L << 20;
     static final int MAX_FILES = 100000;
     private ArchiveImport() {}
@@ -91,6 +92,10 @@ public final class ArchiveImport {
     }
 
     public static int extract(InputStream raw, File root, Progress progress) throws IOException {
+        return extract(raw, root, progress, null);
+    }
+
+    public static int extract(InputStream raw, File root, Progress progress, Validator validator) throws IOException {
         mkdir(root);
         File work = new File(root.getParentFile(), "." + root.getName() + "-import");
         File lockPath = new File(root.getParentFile(), "." + root.getName() + "-import.lock");
@@ -112,7 +117,7 @@ public final class ArchiveImport {
                             String name = entry.getName();
                             if (entry.isDirectory() && name.endsWith("/")) name = name.substring(0, name.length() - 1);
                             File dest = fileAt(stage, name);
-                            if (!(name.startsWith("data/") || name.startsWith("media/") || name.startsWith("markers/") || (entry.isDirectory() && (name.equals("data") || name.equals("media") || name.equals("markers")))))
+                            if (!(name.startsWith("data/") || name.startsWith("media/") || name.startsWith("songs/") || name.startsWith("markers/") || (entry.isDirectory() && (name.equals("data") || name.equals("media") || name.equals("songs") || name.equals("markers")))))
                                 throw new IOException("资源包含非曲库文件：" + name);
                             if (entry.isDirectory()) continue;
                             if (!unique.add(fileAt(root, name).getCanonicalPath())) throw new IOException("资源路径重复：" + name);
@@ -134,6 +139,7 @@ public final class ArchiveImport {
                         }
                     }
                     if (names.isEmpty()) throw new IOException("资源包为空");
+                    if (validator != null) validator.validate(stage);
                     // Entry points are committed last. Existing files stay in backup until completion.
                     Collections.sort(names, new Comparator<String>() { public int compare(String a, String b) {
                         int pa = a.equals("data/library.json") ? 1 : 0, pb = b.equals("data/library.json") ? 1 : 0;

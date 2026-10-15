@@ -114,7 +114,7 @@ def inspect(path: Path) -> str:
     files = _asar_files(blob)
     if files is None:
         return "app.asar 头读不出来"
-    for want in ("main.js", "site-server.js", "preload.js", "preferences.js", "package.json"):
+    for want in ("main.js", "site-server.js", "preload.js", "preferences.js", "library-import.js", "package.json"):
         if want not in files:
             return f"app.asar 里没有 {want}"
     if "site" in files:
@@ -153,7 +153,7 @@ def collect(version: str, dist: Path) -> tuple[list[tuple[Path, str, int]], list
 def write_manifest(version: str, rows: list[tuple[Path, str, int]]) -> Path:
     manifest = {
         "version": version,
-        "note": "不带曲库的轻量包：首次启动时自己选 site 目录（含全部音乐的静态站点）",
+        "note": "轻量客户端：桌面拖入完整曲库ZIP或目录，安卓通过文件选择器导入同一资源包",
         "assets": [
             {"name": p.name, "bytes": size, "sha256": digest}
             for p, digest, size in rows

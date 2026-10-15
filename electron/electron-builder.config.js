@@ -32,6 +32,7 @@ async function preparePortable() {
 
 // 打包就是把代码发出去，许可 / 素材说明跟着走（MIT 要求随副本附带版权与许可声明）
 const extraResources = [
+  { from: fs.existsSync(path.resolve(__dirname,'../frontend')) ? '../frontend' : '../铺面查看器/player/static', to: "frontend" },
   { from: "../docs/README-electron.txt", to: "README-electron.txt" },
   { from: "../LICENSE", to: "LICENSE" },
   { from: "../THIRD-PARTY.md", to: "THIRD-PARTY.md" },
@@ -49,7 +50,7 @@ module.exports = {
   appId: "com.thregren.jubeat.viewer",
   productName: "jubeatViewer",
   directories: { output: "dist", buildResources: "build" },
-  files: ["main.js", "site-server.js", "preload.js", "preferences.js", "package.json"],
+  files: ["main.js", "site-server.js", "preload.js", "preferences.js", "library-import.js", "package.json"],
   extraResources,
   beforePack: preparePortable,
   afterAllArtifactBuild: async () => { cleanPortable(); return []; },

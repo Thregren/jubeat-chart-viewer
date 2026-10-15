@@ -38,7 +38,19 @@ JAVAC="$JAVA_HOME/bin/javac"
 KEYTOOL="$JAVA_HOME/bin/keytool"
 KS="$HERE/keystore/jubeat-release.jks"
 KS_ALIAS="${KS_ALIAS:-jubeat}"
-KS_PASS="${KS_PASS:-jubeatviewer}"
+KS_PASS_FILE="${KS_PASS_FILE:-$HERE/keystore/.password}"
+if [ -z "${KS_PASS:-}" ]; then
+  if [ -f "$KS_PASS_FILE" ]; then
+    KS_PASS="$(cat "$KS_PASS_FILE")"
+  elif [ -f "$KS" ]; then
+    # 兼容早期脚本生成的本地密钥。
+    KS_PASS=jubeatviewer
+  else
+    mkdir -p "$(dirname "$KS_PASS_FILE")"
+    ( umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "$KS_PASS_FILE" )
+    KS_PASS="$(cat "$KS_PASS_FILE")"
+  fi
+fi
 
 NAME="jubeat-viewer-$VERSION-android-min"
 
@@ -57,7 +69,7 @@ if ! ls "$APP"/res/mipmap-*/ic_launcher.png >/dev/null 2>&1; then
   python3 "$REPO/tools/make_android_icon.py"
 fi
 
-echo "▸ 准备 $VERSION（versionCode=$VERSION_CODE）"
+printf '▸ 准备 %s（versionCode=%s）\n' "$VERSION" "$VERSION_CODE"
 rm -rf "$WORK" "$DIST"
 mkdir -p "$WORK/assets/www/static" "$WORK/classes" "$WORK/gen" "$DIST"
 
@@ -87,15 +99,24 @@ echo "  前端：$(( $(find "$WORK/assets" -type f | wc -l | tr -d ' ') )) 个�
   "$WORK/res.zip"
 
 # 3) Java → class
-find "$APP/src" "$WORK/gen" -name '*.java' > "$WORK/sources.txt"
+python3 - "$APP/src" "$WORK/gen" "$WORK/sources.txt" <<'PY'
+import json,sys
+from pathlib import Path
+paths=[p for root in sys.argv[1:3] for p in Path(root).rglob('*.java')]
+Path(sys.argv[3]).write_text(''.join(json.dumps(str(p),ensure_ascii=False)+'\n' for p in paths))
+PY
 "$JAVAC" -source 8 -target 8 -nowarn -Xlint:-options \
   -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR" \
   -d "$WORK/classes" @"$WORK/sources.txt"
 
 # 4) class → dex（安卓 5.0 起，单 dex 足够）
 mkdir -p "$WORK/dex"
-"$BT/d8" --min-api 21 --lib "$ANDROID_JAR" --output "$WORK/dex" \
-  $(find "$WORK/classes" -name '*.class')
+python3 - "$BT/d8" "$ANDROID_JAR" "$WORK/dex" "$WORK/classes" <<'PY'
+import subprocess,sys
+from pathlib import Path
+subprocess.run([sys.argv[1],'--min-api','21','--lib',sys.argv[2],'--output',sys.argv[3]]+
+               [str(p) for p in Path(sys.argv[4]).rglob('*.class')],check=True)
+PY
 
 # 5) 把 dex 塞进 APK，再对齐、签名
 cp "$WORK/base.apk" "$WORK/app.apk"

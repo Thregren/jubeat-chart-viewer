@@ -180,7 +180,7 @@ public final class MainActivity extends Activity {
         desc.setText("这个安装包只带界面，不含歌曲、封面和音源。两种方式把曲库放进来：\n\n"
                 + "① 点下面的「导入资源包」，选 jubeat-library-*.zip（推荐）\n\n"
                 + "② 手机连电脑后，把资源包解压到目录：\n" + siteDir + "\n"
-                + "（这个目录需要能读到 data/library.json、media/、markers/ 三样）\n\n"
+                + "（这个目录需要能读到 data/library.json、songs/、markers/）\n\n"
                 + "放好之后点「重新检测」。" + (note == null ? "" : "\n\n" + note));
         box.addView(desc);
 

@@ -1,27 +1,29 @@
-jubeat 谱面确认（桌面版 · Jubeat Viewer）
-=========================================
+jubeat Viewer 0.6.29 轻量客户端使用说明
 
-这个应用只是一个外壳：内置一个本地静态服务器，把构建好的 site/ 目录
-通过 http://127.0.0.1:<随机端口>/ 提供出来，再用 Electron 窗口显示。
-所以它不需要 Python，也不需要联网。
+程序与歌曲分开提供。此轻量包不包含任何歌曲、封面和原试听。
 
-第一次运行
-==========
-1. 如果打包时已经带上 site/，打开就能直接用。
-2. 否则会提示「还没有找到站点数据」：
-   - 在本仓库运行 python3 tools/build_site.py 生成 site/
-   - 菜单「文件 → 选择站点目录（site/）…」选中该目录（会记住，下次自动加载）
+桌面版（Windows / macOS / Linux）
+1. 解压程序包并启动程序。
+2. 将 jubeat-library-0.6.29.zip 整个拖进程序窗口。不要拖 COS 发布分卷。
+3. 程序先校验压缩包、谱面索引和全部已声明资源，再切换曲库。
+4. 导入完成即可离线浏览、播放。也可在“文件→导入曲库资源包”选择 ZIP。
+5. 已解压的完整曲库文件夹也可以拖入，或用文件菜单选择。程序会复制配套界面到该文件夹。
 
-曲库更新之后
-============
-重新跑一次 tools/build_site.py，再按菜单「重新载入」（Cmd/Ctrl+R）即可。
+安卓版
+安装 jubeat-viewer-0.6.29-android-min.apk，选择“导入资源包”，导入同一个 jubeat-library-0.6.29.zip。
+安卓从系统文件选择器导入 ZIP；不需要安装 Python、解压工具或 MCZ 转换程序。
 
-快捷键
-======
-Space 播放/暂停 · R 重播 · ←/→ 快退快进 · 1-4 切难度
-M 切换 marker · ,/. 微调 PERFECT 帧
+曲库内容
+2457 个歌曲/谱面版本条目，7329 张谱面。音频和原试听为 Ogg Opus 80 kbps VBR，封面来自本地原始资源。
+不同版本的相同可玩谱面合并保存，谱面变化单独保留。音乐魔方21首为本地提供的EXT视频复核抄谱。
+无原试听时按钮隐藏；有试听时位于播放控制行最右，循环播放，再按停止。
+缺少音频或封面不影响静态看谱，未确认的曲名和等级不伪造。
 
-版权
-====
-曲目、封面与 jubeat marker 图案版权归 KONAMI Digital Entertainment 及各素材作者，
-仅供个人核对谱面 / 制作谱面视频使用，请勿分发。
+更新与空间
+轻量程序和曲库可分别更新。导入会使用临时目录，更新曲库时需要同时容纳旧库和新库；失败会恢复旧库。
+桌面导入的ZIP落在程序用户数据目录；选择文件夹则使用该文件夹。安卓优先放在Android/media/world.thregren.jubeatviewer/site。
+Mac未做商业签名，首次运行可在Finder中右键“打开”。Linux AppImage可能需要先赋予执行权限。
+
+源代码与详细说明
+https://github.com/Thregren/jubeat-chart-viewer
+https://github.com/Thregren/jubeat-chart-viewer/blob/master/docs/压缩曲库与客户端.md

@@ -56,6 +56,7 @@ run "前端 JS 语法（node --check）" check_js
 run "前端、平台与录制纯逻辑单测" node --test tools/test_*.mjs
 
 run "开放目录曲库、WAV Range 与缺失素材" "$PY" tools/test_directory_library.py
+run "母库转码与精简目录曲库" "$PY" tools/test_compress_directory.py
 
 run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
 

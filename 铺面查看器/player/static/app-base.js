@@ -335,6 +335,7 @@
   }
 
   function audioUrl(song) {
+    if (song.assets && !song.assets.audio) return "";
     if (song.assets && song.assets.audio) return encPath(song.assets.audio);
     return `${PATHS.audio}${encPath(stemOf(song.id))}.ogg`;
   }

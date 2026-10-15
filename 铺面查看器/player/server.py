@@ -215,6 +215,15 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/markers/"):
             return self._serve_marker(path[len("/markers/"):])
 
+        if path.startswith('/songs/'):
+            LIB.load()
+            from directory_library import asset_path
+            name = media.unquote_path(path[1:])
+            if name not in getattr(LIB, 'directory_assets', set()):
+                raise FileNotFoundError(name)
+            target = asset_path(LIB.root, name)
+            return media.stream_file(self, target, media.guess_ctype(name), self._hdr({'Cache-Control': 'no-cache'}))
+
         # —— 与静态站点完全相同的路径布局 ——
         if path == "/data/library.json":
             if qs.get("reindex", [""])[0]:
@@ -405,7 +414,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     if not config.LIBRARY.is_dir():
         print(f"曲库目录不存在：{config.LIBRARY}", file=sys.stderr)
-        print("把 .mcz 曲库放到仓库根目录的 music/，或用 JUBEAT_LIBRARY 指定路径。", file=sys.stderr)
+        print("请用 JUBEAT_LIBRARY 指定包含 data/library.json 的开放目录曲库。", file=sys.stderr)
         sys.exit(1)
     config.ensure_cache_dirs()
     LIB.load()

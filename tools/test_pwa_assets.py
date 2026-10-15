@@ -19,7 +19,7 @@ class PwaAssets(unittest.TestCase):
             root = Path(tmp)
             env = os.environ | make_fixture(root / 'fixture')
             out = root / 'site'
-            result = subprocess.run([sys.executable, str(REPO/'tools/build_site.py'), '--out', str(out), '--jobs', '1'], env=env, capture_output=True, text=True)
+            result = subprocess.run([sys.executable, str(REPO/'tools/build_site.py'), '--legacy-mcz', '--out', str(out), '--jobs', '1'], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             html = (out/'index.html').read_text()
             manifest_ref = re.search(r'rel="manifest" href="([^"]+)"', html).group(1)

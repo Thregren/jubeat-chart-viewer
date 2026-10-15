@@ -699,6 +699,10 @@
   }
 
   async function play() {
+    A.directory?.stopPreview();
+    if (state.song?.assets && (!state.song.assets.audio || state.song.resourceOnly)) {
+      toast("此条目缺少完整音频或可玩谱面，可查看现有素材"); return;
+    }
     if(A.mode?.ownsFrame)return;
     if (!state.song) {
       toast("先从左侧选择一首曲目");

@@ -4,7 +4,7 @@
 
     JUBEAT_HOST        监听地址（默认 127.0.0.1，用 nginx 反代时不用改）
     JUBEAT_PORT        监听端口（默认 8765）
-    JUBEAT_LIBRARY     曲库目录（默认 <repo>/music）
+    JUBEAT_LIBRARY     曲库目录（默认 <repo>/directory-library）
     JUBEAT_MARKERS     marker 素材目录（默认 <repo>/marker/jubeat_official）
     JUBEAT_CACHE       缓存目录（默认 <repo>/cache）：音频/封面/缩略图/索引
     JUBEAT_X_ACCEL     设成 nginx 内部 location（例如 /_audio/）后，音频走 X-Accel-Redirect
@@ -28,12 +28,12 @@ import version as version_mod
 
 PLAYER_DIR = Path(__file__).resolve().parent   # …/铺面查看器/player
 APP_DIR = PLAYER_DIR.parent                    # …/铺面查看器
-REPO = APP_DIR.parent                          # 仓库根（含 music/ 与 marker/）
+REPO = APP_DIR.parent                          # 仓库根（含 directory-library/ 与 marker/）
 STATIC_DIR = PLAYER_DIR / "static"
 
 APP_VERSION = version_mod.read_version()       # 唯一来源：仓库根的 VERSION 文件
 
-LIBRARY_NAME = "music"
+LIBRARY_NAME = "directory-library"
 LEGACY_LIBRARY_NAMES = ("Jubeat2Malody-GUI-mcz-releases",)
 # 官方提取的 marker 素材（逐帧 PNG + manifest.json，见 marker/jubeat_official/README.md）
 MARKERS_NAME = "jubeat_official"
@@ -85,39 +85,15 @@ COVER_CACHE_MAX = 600          # 内存里缓存的封面条数（小图，几�
 
 
 def _has_songs(path: Path) -> bool:
-    try:
-        if not path.is_dir():
-            return False
-        for _ in path.glob("**/*.mcz"):
-            return True
-    except OSError:
-        return False
-    return False
+    return (path / 'data/library.json').is_file()
 
 
 def resolve_library() -> Path:
-    """找曲库：环境变量 → 项目内 → 仓库根目录 → 旧目录名 → 常见位置。
-
-    以前还写死了一个个人目录（~/XiaomiMiMoProjects/…）。别人的机器上这个路径
-    只会在每次启动时白扫一遍；真要指定就用 JUBEAT_LIBRARY。
-    """
-    candidates: list[Path] = []
+    """只查找开放目录索引；指定路径缺失时不回退到其他曲库。"""
     env = _env("JUBEAT_LIBRARY")
     if env:
-        candidates.append(Path(env).expanduser())
-    candidates += [
-        APP_DIR / LIBRARY_NAME,
-        REPO / LIBRARY_NAME,
-        *(REPO / name for name in LEGACY_LIBRARY_NAMES),
-        Path.home() / "Documents" / LIBRARY_NAME,
-        Path.home() / "Downloads" / LIBRARY_NAME,
-    ]
-    for parent in (REPO, APP_DIR, REPO.parent, Path.home() / "Documents"):
-        try:
-            candidates += sorted(parent.glob(f"*/{LIBRARY_NAME}"))
-            candidates += sorted(parent.glob(f"*/{LEGACY_LIBRARY_NAMES[0]}"))
-        except OSError:
-            pass
+        return Path(env).expanduser().resolve()
+    candidates = [APP_DIR / LIBRARY_NAME, REPO / LIBRARY_NAME]
 
     seen: set[str] = set()
     for cand in candidates:

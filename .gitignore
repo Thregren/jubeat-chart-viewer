@@ -49,3 +49,6 @@ electron/out/
 # Temporary staged build transactions and process locks
 .*.build.lock
 .*.build-*/
+
+# 开放目录曲库（只提交程序，不提交歌曲素材）
+directory-library/

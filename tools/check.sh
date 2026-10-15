@@ -55,6 +55,8 @@ run "前端 JS 语法（node --check）" check_js
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
 run "前端、平台与录制纯逻辑单测" node --test tools/test_*.mjs
 
+run "开放目录曲库、WAV Range 与缺失素材" "$PY" tools/test_directory_library.py
+
 run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
 
 run "资源预算与增量索引" "$PY" tools/test_resource_limits.py

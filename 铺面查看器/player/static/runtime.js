@@ -88,7 +88,7 @@
   function object(value) { return !!value && typeof value === "object" && !Array.isArray(value); }
   function safePath(value) {
     return typeof value === "string" && value.length > 0 && value.length < 2048
-      && !/[\\\x00-\x1f]/.test(value) && !value.startsWith("/")
+      && !/[\\:\x00-\x1f]/.test(value) && !value.startsWith("/")
       && value.split("/").every((part) => part !== "." && part !== ".." && part !== "");
   }
   function validateLibrary(data) {
@@ -98,11 +98,13 @@
     for (const song of data.songs) {
       if (!object(song) || !safePath(song.id) || seen.has(song.id)
         || typeof song.title !== "string" || typeof song.version !== "string"
-        || !Array.isArray(song.charts) || !song.charts.length || song.charts.length > 32
+        || !Array.isArray(song.charts) || (!song.charts.length && song.resourceOnly !== true) || song.charts.length > 32
         || song.charts.some((c) => !object(c) || !safePath(c.code) || c.code.includes("/")))
         throw new Error("曲库中存在无效或重复曲目");
       if (song.assets && (!object(song.assets) || Object.values(song.assets).some((value) => !safePath(value))))
         throw new Error("曲目资源路径无效");
+      if (song.missing && (!Array.isArray(song.missing) || song.missing.some(x => typeof x !== 'string')))
+        throw new Error('缺失素材清单无效');
       seen.add(song.id);
     }
     return data;

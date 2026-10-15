@@ -184,7 +184,7 @@ def make_fixture(root: Path) -> dict[str, str]:
             archive.writestr("0/bgm.wav", audio.getvalue())
             archive.writestr("0/jkt.png", png)
     return {"JUBEAT_LIBRARY": str(music.parent), "JUBEAT_MARKERS": str(markers),
-            "JUBEAT_CACHE": str(root / "cache")}
+            "JUBEAT_CACHE": str(root / "cache"), "JUBEAT_LEGACY_MCZ": "1"}
 
 
 def main() -> int:
@@ -207,7 +207,7 @@ def main() -> int:
             env.update(make_fixture(Path(tmp_ctx.name) / "fixture"))
         print(f"构建测试站点（5 首）→ {site}")
         r = subprocess.run([sys.executable, str(REPO / "tools" / "build_site.py"),
-                            "--out", str(site), "--limit", "5", "--force"],
+                            "--legacy-mcz", "--out", str(site), "--limit", "5", "--force"],
                            capture_output=True, text=True, env=env)
         if r.returncode not in (0, 2):
             print(r.stdout[-2000:], r.stderr[-2000:])

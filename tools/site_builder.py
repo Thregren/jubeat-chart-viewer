@@ -475,7 +475,7 @@ def run_build(args, out: Path, extension=None) -> int:
     # 缓存带曲库指纹（每个文件的路径、大小、mtime_ns、ctime_ns 的 SHA256，见 library.fingerprint），
     # 曲库没动就直接命中；真要重建用 --rescan。
     print("读取曲库索引…" + ("（--rescan：检查并重扫变更文件）" if args.rescan else ""))
-    lib = library.Library()
+    lib = library.Library(config.LIBRARY)
     lib.load(force=args.rescan)
     songs = list(lib.songs)
     if args.limit:

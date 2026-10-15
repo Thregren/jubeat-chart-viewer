@@ -75,6 +75,7 @@
    * 静态站点和开发服务器行为一致，也省掉了每次输入都发请求。
    */
   const Runtime = window.JubeatRuntime;
+  A.directory = window.JubeatDirectory.install(A);
   const libraryRequests = new Runtime.RequestScope();
   const chartRequests = new Runtime.RequestScope();
   window.addEventListener("pagehide", (event) => {
@@ -89,7 +90,15 @@
       const res = await fetch(PATHS.library + (force ? "?reindex=1" : ""),
                               { cache: force ? "reload" : "default", signal: request.signal });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const data = Runtime.validateLibrary(await Runtime.readJSON(res));
+      const manifest = await Runtime.readJSON(res);
+      const assembled = await window.JubeatDirectory.loadCatalog(manifest, async (path) => {
+        const part = await fetch(path + (force ? '?reindex=1' : ''),
+          { signal: request.signal, cache: force ? 'reload' : 'default' });
+        if (part.status === 404) return null;
+        if (!part.ok) throw new Error(`版本索引读取失败（${part.status}）`);
+        return Runtime.readJSON(part);
+      }, Runtime.safePath);
+      const data = Runtime.validateLibrary(assembled);
       if (!libraryRequests.current(request)) return;
       state.songs = data.songs;
       state.chartCache.clear();chartSizes.clear();chartBytes=0;
@@ -262,7 +271,7 @@
     activeSongRowId=state.song?.id||'';virtualSongs=visibleSongs();focusIndex=0;
     ul.classList.add('virtual');ul.replaceChildren();ul.scrollTop=0;
     els.listCount.textContent=`${virtualSongs.length} / ${state.songs.length} 首`;
-    if(!virtualSongs.length){const li=document.createElement('li');li.className='empty-list';li.textContent=state.songs.length?'没有匹配的曲目，换个关键词试试。':'曲库里没有曲目：把 .mcz 放进 music/ 后重新构建。';ul.appendChild(li);}
+    if(!virtualSongs.length){const li=document.createElement('li');li.className='empty-list';li.textContent=state.songs.length?'没有匹配的曲目，换个关键词试试。':'曲库里没有曲目：请将版本包解压到含 data/library.json 的目录。';ul.appendChild(li);}
     else paintListWindow();
     A.metrics=A.metrics||{};A.metrics.listMs=performance.now()-started;
   }
@@ -329,9 +338,10 @@
       if (!c) continue;
       const chip = document.createElement("span");
       chip.className = "lv-chip " + diffClass(code);
-      chip.textContent = c.level;
+      chip.textContent = c.level || "?";
       lvset.appendChild(chip);
     }
+    btn.title = [s.title, ...window.JubeatDirectory.missingLabels(s).map(x => "缺少" + x), s.resourceOnly ? "仅资源，无可玩谱面" : ""].filter(Boolean).join(" · ");
     btn.dataset.songId = s.id;
 
     songButtonById.set(s.id, btn);
@@ -341,8 +351,10 @@
 
   async function selectSong(song, preferredCode = null) {
     A.mode?.chartChanging?.();
-    if (!song || !Array.isArray(song.charts) || !song.charts.length) return;
+    if (!song || !Array.isArray(song.charts)) return;
     state.song = song;
+    A.directory.show(song);
+    els.btnPlay.disabled = !!song.assets && (!song.assets.audio || song.resourceOnly);
     updateActiveSongRow();
     if (isNarrow()) setSidebarOpen(false);   // 手机上选完曲就把抽屉收起来
     els.npTitle.textContent = song.title;
@@ -355,7 +367,7 @@
       els.cover.src = coverUrl(song);
       els.cover.onload = () => els.cover.classList.add("on");
       els.cover.onerror = () => els.cover.classList.remove("on");
-    }
+    } else { els.cover.removeAttribute("src"); }
 
     // difficulties
     els.diffRow.replaceChildren();
@@ -366,7 +378,7 @@
       b.dataset.code = c.code;
       // 用 DOM + textContent，不拼 innerHTML：code / level 来自 .mcz 文件名，
       // 万一哪天解析规则放宽、有脏数据溜进来，这里也不会变成注入点。
-      b.append(document.createTextNode(c.code), el("span", "lv", c.level));
+      b.append(document.createTextNode(c.code), el("span", "lv", c.level || "等级未知"));
       b.addEventListener("click", () => loadChart(c.code));
       els.diffRow.appendChild(b);
     });
@@ -374,6 +386,15 @@
     // pick difficulty
     let pick = song.charts.find((c) => preferredCode && c.code === preferredCode);
     if (!pick) pick = song.charts.find((c) => c.code === "EXT") || song.charts[song.charts.length - 1];
+    if (!pick) {
+      chartRequests.cancel(); stopForLoad();
+      state.chart = null; state.chartMeta = null; state.notes = []; state.bpmEvents = [];
+      state.duration = 0; clearPads(); resetCombo();
+      for (const item of [els.statBpm, els.statNotes, els.statHolds]) item.textContent = '—';
+      els.statTime.textContent = els.timeTotal.textContent = els.timeNow.textContent = '00:00';
+      els.captionLeft.textContent = '仅资源，无可玩谱面 · 缺失：' + window.JubeatDirectory.missingLabels(song).join('、');
+      els.btnPlay.disabled = true; buildDensity(); A.requestPaint(); return;
+    }
     await loadChart(pick.code);
   }
 
@@ -471,7 +492,7 @@
       // audio：WebAudio 路径只需要 fetch 一次；只有它失败时才回落 <audio>。
       // 录制模式下不加载音源：画面时间由 setFrameTime() 给定，音源只在最后合流时
       // 由录制脚本从本地 .mcz 里解出来，页面完全不必碰它（也就不存在并发取音源的冲突）。
-      if (window.__recActive) {
+      if (window.__recActive || !src) {
         A.audioLoad.pending = false;
         A.updateLoadMeter();
       } else if (A.backend.url !== src) {
@@ -498,12 +519,12 @@
       clearPads();
       resetCombo();
       const meta = payload.chartMeta || chart;
-      els.captionLeft.textContent = `${meta.code} Lv${meta.level} · ${parsed.nTotal} notes`;
+      els.captionLeft.textContent = `${meta.code} ${meta.level ? "Lv" + meta.level : "等级未知"} · ${parsed.nTotal} notes${src ? "" : " · 缺少音频，可静态查看"}`;
       layoutCanvas();
       buildDensity();
       const urlT = A.urlState().t;
       // 音源还没就绪时这一跳会被挂起，等可播了再落下去（深链接 / 截图脚本都靠它）
-      A.seekWhenReady(urlT != null ? urlT : 0);
+      if (src) A.seekWhenReady(urlT != null ? urlT : 0);
       A.requestPaint();     // 换谱面后立刻重画一帧（暂停时渲染循环是停着的）
     } catch (err) {
       if (chartRequests.active !== request || state.song !== song || request.signal.reason?.name === "AbortError") return;

@@ -95,7 +95,7 @@ def parse_chart_name(filename: str) -> tuple[str, str, float] | None:
     return code, m.group(2), level
 
 
-def published_index(songs: list[dict], generated: int | None = None) -> dict:
+def published_index(songs: list[dict], generated: int | None = None, versions: list[str] | None = None) -> dict:
     """公网 `data/library.json` 的形状：只留前端真正读的字段。
 
     scan_song() 的完整索引还带 path / filename / audio / size /
@@ -104,10 +104,10 @@ def published_index(songs: list[dict], generated: int | None = None) -> dict:
     levelNum = Number(level)）。charts.file 只在开发服务器内部按 .mcz 成员名读谱面用，
     不下发。static 站和开发服务器都走这同一个形状。
     """
-    return {
+    result = {
         "version": config.INDEX_VERSION,
         "generated": int(time.time()) if generated is None else generated,
-        "versions": sorted({s["version"] for s in songs}),
+        "versions": sorted({s["version"] for s in songs}) if versions is None else versions,
         "songs": [
             {
                 "id": s["id"],
@@ -123,6 +123,11 @@ def published_index(songs: list[dict], generated: int | None = None) -> dict:
             for s in songs
         ],
     }
+
+    for original, public in zip(songs, result['songs']):
+        for key in ('assets', 'missing', 'resourceOnly', 'identity', 'titleKnown', 'category', 'source'):
+            if key in original: public[key] = original[key]
+    return result
 
 
 def _published_chart(chart: dict) -> dict:
@@ -318,6 +323,7 @@ class Library:
     """曲库索引 + 查询。索引结果缓存到 cache/library_index.json。"""
 
     def __init__(self, root: Path | None = None):
+        self._explicit_root = root is not None
         self._root = Path(root) if root is not None else None
         self.generated = int(time.time())
         self.songs: list[dict] = []
@@ -340,6 +346,16 @@ class Library:
 
     # —— 索引 ——
     def load(self, force: bool = False) -> None:
+        if (self.root / 'data/library.json').is_file():
+            if self._loaded and not force: return
+            from directory_library import load_directory
+            with self._scan_lock:
+                data, self.directory_assets = load_directory(self.root)
+                self._install(data['songs'], data['versions'])
+            return
+        if not getattr(self, '_explicit_root', False) and os.environ.get('JUBEAT_LEGACY_MCZ') != '1':
+            raise ValueError('需要开放目录曲库的 data/library.json；不会自动读取旧MCZ或旧缓存')
+
         """确保索引就绪。已就绪就是一次属性读，没有任何锁竞争。
 
         注意扫描**不在** self._lock 里：以前整段 rglob + 解压都在锁内，首次索引
@@ -420,15 +436,15 @@ class Library:
         print(f"[index] {len(songs)} songs cached", file=sys.stderr)
         return songs
 
-    def _install(self, songs: list[dict]) -> None:
+    def _install(self, songs: list[dict], versions: list[str] | None = None) -> None:
         # 一次性算好再整体换上：读侧（by_id / by_stem）永远看到同一份完整索引
         by_id = {s["id"]: s for s in songs}
         # 静态站点按 <曲目（去掉 .mcz）> 组织文件，开发服务器也按这个 key 反查
         by_stem = {stem_key(s["id"][:-4] if s["id"].lower().endswith(".mcz") else s["id"]): s
                    for s in songs}
-        versions = sorted({s["version"] for s in songs})
+        versions = sorted({s["version"] for s in songs}) if versions is None else versions
         generated = int(time.time())
-        body = json.dumps(published_index(songs, generated=generated), ensure_ascii=False,
+        body = json.dumps(published_index(songs, generated=generated, versions=versions), ensure_ascii=False,
                           separators=(",", ":")).encode("utf-8")
         # A weak validator describes the JSON representation independently of
         # transfer compression. The immutable tuple is swapped with the index.

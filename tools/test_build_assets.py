@@ -66,7 +66,7 @@ class BuildAssets(unittest.TestCase):
     def test_portable_package_has_one_payload_and_complete_references(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); env = os.environ | make_fixture(root/'fixture'); site = root/'site'
-            result = subprocess.run([sys.executable, str(REPO/'tools/build_site.py'), '--out', str(site), '--jobs', '1'], env=env, capture_output=True, text=True)
+            result = subprocess.run([sys.executable, str(REPO/'tools/build_site.py'), '--legacy-mcz', '--out', str(site), '--jobs', '1'], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             before = (site/'data/library.json').read_bytes()
             (site/'.htaccess').write_text('DirectoryIndex index.php')

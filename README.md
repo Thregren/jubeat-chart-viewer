@@ -2,7 +2,7 @@
 
 压缩转码、COS分卷、客户端导入和构建步骤见 [压缩曲库与客户端](docs/压缩曲库与客户端.md)。
 
-**网页版 v0.6.33：移除面板底部说明行，统一整数 BPM 显示、节奏轴勾选开关和难度配色。**
+**网页版 v0.6.34：手机封面自适应放大，保持顶部信息区高度与安全边距。**
 
 本地统一库 → Opus 80kbps 精简网页库；轻量桌面程序支持拖入完整曲库ZIP，安卓版使用同一资源包。
 请先阅读 [详细中文使用说明与版本范围](docs/目录曲库.md)。指定 `--library` 构建，或将公共包与所需版本包解压到同一空目录后运行 `启动查看器.py`。缺失资源、未知曲名/等级如实标记；运行时只读取指定目录，不扫描其他曲库或旧缓存。下方 MCZ 部署内容保留作旧流程参考，新流程以该文档为准。
@@ -12,7 +12,7 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.33`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.34`，由 `tools/set_version.py` 同步）。
 
 [![v0.6.25 界面：横向节奏轴与物量条共存](docs/rhythm-timeline.png)](docs/rhythm-timeline.png)
 
@@ -26,7 +26,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.33`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前网页版：**v0.6.33** · [更新说明](docs/web-v0.6.33.md) · 轻量客户端稳定版：[v0.6.30](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.6.30) ·
+当前网页版：**v0.6.34** · [更新说明](docs/web-v0.6.34.md) · 轻量客户端稳定版：[v0.6.30](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.6.30) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---

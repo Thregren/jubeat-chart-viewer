@@ -1103,33 +1103,63 @@ input[type="range"] {
     min-width: 34px;
   }
 
-  .now-playing {
-    /* 手机上这块要矮：封面缩小、行距压紧、统计压成一行 */
-    grid-template-columns: 56px minmax(0, 1fr);
+  .stage .now-playing {
+    /* 封面利用两行信息的现有高度，不能反过来撑高顶部。 */
+    grid-template-columns: clamp(76px, 28vw, 128px) minmax(0, 1fr);
     grid-template-rows: auto auto;
     gap: 5px 10px;
-    padding: 8px 12px 6px;
+    padding: 8px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
     align-items: center;
   }
-  .cover-wrap {
-    width: 56px;
-    height: 56px;
+  .stage .cover-wrap {
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
     grid-row: span 2;
+    align-self: stretch;
+    contain: size;
+    overflow: visible;
+    background: none;
+    border: 0;
+    box-shadow: none;
+  }
+  .stage .cover-wrap img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border: 1px solid var(--line);
     border-radius: 10px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  }
+  .stage .cover-fallback {
+    width: 52px;
+    height: 52px;
+    margin: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
   }
   .np-main { gap: 1px; }
   .np-main h2 { font-size: 16px; }
   .np-kicker { font-size: 9px; letter-spacing: 0.1em; }
   .np-artist { font-size: 11px; margin-bottom: 0; }
   .diff-row { gap: 6px; margin-bottom: 0; }
+  .stage .diff-row { gap: 4px; flex-wrap: nowrap; }
+  .stage .diff-btn { padding-inline: clamp(4px, 1.5vw, 10px); white-space: nowrap; }
   .diff-btn { padding: 3px 10px; font-size: 11px; }
   .np-side { grid-column: 2; }
   /* 四个统计压成一行，别占两行 */
   .np-side .stat-row {
     grid-template-columns: repeat(4, auto);
     justify-content: start;
-    gap: 0 14px;
+    gap: 0 clamp(6px, 2vw, 14px);
   }
   .stat label { font-size: 9px; letter-spacing: 0.08em; }
   .stat value { font-size: 14px; line-height: 1.15; }
@@ -1176,8 +1206,6 @@ input[type="range"] {
 /* —— 超窄屏：再压一档 —— */
 @media (max-width: 560px) {
   .panel-bezel { padding: 10px; border-radius: 16px; }   /* 小屏再省一圈，把高度留给面板 */
-  .now-playing { grid-template-columns: 52px minmax(0, 1fr); }
-  .cover-wrap { width: 52px; height: 52px; }
   .np-main h2 { font-size: 15px; }
   .panel-inner { width: min(96vw, 380px); }
 }

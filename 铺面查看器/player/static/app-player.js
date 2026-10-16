@@ -760,6 +760,7 @@
   }
 
   function pause() {
+    A.directory?.stopPreview();
     audioSession.invalidate();
     if (backend.mode === "webaudio") {
       backend.anchorPos = audioNow();       // 先记下位置再停

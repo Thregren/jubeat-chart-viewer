@@ -9,7 +9,7 @@ public final class PreferenceRules {
         "markerNormalSpeed", "marker", "metroSound", "metroVolume", "showCombo", "firstMarker", "showNumbers",
         "numScale", "numAlpha", "numGlowAlpha", "numCorner", "numColorMode", "numColor", "showChordGlow",
         "chordGlowStyle", "phraseMult", "phraseFloor", "phraseMax", "chordGlowPair", "settingsVersion",
-        "collapsed", "sort", "holdFilter"));
+        "autoPreview", "collapsed", "sort", "holdFilter"));
     private PreferenceRules() {}
     public static boolean allowed(String key, String value) {
         return key != null && key.startsWith("jubeat.") && KEYS.contains(key.substring(7)) &&

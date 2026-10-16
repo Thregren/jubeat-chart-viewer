@@ -35,34 +35,59 @@
     audio.id = 'previewAudio'; audio.preload = 'none'; audio.loop = true;
     document.querySelector('.transport-top').append(button, audio);
     const path = value => value.split('/').map(encodeURIComponent).join('/');
-    let previewGeneration = 0;
+    let previewGeneration = 0, loading = false, automatic = false, currentSong = null;
     function stopPreview() {
-      previewGeneration++; audio.pause();
+      previewGeneration++; loading = false; automatic = false; audio.pause();
       try { audio.currentTime = 0; } catch (_) { /* no source yet */ }
       button.textContent = '试听'; button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-busy', 'false');
     }
-    button.addEventListener('click', async () => {
-      if (!audio.getAttribute('src')) return;
-      if (!audio.paused) { stopPreview(); return; }
+    async function playPreview(asAutomatic = false) {
+      if (!audio.getAttribute('src')) return false;
       A.pause();
       const generation = ++previewGeneration;
+      loading = true; automatic = asAutomatic; audio.preload = 'auto';
+      button.textContent = '试听加载中…'; button.setAttribute('aria-busy', 'true');
       try {
         await audio.play();
         if (generation === previewGeneration) {
+          loading = false; button.setAttribute('aria-busy', 'false');
           button.textContent = '停止试听'; button.setAttribute('aria-pressed', 'true');
+          return true;
         }
       } catch (error) {
-        if (generation === previewGeneration) A.toast('原试听无法播放：' + error.message, true);
+        if (generation === previewGeneration) {
+          stopPreview();
+          if (error.name !== 'AbortError') A.toast('原试听无法播放：' + error.message, true);
+        }
       }
+      return false;
+    }
+    button.addEventListener('click', () => {
+      if (loading || !audio.paused) { stopPreview(); return; }
+      return playPreview();
     });
+    function playAutoPreview(song) {
+      if (!song?.assets?.preview || song !== currentSong || !A.els?.autoPreview?.checked
+          || window.__recActive || A.mode?.ownsFrame) return false;
+      void playPreview(true); return true;
+    }
+    function cancelAutoPreview() { if (automatic) stopPreview(); }
     function show(song) {
       stopPreview(); audio.removeAttribute('src'); audio.load();
+      currentSong = song; audio.preload = 'none';
       const preview = song.assets?.preview;
       button.hidden = !preview;
       if (preview) audio.src = path(preview);
+      playAutoPreview(song);
     }
+    audio.addEventListener('error', () => {
+      const active = loading || automatic || button.getAttribute('aria-pressed') === 'true';
+      stopPreview();
+      if (active) A.toast('试听片段加载失败，请重试', true);
+    });
     window.addEventListener('pagehide', stopPreview);
-    return { show, stopPreview, audio };
+    return { show, stopPreview, playAutoPreview, cancelAutoPreview, audio };
   }
   return { loadCatalog, missingLabels, install };
 });

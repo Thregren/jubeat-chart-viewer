@@ -46,35 +46,78 @@
   // site/media/se/，前端优先播放真素材，找不到才回落到上面的合成音。se/ 不入库。
   const SE_EXT = ["ogg", "mp3", "wav", "m4a"];
   const seCache = new Map();          // name -> AudioBuffer | null | "loading"
+  const seLoads = new Map();          // Request identity and bounded failure cooldown.
+  let seDecodes = 0;                  // A timed-out decoder cannot be cancelled.
 
-  function seProbe(name) {
-    if (seCache.has(name)) return seCache.get(name);
+  function seProbe(name, { retry = false } = {}) {
+    const cached = seCache.get(name);
+    const previous = seLoads.get(name);
+    if (cached || (seCache.has(name) && !retry && Date.now() < (previous?.retryAt || 0))) return cached;
     if (!audioCtx) return undefined;
+    const ctx = audioCtx;
+    const load = { controller: new AbortController(), retryAt: 0 };
+    seLoads.set(name, load);
     seCache.set(name, "loading");
+    const current = () => seLoads.get(name) === load && !load.controller.signal.aborted;
+    const failed = (delay) => {
+      if (seLoads.get(name) !== load) return;
+      load.retryAt = Date.now() + delay;
+      seCache.set(name, null);
+    };
     (async () => {
-      const abort = new AbortController();
-      const timer = setTimeout(() => { abort.abort(); seCache.set(name, null); }, 15000);
+      const timer = setTimeout(() => { failed(5000); load.controller.abort(); }, 15000);
+      let missing = true;
       try {
         for (const ext of SE_EXT) {
           try {
             const res = await fetch(`media/se/${name}.${ext}?v=${frontVersion()}`, {
-              cache: "force-cache", signal: abort.signal,
+              cache: previous ? "reload" : "force-cache", signal: load.controller.signal,
             });
-            if (!res.ok) continue;
+            if (!current()) return;
+            if (!res.ok) { if (res.status !== 404 && res.status !== 410) missing = false; continue; }
+            missing = false;
             const bytes = await window.JubeatRuntime.readBytes(res, 8 * 1024 * 1024);
-            const buffer = await audioCtx.decodeAudioData(bytes);
-            if (abort.signal.aborted) break;
+            if (!current()) return;
+            if (seDecodes >= 2) throw new Error("音效解码繁忙");
+            let buffer;
+            seDecodes++;
+            try { buffer = await ctx.decodeAudioData(bytes); }
+            finally { seDecodes--; }
+            if (!current()) return;
             seCache.set(name, buffer);
             return;
           } catch (_) {
-            if (abort.signal.aborted) break;
+            if (!current()) return;
+            missing = false;
             /* 换下一个后缀 */
           }
         }
-        seCache.set(name, null); // Missing, oversized or timed out: use synth.
+        // Transient failures must not turn into a page-lifetime synth fallback.
+        // Missing optional samples retry less often, rather than once per note.
+        if (current()) failed(missing ? 60000 : 5000);
       } finally { clearTimeout(timer); }
     })();
     return undefined;
+  }
+
+  /** Preload both accents and unlock the effects clock independently of music. */
+  function prepareSfx({ unlock = false, retry = false } = {}) {
+    const kind = els.metroSound.value;
+    if (!kind || metroGain(1) <= 0 || A.mode?.ownsFrame) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = audioCtx;
+      if (unlock && ctx.state !== "running" && ctx.state !== "closed") {
+        // Called synchronously from gestures too: native <audio> can be audible
+        // while this separate WebAudio graph remains suspended on mobile.
+        Promise.resolve(ctx.resume()).then(() => {
+          if (audioCtx === ctx && ctx.state === "running" && state.playing) sfxReset();
+        }).catch(() => {});
+      }
+      const names = kind === "clap" ? ["clap"] : kind === "nyan" ? ["nyan"]
+        : kind === "taiko" ? ["don", "ka"] : kind === "billy" ? ["billy-accent", "billy-normal"] : [];
+      for (const name of names) seProbe(name, { retry });
+    } catch (_) { /* Unsupported or denied audio must not stop music playback. */ }
   }
 
   function playSe(name, t, gain, dest = null) {
@@ -183,7 +226,10 @@
   // 手机上就是纯耗电（函数里虽然第一行就 return，定时器本身照样唤醒主线程）。
   let sfxTimer = 0;
   function sfxTimerSync() {
-    if (state.playing && !sfxTimer) sfxTimer = setInterval(sfxTick, 25);
+    if (state.playing && !sfxTimer) {
+      prepareSfx({ unlock: true });
+      sfxTimer = setInterval(sfxTick, 25);
+    }
     else if (!state.playing && sfxTimer) {
       clearInterval(sfxTimer);
       sfxTimer = 0;
@@ -222,6 +268,8 @@
   function sfxTick() {
     if (!state.playing || !state.notes.length || !els.metroSound.value) return;
     if (metroGain(1) <= 0) return;
+    // Never queue against a frozen clock while native music keeps advancing.
+    if (!audioCtx || audioCtx.state !== "running") return;
     const bus = sfxBus();
     if (!bus || !audioCtx) return;
     // 用 AudioContext 时钟推算的谱面时间：它和音乐在同一条输出上，
@@ -257,6 +305,7 @@
     SFX,
     seProbe,
     seState,
+    prepareSfx,
     playMetro,
     sfxReset,
     sfxTimerSync,

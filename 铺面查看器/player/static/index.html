@@ -8,13 +8,13 @@
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.6.29" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.29" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.29" />
+  <link rel="manifest" href="static/manifest.json?v=0.6.30" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.30" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.30" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.29" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.29" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.30" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.30" />
 </head>
 <body>
   <div id="app">
@@ -44,7 +44,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.29</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.30</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -92,7 +92,6 @@
       <button id="btnSidebarOpen" class="mobile-bar" type="button" aria-label="打开曲库">
         <span class="mobile-bar-icon" aria-hidden="true">☰</span>
         <span class="mobile-bar-title">谱面确认</span>
-        <span class="mobile-bar-hint">曲库 ▸</span>
       </button>
       <section class="now-playing" id="nowPlaying">
         <div class="cover-wrap">
@@ -158,192 +157,198 @@
           <span class="load-pct" id="loadPct">0%</span>
         </div>
 
-        <div class="options" id="optionsPanel">
-          <div class="opt-row">
-            <button id="btnTimeline" class="icon-btn timeline-toggle" type="button"
-                    aria-pressed="false" aria-expanded="false" aria-controls="timelineWrap">节奏轴</button>
-            <label class="ctl">拍线
-              <select id="timelineDivision" aria-label="节奏轴拍线细分">
-                <option value="1" selected>四分音符</option>
-                <option value="2">八分音符（2 等分）</option>
-                <option value="3">十二分音符（3 等分）</option>
-                <option value="4">十六分音符（4 等分）</option>
-              </select>
-            </label>
-            <label class="ctl">可见拍数
-              <select id="timelineSpan" aria-label="节奏轴可见拍数">
-                <option value="4" selected>4 拍</option>
-                <option value="8">8 拍</option>
-                <option value="16">16 拍</option>
-              </select>
-            </label>
+        <div class="options" id="optionsPanel" aria-label="查看设置">
+          <details class="settings-group" name="viewer-settings" data-settings-group="playback" open>
+          <summary>播放与声音</summary>
+          <div class="settings-body">
+          <div class="settings-fields">
+          <label class="ctl"><span class="setting-label">播放速度</span>
+          <span class="setting-control"><select id="rate" title="变速保持原音调">
+                          <option value="0.25">0.25×</option>
+                          <option value="0.3">0.30×</option>
+                          <option value="0.35">0.35×</option>
+                          <option value="0.4">0.40×</option>
+                          <option value="0.45">0.45×</option>
+                          <option value="0.5">0.50×</option>
+                          <option value="0.55">0.55×</option>
+                          <option value="0.6">0.60×</option>
+                          <option value="0.65">0.65×</option>
+                          <option value="0.7">0.70×</option>
+                          <option value="0.75">0.75×</option>
+                          <option value="0.8">0.80×</option>
+                          <option value="0.85">0.85×</option>
+                          <option value="0.9">0.90×</option>
+                          <option value="0.95">0.95×</option>
+                          <option value="1" selected>1.00×</option>
+                          <option value="1.05">1.05×</option>
+                          <option value="1.1">1.10×</option>
+                          <option value="1.15">1.15×</option>
+                          <option value="1.2">1.20×</option>
+                          <option value="1.25">1.25×</option>
+                          <option value="1.3">1.30×</option>
+                          <option value="1.35">1.35×</option>
+                          <option value="1.4">1.40×</option>
+                          <option value="1.45">1.45×</option>
+                          <option value="1.5">1.50×</option>
+                          <option value="1.55">1.55×</option>
+                          <option value="1.6">1.60×</option>
+                          <option value="1.65">1.65×</option>
+                          <option value="1.7">1.70×</option>
+                          <option value="1.75">1.75×</option>
+                          <option value="1.8">1.80×</option>
+                          <option value="1.85">1.85×</option>
+                          <option value="1.9">1.90×</option>
+                          <option value="1.95">1.95×</option>
+                          <option value="2">2.00×</option>
+                        </select></span></label>
+          <label class="ctl"><span class="setting-label">声画偏移</span>
+          <span class="setting-control"><input id="offset" type="number" value="0" step="5" min="-500" max="500" />
+                        <span class="unit">ms</span></span></label>
+          <label class="ctl"><span class="setting-label">按键音效</span>
+          <span class="setting-control"><select id="metroSound" aria-label="节拍音">
+                          <option value="">关</option>
+                          <option value="click">点击</option>
+                          <option value="clap">拍手</option>
+                          <option value="nyan">猫娘 nyan</option>
+                          <option value="taiko">太鼓（咚/咔）</option>
+                          <option value="billy">比利·海灵顿</option>
+                        </select></span></label>
+          <label class="ctl ctl-vol"><span class="setting-label">音效音量</span>
+          <span class="setting-control"><select id="metroVolume" aria-label="音效音量">
+                          <option value="0">0%（静音）</option>
+                          <option value="25">25%</option>
+                          <option value="50">50%</option>
+                          <option value="60" selected>60%</option>
+                          <option value="75">75%</option>
+                          <option value="100">100%</option>
+                          <option value="150">150%</option>
+                          <option value="200">200%</option>
+                        </select></span></label>
+          </div><div class="settings-switches">
+          <label class="ctl checkbox">
+                        <input id="autoLoop" type="checkbox" />
+                        循环播放
+                      </label>
+          <label class="ctl checkbox" title="选歌后等待试听片段加载完成，自动循环播放；没有试听片段时不自动播放">
+          <input id="autoPreview" type="checkbox" /> 选曲后自动循环试听
+          </label>
           </div>
-          <!-- 变速 / 偏移 / 循环收进折叠区：控制条只留播放按钮和时间，省竖向高度 -->
-          <div class="opt-row">
-            <label class="ctl">播放速度
-              <select id="rate" title="变速保持原音调">
-                <option value="0.25">0.25×</option>
-                <option value="0.3">0.30×</option>
-                <option value="0.35">0.35×</option>
-                <option value="0.4">0.40×</option>
-                <option value="0.45">0.45×</option>
-                <option value="0.5">0.50×</option>
-                <option value="0.55">0.55×</option>
-                <option value="0.6">0.60×</option>
-                <option value="0.65">0.65×</option>
-                <option value="0.7">0.70×</option>
-                <option value="0.75">0.75×</option>
-                <option value="0.8">0.80×</option>
-                <option value="0.85">0.85×</option>
-                <option value="0.9">0.90×</option>
-                <option value="0.95">0.95×</option>
-                <option value="1" selected>1.00×</option>
-                <option value="1.05">1.05×</option>
-                <option value="1.1">1.10×</option>
-                <option value="1.15">1.15×</option>
-                <option value="1.2">1.20×</option>
-                <option value="1.25">1.25×</option>
-                <option value="1.3">1.30×</option>
-                <option value="1.35">1.35×</option>
-                <option value="1.4">1.40×</option>
-                <option value="1.45">1.45×</option>
-                <option value="1.5">1.50×</option>
-                <option value="1.55">1.55×</option>
-                <option value="1.6">1.60×</option>
-                <option value="1.65">1.65×</option>
-                <option value="1.7">1.70×</option>
-                <option value="1.75">1.75×</option>
-                <option value="1.8">1.80×</option>
-                <option value="1.85">1.85×</option>
-                <option value="1.9">1.90×</option>
-                <option value="1.95">1.95×</option>
-                <option value="2">2.00×</option>
-              </select>
-            </label>
-            <label class="ctl checkbox" title="接近和命中动画保持 1× 时长，拍点仍跟随歌曲速度；刷新后保留开关状态">
-              <input id="markerNormalSpeed" type="checkbox" checked autocomplete="off" />
-              Marker 保持常速
-            </label>
-            <label class="ctl">声画偏移
-              <input id="offset" type="number" value="0" step="5" min="-500" max="500" />
-              <span class="unit">ms</span>
-            </label>
-            <label class="ctl checkbox">
-              <input id="autoLoop" type="checkbox" />
-              循环播放
-            </label>
           </div>
-          <div class="opt-row">
-            <label class="ctl ctl-wide">marker（按键动画）
-              <select id="markerSelect" aria-label="marker（按键动画样式）"
-                      title="街机原版提取的逐帧贴图；本查看器按「全 PERFECT」播放，命中爆发用第 4 档（PERFECT）">
-                <option value="">无（仅面板灯）</option>
-              </select>
-              <span class="ctl-hint" id="markerHint" hidden>素材载入中…</span>
-            </label>
+          </details>
+          <details class="settings-group" name="viewer-settings" data-settings-group="marker">
+          <summary>Marker 与高亮</summary>
+          <div class="settings-body">
+          <div class="settings-fields">
+          <label class="ctl ctl-wide setting-wide"><span class="setting-label">marker（按键动画）</span>
+          <span class="setting-control"><select id="markerSelect" aria-label="marker（按键动画样式）"
+                                title="街机原版提取的逐帧贴图；本查看器按「全 PERFECT」播放，命中爆发用第 4 档（PERFECT）">
+                          <option value="">无（仅面板灯）</option>
+                        </select>
+                        <span class="ctl-hint" id="markerHint" hidden>素材载入中…</span></span></label>
+          </div><div class="settings-switches">
+          <label class="ctl checkbox" title="接近和命中动画保持 1× 时长，拍点仍跟随歌曲速度；刷新后保留开关状态">
+                        <input id="markerNormalSpeed" type="checkbox" checked autocomplete="off" />
+                        Marker 保持常速
+                      </label>
+          <label class="ctl checkbox"><input id="firstMarker" type="checkbox" checked /> 首 marker 提示</label>
+          <label class="ctl checkbox"><input id="showCombo" type="checkbox" checked /> 总连击数</label>
+          </div><p class="settings-subtitle">同押提示</p><div class="settings-switches">
+          <label class="ctl checkbox"><input id="showChordGlow" type="checkbox" checked /> 同押高亮</label>
+          </div><div class="settings-fields">
+          <label class="ctl"><span class="setting-label">高亮样式</span>
+          <span class="setting-control"><select id="chordGlowStyle" aria-label="同押高亮的样式"
+                                title="光晕 = 数字背后的彩色光晕；加粗面板框（默认） = 沿这一格描一圈亮框；两者可同时开">
+                          <option value="glow">光晕</option>
+                          <option value="frame" selected>加粗面板框</option>
+                          <option value="both">光晕＋面板框</option>
+                        </select></span></label>
+          <label class="ctl"><span class="setting-label">高亮配色</span>
+          <span class="setting-control"><select id="chordGlowPair" aria-label="同押光晕配色"></select>
+                        <span class="pair-chips" id="glowPairChips" aria-hidden="true"><i></i><i></i></span></span></label>
+          <label class="ctl ctl-vol"><span class="setting-label">光晕透明度</span>
+          <span class="setting-control"><input id="numGlowAlpha" type="range" min="0" max="100" step="5" value="70"
+                               aria-label="同押光晕的透明度"
+                               title="只淡「同押高亮」这一层：光晕 + 两圈波纹 + 数字的霓虹描边（选「加粗面板框」时淡的是那圈框）；数字本身跟着「序号透明度」走" />
+                        <span class="unit" id="numGlowAlphaLabel">70%</span></span></label>
           </div>
-          <div class="opt-row">
-            <label class="ctl checkbox"><input id="showCombo" type="checkbox" checked /> 总连击数</label>
-            <label class="ctl checkbox"><input id="firstMarker" type="checkbox" checked /> 首 marker 提示</label>
-            <label class="ctl checkbox"><input id="showNumbers" type="checkbox" checked /> 音符序号</label>
-            <label class="ctl checkbox"><input id="showChordGlow" type="checkbox" checked /> 同押高亮</label>
-            <label class="ctl">高亮样式
-              <select id="chordGlowStyle" aria-label="同押高亮的样式"
-                      title="光晕 = 数字背后的彩色光晕；加粗面板框（默认） = 沿这一格描一圈亮框；两者可同时开">
-                <option value="glow">光晕</option>
-                <option value="frame" selected>加粗面板框</option>
-                <option value="both">光晕＋面板框</option>
-              </select>
-            </label>
-            <label class="ctl">高亮配色
-              <select id="chordGlowPair" aria-label="同押光晕配色"></select>
-              <span class="pair-chips" id="glowPairChips" aria-hidden="true"><i></i><i></i></span>
-            </label>
-            <label class="ctl">按键音效
-              <select id="metroSound" aria-label="节拍音">
-                <option value="">关</option>
-                <option value="click">点击</option>
-                <option value="clap">拍手</option>
-                <option value="nyan">猫娘 nyan</option>
-                <option value="taiko">太鼓（咚/咔）</option>
-                <option value="billy">比利·海灵顿</option>
-              </select>
-            </label>
-            <label class="ctl ctl-vol">音效音量
-              <select id="metroVolume" aria-label="音效音量">
-                <option value="0">0%（静音）</option>
-                <option value="25">25%</option>
-                <option value="50">50%</option>
-                <option value="60" selected>60%</option>
-                <option value="75">75%</option>
-                <option value="100">100%</option>
-                <option value="150">150%</option>
-                <option value="200">200%</option>
-              </select>
-            </label>
           </div>
-          <!-- 音符序号的切分参数：按「换气」分句，句内从 1 数起 -->
-          <div class="opt-row">
-            <label class="ctl">序号断句
-              <select id="phraseMult" aria-label="音符序号的断句灵敏度"
-                      title="空档比周围大多少就算换气：倍数越小断得越勤">
-                <option value="1.1">灵敏（小换气就重数）</option>
-                <option value="1.25" selected>标准</option>
-                <option value="1.6">迟钝（大换气才重数）</option>
-              </select>
-            </label>
-            <label class="ctl">最小换气
-              <select id="phraseFloor" aria-label="换气的最小空档"
-                      title="空档小于这个拍数就不算换气，免得密的地方乱切">
-                <option value="0.25">0.25 拍</option>
-                <option value="0.5" selected>0.5 拍</option>
-                <option value="1">1 拍</option>
-              </select>
-            </label>
-            <label class="ctl">序号上限
-              <select id="phraseMax" aria-label="音符序号的最大值"
-                      title="一句话最多数到几，到点重新从 1 数">
-                <option value="9" selected>9（个位）</option>
-                <option value="12">12</option>
-                <option value="16">16</option>
-                <option value="0">不限</option>
-              </select>
-            </label>
+          </details>
+          <details class="settings-group" name="viewer-settings" data-settings-group="numbers">
+          <summary>音符序号</summary>
+          <div class="settings-body">
+          <div class="settings-switches">
+          <label class="ctl checkbox"><input id="showNumbers" type="checkbox" checked /> 音符序号</label>
+          <label class="ctl checkbox">
+                        <input id="numCorner" type="checkbox" checked />
+                        序号放右下角
+                      </label>
+          </div><p class="settings-subtitle">断句规则</p><div class="settings-fields">
+          <label class="ctl"><span class="setting-label">序号断句</span>
+          <span class="setting-control"><select id="phraseMult" aria-label="音符序号的断句灵敏度"
+                                title="空档比周围大多少就算换气：倍数越小断得越勤">
+                          <option value="1.1">灵敏（小换气就重数）</option>
+                          <option value="1.25" selected>标准</option>
+                          <option value="1.6">迟钝（大换气才重数）</option>
+                        </select></span></label>
+          <label class="ctl"><span class="setting-label">最小换气</span>
+          <span class="setting-control"><select id="phraseFloor" aria-label="换气的最小空档"
+                                title="空档小于这个拍数就不算换气，免得密的地方乱切">
+                          <option value="0.25">0.25 拍</option>
+                          <option value="0.5" selected>0.5 拍</option>
+                          <option value="1">1 拍</option>
+                        </select></span></label>
+          <label class="ctl"><span class="setting-label">序号上限</span>
+          <span class="setting-control"><select id="phraseMax" aria-label="音符序号的最大值"
+                                title="一句话最多数到几，到点重新从 1 数">
+                          <option value="9" selected>9（个位）</option>
+                          <option value="12">12</option>
+                          <option value="16">16</option>
+                          <option value="0">不限</option>
+                        </select></span></label>
+          </div><p class="settings-subtitle">序号外观</p><div class="settings-fields">
+          <label class="ctl ctl-vol"><span class="setting-label">序号字号</span>
+          <span class="setting-control"><input id="numScale" type="range" min="50" max="200" step="5" value="100"
+                               aria-label="音符序号的字号" />
+                        <span class="unit" id="numScaleLabel">100%</span></span></label>
+          <label class="ctl ctl-vol"><span class="setting-label">序号透明度</span>
+          <span class="setting-control"><input id="numAlpha" type="range" min="10" max="100" step="5" value="100"
+                               aria-label="音符序号的透明度" />
+                        <span class="unit" id="numAlphaLabel">100%</span></span></label>
+          <label class="ctl"><span class="setting-label">序号配色</span>
+          <span class="setting-control"><select id="numColorMode" aria-label="音符序号的配色方式">
+                          <option value="custom" selected>自选颜色</option>
+                          <option value="rhythm">节奏分组</option>
+                        </select></span></label>
+          <label class="ctl"><span class="setting-label">序号颜色</span>
+          <span class="setting-control"><input id="numColor" type="color" value="#ffffff"
+                               aria-label="音符序号的颜色"
+                               title="音符序号（顺序数字）的颜色；数字边缘会自动配一圈对比色描边" /></span></label>
           </div>
-          <!-- 音符序号的外观：字号 / 透明度 / 位置（默认居中，可切到右下角） -->
-          <div class="opt-row">
-            <label class="ctl ctl-vol">序号字号
-              <input id="numScale" type="range" min="50" max="200" step="5" value="100"
-                     aria-label="音符序号的字号" />
-              <span class="unit" id="numScaleLabel">100%</span>
-            </label>
-            <label class="ctl ctl-vol">序号透明度
-              <input id="numAlpha" type="range" min="10" max="100" step="5" value="100"
-                     aria-label="音符序号的透明度" />
-              <span class="unit" id="numAlphaLabel">100%</span>
-            </label>
-            <label class="ctl ctl-vol">光晕透明度
-              <input id="numGlowAlpha" type="range" min="0" max="100" step="5" value="70"
-                     aria-label="同押光晕的透明度"
-                     title="只淡「同押高亮」这一层：光晕 + 两圈波纹 + 数字的霓虹描边（选「加粗面板框」时淡的是那圈框）；数字本身跟着「序号透明度」走" />
-              <span class="unit" id="numGlowAlphaLabel">70%</span>
-            </label>
-            <label class="ctl">序号配色
-              <select id="numColorMode" aria-label="音符序号的配色方式">
-                <option value="custom" selected>自选颜色</option>
-                <option value="rhythm">节奏分组</option>
-              </select>
-            </label>
-            <label class="ctl">序号颜色
-              <input id="numColor" type="color" value="#ffffff"
-                     aria-label="音符序号的颜色"
-                     title="音符序号（顺序数字）的颜色；数字边缘会自动配一圈对比色描边" />
-            </label>
-            <label class="ctl checkbox">
-              <input id="numCorner" type="checkbox" checked />
-              序号放右下角
-            </label>
           </div>
+          </details>
+          <details class="settings-group" name="viewer-settings" data-settings-group="timeline">
+          <summary>节奏轴</summary>
+          <div class="settings-body">
+          <div class="settings-switches">
+          <button id="btnTimeline" class="icon-btn timeline-toggle" type="button"
+                              aria-pressed="false" aria-expanded="false" aria-controls="timelineWrap">节奏轴</button>
+          </div><div class="settings-fields">
+          <label class="ctl"><span class="setting-label">拍线</span>
+          <span class="setting-control"><select id="timelineDivision" aria-label="节奏轴拍线细分">
+                          <option value="1" selected>四分音符</option>
+                          <option value="2">八分音符（2 等分）</option>
+                          <option value="3">十二分音符（3 等分）</option>
+                          <option value="4">十六分音符（4 等分）</option>
+                        </select></span></label>
+          <label class="ctl"><span class="setting-label">可见拍数</span>
+          <span class="setting-control"><select id="timelineSpan" aria-label="节奏轴可见拍数">
+                          <option value="4" selected>4 拍</option>
+                          <option value="8">8 拍</option>
+                          <option value="16">16 拍</option>
+                        </select></span></label>
+          </div>
+          </div>
+          </details>
         </div>
 
         <div class="chart-overview" id="chartOverview">
@@ -366,25 +371,25 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.29"></script>
-  <script src="static/core.js?v=0.6.29"></script>
-  <script src="static/runtime.js?v=0.6.29"></script>
+  <script src="static/sfx.js?v=0.6.30"></script>
+  <script src="static/core.js?v=0.6.30"></script>
+  <script src="static/runtime.js?v=0.6.30"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.29"></script>
+  <script src="static/record.js?v=0.6.30"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.6.29"></script>
-<script src="static/app-base.js?v=0.6.29"></script>
-  <script src="static/app-audio.js?v=0.6.29"></script>
-  <script src="static/first-marker.js?v=0.6.29"></script>
-  <script src="static/app-marker.js?v=0.6.29"></script>
-  <script src="static/app-density.js?v=0.6.29"></script>
-  <script src="static/rhythm-timeline.js?v=0.6.29"></script>
-  <script src="static/app-timeline.js?v=0.6.29"></script>
-  <script src="static/directory.js?v=0.6.29"></script>
-  <script src="static/app-library.js?v=0.6.29"></script>
-  <script src="static/app-player.js?v=0.6.29"></script>
-  <script src="static/app-render.js?v=0.6.29"></script>
-  <script src="static/app-wiring.js?v=0.6.29"></script>
-  <script src="static/app.js?v=0.6.29"></script>
+  <script src="static/version-data.js?v=0.6.30"></script>
+<script src="static/app-base.js?v=0.6.30"></script>
+  <script src="static/app-audio.js?v=0.6.30"></script>
+  <script src="static/first-marker.js?v=0.6.30"></script>
+  <script src="static/app-marker.js?v=0.6.30"></script>
+  <script src="static/app-density.js?v=0.6.30"></script>
+  <script src="static/rhythm-timeline.js?v=0.6.30"></script>
+  <script src="static/app-timeline.js?v=0.6.30"></script>
+  <script src="static/directory.js?v=0.6.30"></script>
+  <script src="static/app-library.js?v=0.6.30"></script>
+  <script src="static/app-player.js?v=0.6.30"></script>
+  <script src="static/app-render.js?v=0.6.30"></script>
+  <script src="static/app-wiring.js?v=0.6.30"></script>
+  <script src="static/app.js?v=0.6.30"></script>
 </body>
 </html>

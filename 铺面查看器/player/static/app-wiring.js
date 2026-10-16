@@ -13,7 +13,7 @@
   const { el, frontVersion, els, state, markerCfg, numCfg, clampNumScale,
      clampNumAlpha, clampNumGlowAlpha, normalizeHexColor, normalizeChordStyle,
      abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
-     fmtTime, toast, seProbe,
+     fmtTime, toast,
      playMetro, sfxReset, setPlaying, selectMarker,
      layoutCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
      updateComboDisplay, bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
@@ -84,20 +84,13 @@
       els.markerSelect.addEventListener("change", () => selectMarker(els.markerSelect.value));
       els.metroSound.addEventListener("change", () => {
         store(STORAGE.metroSound, els.metroSound.value);
-        // 选了拍手/猫娘/太鼓就把对应的真素材预热一下（没有素材就静默回落合成音）
-        try {
-          A.audioCtx = A.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-          const v = els.metroSound.value;
-          if (v === "clap") seProbe("clap");
-          else if (v === "nyan") seProbe("nyan");
-          else if (v === "taiko") { seProbe("don"); seProbe("ka"); }
-          else if (v === "billy") { seProbe("billy-accent"); seProbe("billy-normal"); }
-        } catch (_) {
-          /* ignore */
-        }
+        A.prepareSfx({ unlock: true, retry: true });
         if (els.metroSound.value) playMetro(true); // 试听
       });
-      els.metroVolume.addEventListener("change", () => store(STORAGE.metroVolume, els.metroVolume.value));
+      els.metroVolume.addEventListener("change", () => {
+        store(STORAGE.metroVolume, els.metroVolume.value);
+        A.prepareSfx({ unlock: true });
+      });
       els.showCombo.addEventListener("change", () => {
         store(STORAGE.showCombo, els.showCombo.checked ? "1" : "0");
         state.comboShown = -1;
@@ -181,6 +174,7 @@
 
       // 恢复上次的设置
       const saved = {
+        autoPreview: store(STORAGE.autoPreview),
         metroSound: store(STORAGE.metroSound),
         metroVolume: store(STORAGE.metroVolume),
         showCombo: store(STORAGE.showCombo),
@@ -202,6 +196,7 @@
         sort: store(STORAGE.sort),
         holdFilter: store(STORAGE.holdFilter),
       };
+      els.autoPreview.checked = !window.__recActive && saved.autoPreview === "1";
       if (saved.metroSound != null) els.metroSound.value = saved.metroSound;
       els.metroVolume.value = String(window.JubeatCore.soundEffectVolume(saved.metroVolume));
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
@@ -408,6 +403,12 @@
       }
     });
 
+    els.autoPreview.addEventListener("change", () => {
+      store(STORAGE.autoPreview, els.autoPreview.checked ? "1" : "0");
+      if (els.autoPreview.checked) A.directory.playAutoPreview(state.song);
+      else A.directory.cancelAutoPreview();
+    });
+
     els.btnPlay.addEventListener("click", togglePlay);
     els.btnRestart.addEventListener("click", restart);
     els.btnStop.addEventListener("click", stop);
@@ -432,6 +433,7 @@
     // resume() 只有在手势里调用才一定成功；真挂起过的话 keepAudioAlive() 会
     // 顺带把已经死掉的音源按挂起前的位置重建。
     const nudgeAudio = () => {
+      A.prepareSfx({ unlock: true });
       const ctx = A.audioCtx;
       if (ctx && ctx.state !== "running") keepAudioAlive();
     };

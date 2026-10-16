@@ -1215,3 +1215,65 @@ input[type="range"] {
 
 .brand-source a { color: inherit; font-weight: 600; text-decoration: none; }
 .brand-source a:hover { color: var(--text); text-decoration: underline; }
+
+/* Settings categories share the existing controls and preference keys. */
+.options {
+  display: block;
+  max-height: min(64vh, 540px);
+  max-height: min(64dvh, 540px);
+  padding: 6px 20px 12px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.settings-group + .settings-group { border-top: 1px solid var(--line); }
+.settings-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 10px 2px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.settings-group > summary::-webkit-details-marker { display: none; }
+.settings-group > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: 0 5px 3px 14px;
+  border: solid var(--muted);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+.settings-group[open] > summary { color: var(--amber); }
+.settings-group[open] > summary::after { margin-bottom: -3px; transform: rotate(225deg); }
+.settings-group > summary:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; border-radius: 6px; }
+.settings-body { display: grid; gap: 16px; padding: 2px 2px 20px; }
+.settings-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px 20px; }
+.settings-fields > .ctl { display: grid; align-content: start; gap: 7px; min-width: 0; }
+.settings-fields > .setting-wide { grid-column: 1 / -1; }
+.setting-label { font-size: 12px; }
+.setting-control { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.options .setting-control > select { width: 100%; min-width: 0; min-height: 36px; text-overflow: ellipsis; }
+.options .setting-control > input[type="number"] { width: 100%; min-width: 0; min-height: 36px; }
+.options .setting-control > input[type="range"] { width: 100%; min-width: 0; flex: 1; }
+.options .setting-control > .unit { flex-shrink: 0; min-width: 36px; text-align: right; }
+.options .setting-control > input[type="color"] { width: 56px; height: 36px; }
+.settings-switches { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.settings-switches .checkbox { min-height: 32px; line-height: 1.5; }
+.settings-switches input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; margin: 0 2px 0 0; accent-color: var(--amber); }
+.settings-subtitle { margin: 2px 0 -5px; color: var(--muted); font-size: 11px; }
+@media (max-width: 900px) {
+  .options, .transport.collapsed .options { max-height: 60vh; max-height: 60dvh; }
+  .options { padding: 5px 14px 10px; }
+}
+@media (max-width: 560px) {
+  .settings-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+  .settings-group > summary { min-height: 46px; }
+  .options .setting-control > select, .options .setting-control > input[type="number"] { min-height: 40px; padding: 8px; }
+  .settings-switches .checkbox { min-height: 36px; }
+}

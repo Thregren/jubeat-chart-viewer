@@ -571,6 +571,8 @@
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
     state.notes = [];
+    state.noteCursor = 0;
+    state.activeNotes = [];
     state._parsed = null;
     state.duration = 0;
     clearPads();

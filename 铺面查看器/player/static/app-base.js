@@ -98,6 +98,7 @@
     markerNormalSpeed: $("#markerNormalSpeed"),
     offset: $("#offset"),
     autoLoop: $("#autoLoop"),
+    autoPreview: $("#autoPreview"),
     loadRow: $("#loadRow"),
     loadLabel: $("#loadLabel"),
     loadBar: $("#loadBar"),
@@ -211,6 +212,7 @@
   const abLoop = { a: null, b: null };
 
   const STORAGE = {
+    autoPreview: "jubeat.autoPreview",
     markerNormalSpeed: "jubeat.markerNormalSpeed",
     marker: "jubeat.marker",   // 选中的 marker 设计 id（如 tm0001）
     metroSound: "jubeat.metroSound",

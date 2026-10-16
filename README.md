@@ -2,7 +2,9 @@
 
 压缩转码、COS分卷、客户端导入和构建步骤见 [压缩曲库与客户端](docs/压缩曲库与客户端.md)。
 
-**v0.6.29：本地统一库 → Opus 80kbps 精简网页库；轻量桌面程序支持拖入完整曲库ZIP，安卓版使用同一资源包。**
+**v0.6.30：设置按播放与声音、Marker 与高亮、音符序号、节奏轴分类；新增选曲后自动循环原试听（默认关闭，无试听不播放）。**
+
+本地统一库 → Opus 80kbps 精简网页库；轻量桌面程序支持拖入完整曲库ZIP，安卓版使用同一资源包。
 请先阅读 [详细中文使用说明与版本范围](docs/目录曲库.md)。指定 `--library` 构建，或将公共包与所需版本包解压到同一空目录后运行 `启动查看器.py`。缺失资源、未知曲名/等级如实标记；运行时只读取指定目录，不扫描其他曲库或旧缓存。下方 MCZ 部署内容保留作旧流程参考，新流程以该文档为准。
 
 
@@ -10,13 +12,13 @@
 用 marker 的逐帧动画核对判定点。做谱面视频、核对谱面、练谱前先看一遍节奏都用得上。
 
 界面左上角就是这套名字 —— **「谱面确认」** 配上副标题 **「Jubeat Viewer」**，
-GitHub 图标右边挂着**当前前端版本号**（`v0.6.27`，由 `tools/set_version.py` 同步）。
+GitHub 图标右边挂着**当前前端版本号**（`v0.6.30`，由 `tools/set_version.py` 同步）。
 
 [![v0.6.25 界面：横向节奏轴与物量条共存](docs/rhythm-timeline.png)](docs/rhythm-timeline.png)
 
 > **轻量客户端与独立完整曲库下载**：<https://pan.quark.cn/s/e9c12157e039>
 >
-> 在网盘的 `v0.6.29` 文件夹下载对应平台轻量程序，以及独立的 `jubeat-library-0.6.29.zip`。桌面端将ZIP拖进窗口即可导入，安卓通过文件选择器导入同一份包。GitHub Release也提供轻量程序；历史全量包仍在旧版本文件夹中。
+> 在网盘的 `v0.6.29` 文件夹下载对应平台轻量程序，以及独立的 `jubeat-library-0.6.29.zip`。桌面端将ZIP拖进窗口即可导入，安卓通过文件选择器导入同一份包。[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)提供最新版轻量程序，v0.6.30 可继续使用上述 v0.6.29 曲库包；历史全量包仍在旧版本文件夹中。
 
 **架构**：构建期把本地WAV母库转成Opus精简目录，运行期浏览器只通过HTTP读取显式资源；
 没有数据库，也没有常驻后端。五种跑法（nginx 静态站 / PHP 整包 / Python 开发服务器 / Electron 桌面版 / Android WebView）
@@ -24,7 +26,7 @@ GitHub 图标右边挂着**当前前端版本号**（`v0.6.27`，由 `tools/set_
 
 线上实例：<https://ub.thregren.world>
 
-当前版本：**v0.6.27** · [Release notes](docs/release-v0.6.27.md) ·
+当前版本：**v0.6.30** · [Release notes](docs/release-v0.6.30.md) ·
 许可：**代码 MIT**（[LICENSE](LICENSE)），[素材另计](THIRD-PARTY.md)
 
 ---

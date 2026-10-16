@@ -8,13 +8,13 @@
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.6.30" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.30" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.30" />
+  <link rel="manifest" href="static/manifest.json?v=0.6.31" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.31" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.31" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.30" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.30" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.31" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.31" />
 </head>
 <body>
   <div id="app">
@@ -44,7 +44,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.30</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.31</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -69,12 +69,14 @@
             <option value="ext-notes">排序：EXT note 数（多→少）</option>
           </select>
         </div>
-        <div class="filter-row">
+        <div class="filter-row marker-filter-row">
           <select id="holdFilter" aria-label="长押筛选">
             <option value="">全部谱面</option>
             <option value="hold">只要长押</option>
             <option value="nohold">只要非长押</option>
           </select>
+          <button id="btnMarkerLibrary" class="marker-library-toggle" type="button"
+                  aria-pressed="false" aria-controls="songList markerList">图选 Marker</button>
         </div>
       </div>
 
@@ -84,6 +86,7 @@
       </div>
 
       <ul id="songList" class="song-list" aria-label="曲目列表"></ul>
+      <ul id="markerList" class="marker-list" aria-label="Marker 图选列表" hidden></ul>
     </aside>
 
     <main class="stage">
@@ -266,10 +269,9 @@
           <span class="setting-control"><select id="chordGlowPair" aria-label="同押光晕配色"></select>
                         <span class="pair-chips" id="glowPairChips" aria-hidden="true"><i></i><i></i></span></span></label>
           <label class="ctl ctl-vol"><span class="setting-label">光晕透明度</span>
-          <span class="setting-control"><input id="numGlowAlpha" type="range" min="0" max="100" step="5" value="70"
-                               aria-label="同押光晕的透明度"
-                               title="只淡「同押高亮」这一层：光晕 + 两圈波纹 + 数字的霓虹描边（选「加粗面板框」时淡的是那圈框）；数字本身跟着「序号透明度」走" />
-                        <span class="unit" id="numGlowAlphaLabel">70%</span></span></label>
+          <span class="setting-control"><select id="numGlowAlpha" aria-label="同押光晕的透明度"
+                               title="只淡「同押高亮」这一层：光晕 + 两圈波纹 + 数字的霓虹描边（选「加粗面板框」时淡的是那圈框）；数字本身跟着「序号透明度」走"><option value="0">0%</option><option value="25">25%</option><option value="50">50%</option><option value="70" selected>70%</option><option value="80">80%</option><option value="90">90%</option><option value="100">100%</option></select>
+                        <span class="unit" id="numGlowAlphaLabel" hidden>70%</span></span></label>
           </div>
           </div>
           </details>
@@ -307,13 +309,11 @@
                         </select></span></label>
           </div><p class="settings-subtitle">序号外观</p><div class="settings-fields">
           <label class="ctl ctl-vol"><span class="setting-label">序号字号</span>
-          <span class="setting-control"><input id="numScale" type="range" min="50" max="200" step="5" value="100"
-                               aria-label="音符序号的字号" />
-                        <span class="unit" id="numScaleLabel">100%</span></span></label>
+          <span class="setting-control"><select id="numScale" aria-label="音符序号的字号"><option value="50">50%</option><option value="75">75%</option><option value="100" selected>100%</option><option value="125">125%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option></select>
+                        <span class="unit" id="numScaleLabel" hidden>100%</span></span></label>
           <label class="ctl ctl-vol"><span class="setting-label">序号透明度</span>
-          <span class="setting-control"><input id="numAlpha" type="range" min="10" max="100" step="5" value="100"
-                               aria-label="音符序号的透明度" />
-                        <span class="unit" id="numAlphaLabel">100%</span></span></label>
+          <span class="setting-control"><select id="numAlpha" aria-label="音符序号的透明度"><option value="10">10%</option><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="90">90%</option><option value="100" selected>100%</option></select>
+                        <span class="unit" id="numAlphaLabel" hidden>100%</span></span></label>
           <label class="ctl"><span class="setting-label">序号配色</span>
           <span class="setting-control"><select id="numColorMode" aria-label="音符序号的配色方式">
                           <option value="custom" selected>自选颜色</option>
@@ -371,25 +371,27 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.30"></script>
-  <script src="static/core.js?v=0.6.30"></script>
-  <script src="static/runtime.js?v=0.6.30"></script>
+  <script src="static/sfx.js?v=0.6.31"></script>
+  <script src="static/core.js?v=0.6.31"></script>
+  <script src="static/runtime.js?v=0.6.31"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.30"></script>
+  <script src="static/record.js?v=0.6.31"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.6.30"></script>
-<script src="static/app-base.js?v=0.6.30"></script>
-  <script src="static/app-audio.js?v=0.6.30"></script>
-  <script src="static/first-marker.js?v=0.6.30"></script>
-  <script src="static/app-marker.js?v=0.6.30"></script>
-  <script src="static/app-density.js?v=0.6.30"></script>
-  <script src="static/rhythm-timeline.js?v=0.6.30"></script>
-  <script src="static/app-timeline.js?v=0.6.30"></script>
-  <script src="static/directory.js?v=0.6.30"></script>
-  <script src="static/app-library.js?v=0.6.30"></script>
-  <script src="static/app-player.js?v=0.6.30"></script>
-  <script src="static/app-render.js?v=0.6.30"></script>
-  <script src="static/app-wiring.js?v=0.6.30"></script>
-  <script src="static/app.js?v=0.6.30"></script>
+  <script src="static/version-data.js?v=0.6.31"></script>
+<script src="static/app-base.js?v=0.6.31"></script>
+  <script src="static/app-audio.js?v=0.6.31"></script>
+  <script src="static/first-marker.js?v=0.6.31"></script>
+  <script src="static/app-marker.js?v=0.6.31"></script>
+  <script src="static/app-density.js?v=0.6.31"></script>
+  <script src="static/rhythm-timeline.js?v=0.6.31"></script>
+  <script src="static/app-timeline.js?v=0.6.31"></script>
+  <script src="static/directory.js?v=0.6.31"></script>
+  <script src="static/list-images.js?v=0.6.31"></script>
+  <script src="static/app-library.js?v=0.6.31"></script>
+  <script src="static/marker-library.js?v=0.6.31"></script>
+  <script src="static/app-player.js?v=0.6.31"></script>
+  <script src="static/app-render.js?v=0.6.31"></script>
+  <script src="static/app-wiring.js?v=0.6.31"></script>
+  <script src="static/app.js?v=0.6.31"></script>
 </body>
 </html>

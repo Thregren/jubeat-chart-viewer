@@ -103,24 +103,20 @@
       els.showNumbers.addEventListener("change", () => {
         store(STORAGE.showNumbers, els.showNumbers.checked ? "1" : "0");
       });
-      // 序号外观：字号 / 透明度两个滑杆 + 「放右下角」开关。
-      // 画布每帧重画，滑杆动一下下一帧就生效，不用手动刷新。
-      els.numScale.addEventListener("input", () => {
-        numCfg.scale = clampNumScale((Number(els.numScale.value) || 100) / 100);
-        els.numScaleLabel.textContent = els.numScale.value + "%";
-      });
-      els.numScale.addEventListener("change", () => store(STORAGE.numScale, els.numScale.value));
-      els.numAlpha.addEventListener("input", () => {
-        numCfg.alpha = clampNumAlpha((Number(els.numAlpha.value) || 100) / 100);
-        els.numAlphaLabel.textContent = els.numAlpha.value + "%";
-      });
-      els.numAlpha.addEventListener("change", () => store(STORAGE.numAlpha, els.numAlpha.value));
-      // 「光晕透明度」：只淡同押光晕那一层，0% 就是关掉光晕只留数字。
-      els.numGlowAlpha.addEventListener("input", () => {
-        numCfg.glowAlpha = clampNumGlowAlpha((Number(els.numGlowAlpha.value) || 0) / 100);
-        els.numGlowAlphaLabel.textContent = els.numGlowAlpha.value + "%";
-      });
-      els.numGlowAlpha.addEventListener("change", () => store(STORAGE.numGlowAlpha, els.numGlowAlpha.value));
+      // Keep the same values and preference keys when presets replace sliders.
+      for (const [control, label, property, key, clamp, fallback] of [
+        [els.numScale, els.numScaleLabel, 'scale', STORAGE.numScale, clampNumScale, 100],
+        [els.numAlpha, els.numAlphaLabel, 'alpha', STORAGE.numAlpha, clampNumAlpha, 100],
+        [els.numGlowAlpha, els.numGlowAlphaLabel, 'glowAlpha', STORAGE.numGlowAlpha, clampNumGlowAlpha, 0],
+      ]) {
+        const update = () => {
+          const value = Number(control.value);
+          numCfg[property] = clamp((Number.isFinite(value) ? value : fallback) / 100);
+          label.textContent = control.value + '%';
+        };
+        control.addEventListener('input', update);
+        control.addEventListener('change', () => { update(); store(key, control.value); });
+      }
       const recording = new URLSearchParams(location.search).get("rec") === "1";
       function setNumColorMode(value) {
         numCfg.colorMode = !recording && value === "rhythm" ? "rhythm" : "custom";
@@ -243,21 +239,19 @@
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       numCfg.style = normalizeChordStyle(saved.chordGlowStyle);
       els.chordGlowStyle.value = numCfg.style;
-      // 序号外观：字号 / 透明度 / 位置（默认 100% / 100% / 右下角）
-      if (saved.numScale != null) {
-        els.numScale.value = saved.numScale;
-        numCfg.scale = clampNumScale((Number(saved.numScale) || 100) / 100);
-        els.numScaleLabel.textContent = els.numScale.value + "%";
-      }
-      if (saved.numAlpha != null) {
-        els.numAlpha.value = saved.numAlpha;
-        numCfg.alpha = clampNumAlpha((Number(saved.numAlpha) || 100) / 100);
-        els.numAlphaLabel.textContent = els.numAlpha.value + "%";
-      }
-      if (saved.numGlowAlpha != null) {
-        els.numGlowAlpha.value = saved.numGlowAlpha;
-        numCfg.glowAlpha = clampNumGlowAlpha((Number(saved.numGlowAlpha) || 0) / 100);
-        els.numGlowAlphaLabel.textContent = els.numGlowAlpha.value + "%";
+      // Retain a valid saved value even when it lies between the common presets.
+      for (const [key, control, label, property, clamp] of [
+        ['numScale', els.numScale, els.numScaleLabel, 'scale', clampNumScale],
+        ['numAlpha', els.numAlpha, els.numAlphaLabel, 'alpha', clampNumAlpha],
+        ['numGlowAlpha', els.numGlowAlpha, els.numGlowAlphaLabel, 'glowAlpha', clampNumGlowAlpha],
+      ]) {
+        if (saved[key] == null || saved[key].trim() === '' || !Number.isFinite(Number(saved[key]))) continue;
+        const value = String(Math.round(clamp(Number(saved[key]) / 100) * 100));
+        if (![...control.options].some(option => option.value === value)) {
+          const option = new Option(value + '%（原设置）', value);
+          control.add(option, [...control.options].find(option => Number(option.value) > Number(value)) || null);
+        }
+        control.value = value; numCfg[property] = Number(value) / 100; label.textContent = value + '%';
       }
       if (!useCornerDefault && saved.numCorner != null) {
         els.numCorner.checked = saved.numCorner === "1";
@@ -384,6 +378,7 @@
     });
 
     let searchTimer = 0;
+    A.cancelLibrarySearch = () => { clearTimeout(searchTimer); searchTimer = 0; };
     els.search.addEventListener("input", () => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(renderList, 120); // 本地筛选，不用打服务器
@@ -394,7 +389,8 @@
       els.listCount.textContent = "重新读取…";
       try {
         // 静态站点：重新拉一次 data/library.json；开发服务器：带 ?reindex=1 会重建索引
-        await loadLibrary(true);
+        if (A.markerLibrary?.active) await A.loadMarkers();
+        else await loadLibrary(true);
         toast("曲库已重新读取");
       } catch (e) {
         toast(String(e), true);
@@ -472,6 +468,7 @@
 
     document.addEventListener("keydown", (e) => {
       if(A.mode?.ownsFrame)return;
+      if (e.target?.closest?.('#btnMarkerLibrary, #markerList')) return;
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
         if (e.code === "Space" && e.target === els.search) return;

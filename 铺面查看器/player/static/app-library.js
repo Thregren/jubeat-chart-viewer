@@ -205,24 +205,11 @@
     return list.sort(sorters[mode] || byTitle);
   }
 
-  // 列表里上千首曲子，封面按需加载：进入可视范围附近才真的去请求
+  // Only the bounded virtual window creates cover requests; do not layer browser
+  // lazy loading and IntersectionObserver over rows that are repeatedly recycled.
   const songButtonById = new Map();
-  let coverObserver = null;
-  function observerForCovers() {
-    if (coverObserver || !("IntersectionObserver" in window)) return coverObserver;
-    coverObserver = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          const img = e.target;
-          coverObserver.unobserve(img);
-          if (img.dataset.src) img.src = img.dataset.src;
-        }
-      },
-      { root: els.songList, rootMargin: "320px 0px" }
-    );
-    return coverObserver;
-  }
+  const coverLoads = new WeakMap();
+  function disposeCover(row) { const img = row.querySelector('img'); if (img) coverLoads.get(img)?.dispose(); }
 
   function updateActiveSongRow() {
     const activeId = state.song ? state.song.id : "";
@@ -242,14 +229,14 @@
   const scheduleList=()=>{if(!listRaf)listRaf=requestAnimationFrame(()=>{listRaf=0;paintListWindow();});};
   function spacer(height){const li=document.createElement('li');li.className='song-spacer';li.setAttribute('aria-hidden','true');li.style.height=height+'px';return li;}
   function paintListWindow(){
-    const ul=els.songList;if(!virtualSongs.length)return;
+    const ul=els.songList;if(ul.hidden || !virtualSongs.length)return;
     const focused=document.activeElement?.closest?.('.song-item'),focusedId=focused?.dataset.songId;
     const focusedIndex=focusedId?virtualSongs.findIndex(s=>s.id===focusedId):-1;
     const first=Math.max(0,Math.floor(ul.scrollTop/ROW_HEIGHT)-OVERSCAN);
     const last=Math.min(virtualSongs.length,Math.ceil((ul.scrollTop+(ul.clientHeight||640))/ROW_HEIGHT)+OVERSCAN);
     const indexes=new Set();for(let i=first;i<last;i++)indexes.add(i);if(focusedIndex>=0)indexes.add(focusedIndex);
     const wanted=new Set([...indexes].map(i=>virtualSongs[i].id));
-    for(const [id,row]of virtualRows)if(!wanted.has(id)){const img=row.querySelector('img');if(img)coverObserver?.unobserve(img);row.remove();virtualRows.delete(id);songButtonById.delete(id);}
+    for(const [id,row]of virtualRows)if(!wanted.has(id)){const img=row.querySelector('img');if(img)coverLoads.get(img)?.dispose();row.remove();virtualRows.delete(id);songButtonById.delete(id);}
     for(const old of ul.querySelectorAll('.song-spacer'))old.remove();
     let cursor=ul.firstChild,previous=0;
     for(const index of [...indexes].sort((a,b)=>a-b)){
@@ -259,20 +246,22 @@
       const button=songButtonById.get(song.id);button.tabIndex=index===focusIndex?0:-1;button.dataset.listIndex=String(index);
       row.setAttribute('aria-posinset',String(index+1));row.setAttribute('aria-setsize',String(virtualSongs.length));
       if(row!==cursor)ul.insertBefore(row,cursor);else cursor=cursor.nextSibling;
+      const img = row.querySelector('img'); if (img) coverLoads.get(img)?.start();
       previous=index+1;
     }
     if(previous<virtualSongs.length)ul.appendChild(spacer((virtualSongs.length-previous)*ROW_HEIGHT));
     if(focusedId&&document.activeElement!==focused&&focused?.isConnected)focused.focus({preventScroll:true});
     A.metrics=A.metrics||{};A.metrics.listRows=virtualRows.size;
   }
-  function renderList(){
+  function renderList(scrollTop = 0){
+    if (A.markerLibrary?.active) { A.markerLibrary.refresh(); return; }
     const started=performance.now(),ul=els.songList;
-    cancelAnimationFrame(listRaf);listRaf=0;coverObserver?.disconnect();songButtonById.clear();virtualRows.clear();
+    cancelAnimationFrame(listRaf);listRaf=0;for(const row of virtualRows.values())disposeCover(row);songButtonById.clear();virtualRows.clear();
     activeSongRowId=state.song?.id||'';virtualSongs=visibleSongs();focusIndex=0;
     ul.classList.add('virtual');ul.replaceChildren();ul.scrollTop=0;
     els.listCount.textContent=`${virtualSongs.length} / ${state.songs.length} 首`;
     if(!virtualSongs.length){const li=document.createElement('li');li.className='empty-list';li.textContent=state.songs.length?'没有匹配的曲目，换个关键词试试。':'曲库里没有曲目：请将版本包解压到含 data/library.json 的目录。';ul.appendChild(li);}
-    else paintListWindow();
+    else { ul.appendChild(spacer(virtualSongs.length * ROW_HEIGHT)); ul.scrollTop = Number.isFinite(scrollTop) ? scrollTop : 0; paintListWindow(); }
     A.metrics=A.metrics||{};A.metrics.listMs=performance.now()-started;
   }
   els.songList.addEventListener('scroll',scheduleList,{passive:true});
@@ -300,10 +289,7 @@
     const cv = el("span", "cv" + (coverSrc ? "" : " ph"));
     if (coverSrc) {
       const im = el("img");
-      im.dataset.src = thumbSrc;
-      im.dataset.full = coverSrc;
       im.alt = "";
-      im.loading = "lazy";
       im.decoding = "async";
       cv.appendChild(im);
     }
@@ -314,20 +300,9 @@
     btn.append(cv, tx);
     const img = btn.querySelector(".cv img");
     if (img) {
-      img.addEventListener("error", () => {
-        if (!img.isConnected) { if (coverObserver) coverObserver.unobserve(img); return; }
-        // 缩略图失败（例如没生成）就退回原图，再失败才用占位符
-        if (img.dataset.full && !img.dataset.triedFull) {
-          img.dataset.triedFull = "1";
-          img.src = img.dataset.full;
-          return;
-        }
-        img.remove();
-        btn.querySelector(".cv").classList.add("ph");
-      });
-      const io = observerForCovers();
-      if (io) io.observe(img);
-      else if (img.dataset.src) img.src = img.dataset.src; // 老浏览器直接加载
+      coverLoads.set(img, window.JubeatListImages.attach(img, {
+        source: thumbSrc, fallback: coverSrc, active: () => img.isConnected && !els.songList.hidden,
+      }));
     }
     btn.querySelector(".st").textContent = s.title;
     btn.querySelector(".ver").textContent = s.version;

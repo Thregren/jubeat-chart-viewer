@@ -236,6 +236,8 @@
   }
 
   async function loadMarkers() {
+    markerCfg.loadError = '';
+    A.markerLibrary?.refresh();
     const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),25000);
     try {
       const res = await fetch(PATHS.markers,{signal:abort.signal});
@@ -276,9 +278,10 @@
       const keepSaved = saved && markerCfg.designs.some((d) => d.id === saved);
       selectMarker(keepSaved ? saved : DEFAULT_MARKER_DESIGN);
     } catch (err) {
+      markerCfg.loadError = err.message;
       console.warn("marker manifest 加载失败", err);
       toast("marker 素材加载失败，已退化为面板灯模式", true);
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); A.markerLibrary?.refresh(); }
   }
 
   /**
@@ -343,6 +346,7 @@
     trimFrameCache();
     els.markerSelect.value = design ? design.id : "";
     store(STORAGE.marker, design ? design.id : "");
+    A.markerLibrary?.sync();
     const token = ++selectToken;
     if (!design) {
       markerCfg.design = null;
@@ -1273,6 +1277,13 @@
     ctx,
     markerPrimitives: {frameImage,frameUrl,ready,drawFrameImage,drawPanelFrames,drawComboOverlay,drawHoldArrow,holdCells,drawOrderNumber,preloadUrls},
     loadMarkers,
+    markerPreviewSources(design) {
+      const sources = [];
+      if (design.ma) sources.push(frameUrl(design, "MA", maHitFrame(design)));
+      const tier = tierOf(design, 4);
+      if (tier) sources.push(frameUrl(design, `H${tier}`, 0));
+      return sources;
+    },
     selectMarker,
     layoutCanvas,
     glowPair,

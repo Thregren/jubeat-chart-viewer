@@ -9,6 +9,8 @@
   let shown=false, model=null, notes=null, events=null, view=null, drag=null;
   const recording=!!window.__recActive;
   button.hidden=recording;
+  (button.closest('label') || button).hidden=recording;
+  button.disabled=recording;
   function getModel() {
     if(notes!==state.notes || events!==state.bpmEvents) {
       notes=state.notes;events=state.bpmEvents;
@@ -65,11 +67,11 @@
     if(drag)finish(null,true);
     shown=!!value&&!recording;
     wrap.hidden=!shown;slot.classList.toggle("timeline-open",shown);
-    button.setAttribute("aria-pressed",String(shown));
+    button.checked=shown;
     button.setAttribute("aria-expanded",String(shown));
     repaint();
   }
-  button.addEventListener("click",()=>setShown(!shown));
+  button.addEventListener("change",()=>setShown(button.checked));
   for(const select of [division,span])select.addEventListener("change",repaint);
   const xOf=e=>(e.clientX-canvas.getBoundingClientRect().left)*canvas.clientWidth/canvas.getBoundingClientRect().width;
   const clamp=t=>Math.max(0,Math.min(t,state.duration||0));

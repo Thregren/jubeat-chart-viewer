@@ -176,6 +176,17 @@
     for (const n of notes) n.glowSlot = glowSlot.get(n.group) || 0;
   }
 
+  // Display precision is independent from the tempo map used for note timing.
+  function formatBpm(events, fallback = 0) {
+    const values = (Array.isArray(events) ? events : []).map(e => Number(e?.bpm))
+      .filter(bpm => Number.isFinite(bpm) && bpm > 0);
+    if (!values.length && Number.isFinite(Number(fallback)) && Number(fallback) > 0) values.push(Number(fallback));
+    if (!values.length) return "—";
+    let min = Infinity, max = 0;
+    for (const bpm of values) { const display = Math.round(bpm); min = Math.min(min, display); max = Math.max(max, display); }
+    return min === max ? String(min) : `${min}–${max}`;
+  }
+
   /** .mc 谱面 JSON → note 列表 + 时间轴工具 */
   function parseNotes(chart, opts = {}) {
     const timeEvents = (chart.time || []).map((e) => ({ beat: e.beat, bpm: e.bpm }));
@@ -473,6 +484,7 @@
     buildTimeMap,
     numberNotes,
     parseNotes,
+    formatBpm,
     pickChart,
     firstAfter,
     countPassed,

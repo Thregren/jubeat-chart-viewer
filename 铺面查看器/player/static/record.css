@@ -157,7 +157,6 @@ html.rec #app { display: none !important; }
 }
 
 /* 成片不带底部说明条（参考构图里没有它） */
-#recCard .panel-caption { display: none; }
 
 /* 逐帧截图时页面时钟是「定格」的，CSS 过渡 / 动画跟的是真实时间，
    留着它们只会让某一帧捕捉到过度中的中间状态。判定态本身就够显眼，

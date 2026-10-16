@@ -367,7 +367,6 @@
       state.duration = 0; clearPads(); resetCombo();
       for (const item of [els.statBpm, els.statNotes, els.statHolds]) item.textContent = '—';
       els.statTime.textContent = els.timeTotal.textContent = els.timeNow.textContent = '00:00';
-      els.captionLeft.textContent = '仅资源，无可玩谱面 · 缺失：' + window.JubeatDirectory.missingLabels(song).join('、');
       els.btnPlay.disabled = true; buildDensity(); A.requestPaint(); return;
     }
     await loadChart(pick.code);
@@ -422,7 +421,6 @@
     const keepAudio = A.backend.url === src;
     stopForLoad(keepAudio);
     clearAB(null);   // 换歌 / 换难度：上一首的 A–B 打在旧谱面上，直接清掉
-    els.captionLeft.textContent = "LOADING CHART…";
     // 换歌的第一段等待：谱面 json + 音源首包。这时候进度条先出来，别让界面看起来是死的。
     A.audioLoad.pending = true;
     A.audioLoad.pendingLabel = state.chartCache.has(key) ? "音频加载" : "谱面读取";
@@ -480,11 +478,7 @@
 
       state.duration = computeDuration(parsed);
 
-      els.statBpm.textContent = parsed.multiBpm
-        ? `${parsed.baseBpm}~`
-        : parsed.baseBpm
-          ? String(Math.round(parsed.baseBpm * 100) / 100)
-          : "—";
+      els.statBpm.textContent = Core.formatBpm(parsed.timeEvents, parsed.baseBpm);
       // 长押头尾各算一颗 note（和实机 / 上面的 nTotal 同一口径）
       els.statNotes.textContent = String(parsed.nTotal);
       els.statHolds.textContent = String(parsed.nHold);
@@ -493,8 +487,6 @@
 
       clearPads();
       resetCombo();
-      const meta = payload.chartMeta || chart;
-      els.captionLeft.textContent = `${meta.code} ${meta.level ? "Lv" + meta.level : "等级未知"} · ${parsed.nTotal} notes${src ? "" : " · 缺少音频，可静态查看"}`;
       layoutCanvas();
       buildDensity();
       const urlT = A.urlState().t;
@@ -504,7 +496,6 @@
     } catch (err) {
       if (chartRequests.active !== request || state.song !== song || request.signal.reason?.name === "AbortError") return;
       console.error(err);
-      els.captionLeft.textContent = "LOAD FAILED";
       A.audioLoad.pending = false;
       A.updateLoadMeter();
       toast(`谱面加载失败：${err.message}，请重新选择难度重试`, true);

@@ -16,9 +16,9 @@
   --pad-edge: #2a3348;
   --danger: #ff4d6a;
   --ok: #3ddc97;
-  --bsc: #3ddc97;
-  --adv: #ffb020;
-  --ext: #ff4d6a;
+  --bsc: #46B13E;
+  --adv: #F6A300;
+  --ext: #EB4C4E;
   --radius: 10px;
   --font: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "SF Mono", "Cascadia Code", Consolas, "Menlo", monospace;
@@ -425,9 +425,9 @@ button:focus-visible,
 .diff-btn.lv-ext.active { background: var(--ext); border-color: var(--ext); color: #0c0f16; }
 .diff-btn.lv-bsc .lv, .diff-btn.lv-adv .lv, .diff-btn.lv-ext .lv { color: inherit; opacity: .8; }
 
-.diff-btn.lv-bsc:not(.active) { border-color: rgba(61,220,151,.45); }
-.diff-btn.lv-adv:not(.active) { border-color: rgba(255,176,32,.45); }
-.diff-btn.lv-ext:not(.active) { border-color: rgba(255,77,106,.45); }
+.diff-btn.lv-bsc:not(.active) { border-color: rgba(70,177,62,.45); }
+.diff-btn.lv-adv:not(.active) { border-color: rgba(246,163,0,.45); }
+.diff-btn.lv-ext:not(.active) { border-color: rgba(235,76,78,.45); }
 
 .cover-wrap img {
   width: 100%;
@@ -639,8 +639,6 @@ button:focus-visible,
 #timelineCanvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 #timelineCanvas:active { cursor: grabbing; }
 #timelineCanvas:focus-visible { outline: 2px solid #66dcff; outline-offset: -2px; }
-.timeline-toggle { width: auto; padding: 0 10px; white-space: nowrap; }
-.timeline-toggle[aria-pressed="true"] { color: #66dcff; border-color: #66dcff; }
 @media (max-width: 600px) {
   .timeline-wrap { position: absolute; inset: 0; height: auto; margin: 0; z-index: 1; }
   .timeline-open .density-wrap { visibility: hidden; pointer-events: none; }
@@ -752,19 +750,6 @@ button:focus-visible,
   100% { background: var(--pad-idle); box-shadow: none; }
 }
 
-.panel-caption {
-  width: min(48vh + 28px, 488px, 58vw + 28px);
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
 
 /* —— transport —— */
 .transport {
@@ -1205,7 +1190,6 @@ input[type="range"] {
   .np-artist { display: none; }        /* 作曲那行省掉 */
   .diff-btn { padding: 2px 9px; font-size: 10px; }
   .transport { padding: 6px 10px max(8px, env(safe-area-inset-bottom)); }
-  .panel-caption { font-size: 10px; }
 }
 
 .song-list.virtual { overflow-anchor: none; }
@@ -1317,3 +1301,5 @@ input[type="range"] {
   #btnPreview[aria-busy="true"]::before { content: "载入"; }
 }
 #btnPreview[hidden] { display: none; }
+
+.settings-switches .checkbox[hidden] { display: none; }

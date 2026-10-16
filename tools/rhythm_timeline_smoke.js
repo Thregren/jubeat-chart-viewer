@@ -31,7 +31,7 @@ app.whenReady().then(async()=>{try{
  });
  win.webContents.on('console-message',details=>{if(details.level==='error'||details.level===3)errors.push(details.message);});
  await win.loadURL(server.url);await until('!!window.__player && JubeatApp.state.songs.length>0');
- check('hidden on first load',await js("timelineWrap.hidden && btnTimeline.getAttribute('aria-pressed')==='false'"));
+ check('hidden on first load',await js("timelineWrap.hidden && !btnTimeline.checked"));
  await js('__player.selectSong(JubeatApp.state.songs.find(s=>s.charts.some(c=>c.holds>0)) || JubeatApp.state.songs[0]);void 0');
  await until('JubeatApp.state.notes.length>0 && !!JubeatApp.backend.buf && !JubeatApp.audioLoad.fetching && !JubeatApp.audioLoad.decoding && !JubeatApp.density.placeholder');
  await js("JubeatApp.setCollapsed(true);__player.seekTo(JubeatApp.state.notes[20].t);btnTimeline.click();void 0");await frame();

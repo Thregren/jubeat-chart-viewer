@@ -86,7 +86,6 @@
     densityCanvas: $("#densityCanvas"),
     densityWrap: $("#densityWrap"),
     densityInfo: $("#densityInfo"),
-    captionLeft: $("#captionLeft"),
     btnPlay: $("#btnPlay"),
     playIcon: $("#playIcon"),
     btnRestart: $("#btnRestart"),

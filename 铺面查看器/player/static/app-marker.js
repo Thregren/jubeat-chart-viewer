@@ -419,25 +419,16 @@
     const stage = els.panel.closest(".panel-stage");
     if (!stage) return;
     // 面板是正方形，所以宽度和高度都得当约束：取 min(可用宽, 可用高) 才不会被上下裁掉。
-    // 可用高要把「边框那一圈 padding + 底下那行说明文字 + 本区块自己的 padding」都扣掉。
+    // 可用高扣掉边框和本区块的 padding。
     const style = getComputedStyle(stage);
     const padV = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
     const padH = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
-    const caption = stage.querySelector(".panel-caption");
-    // caption 自带 margin-top: 8px，getBoundingClientRect() 不包含 margin；
-    // 少扣这一段会让面板 + 外框 + 说明文字比 stage 高一截，上下各被裁掉几像素。
-    const captionStyle = caption ? getComputedStyle(caption) : null;
-    const capH = caption
-      ? caption.getBoundingClientRect().height
-        + (parseFloat(captionStyle.marginTop) || 0)
-        + (parseFloat(captionStyle.marginBottom) || 0)
-      : 0;
     const bezel = els.panel.parentElement;
     const bezelPad = bezel
       ? Math.max(0, bezel.getBoundingClientRect().height - els.panel.getBoundingClientRect().height)
       : 0;
     const availW = Math.max(120, stage.clientWidth - padH);
-    const availH = Math.max(120, stage.clientHeight - padV - capH - bezelPad - 2);
+    const availH = Math.max(120, stage.clientHeight - padV - bezelPad - 2);
     // 上限只是别让面板在超大屏上无限膨胀；窄屏（手机/平板竖屏）给得宽松些，
     // iPad 竖屏可用高有 700+，卡在 430 会白白浪费高度（面板是正方形的，宽也会一起长大）。
     const size = Math.min(availW, availH, A.isNarrow() ? 720 : 560);

@@ -1,0 +1,41 @@
+{
+  "version": "0.6.30",
+  "note": "轻量客户端：桌面拖入完整曲库ZIP或目录，安卓通过文件选择器导入同一资源包",
+  "assets": [
+    {
+      "name": "jubeatViewer-0.6.30-win-x64.zip",
+      "bytes": 153594114,
+      "sha256": "438d77f352ecb4bd457dbaebcb1bb53df06f6631c401c966107e2a5b691340b9"
+    },
+    {
+      "name": "jubeatViewer-0.6.30-win-arm64.zip",
+      "bytes": 151625419,
+      "sha256": "0e48784c674ee118e0d6d74f5ee8d9b2fd335c4f36fdb77ecf5efcc1c99b0a78"
+    },
+    {
+      "name": "jubeatViewer-0.6.30-mac-x64.zip",
+      "bytes": 135852710,
+      "sha256": "e07ff5a8255561018eb54cddbeec48568e62145cf2d9a8e8651870c3cce216e7"
+    },
+    {
+      "name": "jubeatViewer-0.6.30-mac-arm64.zip",
+      "bytes": 132007162,
+      "sha256": "3eaf5cefa0594e1d913a7bbad8017d49f133451132d187168b551d40d829ed01"
+    },
+    {
+      "name": "jubeatViewer-0.6.30-linux-x86_64.AppImage",
+      "bytes": 126300969,
+      "sha256": "179bc8689072f84262a1e85a7e4ad4451a76ed664530e609a0bf2953f0992607"
+    },
+    {
+      "name": "jubeatViewer-0.6.30-linux-arm64.AppImage",
+      "bytes": 127552544,
+      "sha256": "96b49dd903f2e242e382f2bc36a3d69f8252ec25e6d3060c0f68ec1ce50085a4"
+    },
+    {
+      "name": "jubeat-viewer-0.6.30-android-min.apk",
+      "bytes": 498559,
+      "sha256": "fa611beb444d77613dc849cb55cd75d27fe82abce688db284ac812b593649f7c"
+    }
+  ]
+}

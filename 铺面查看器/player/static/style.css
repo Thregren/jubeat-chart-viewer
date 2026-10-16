@@ -1302,3 +1302,18 @@ input[type="range"] {
 .marker-none i { width: 100%; height: 100%; border: 1px solid #49536b; border-radius: 3px; }
 
 .cv img[hidden] { display: none; }
+
+/* Keep all transport actions, including preview, on one mobile row. */
+@media (max-width: 560px) {
+  .transport-top { flex-wrap: nowrap; gap: 4px; }
+  .transport-top > .icon-btn { width: 36px; min-width: 36px; height: 40px; flex: 0 0 36px; }
+  .transport-top > .play-btn { width: 42px; min-width: 42px; height: 40px; flex: 0 0 42px; }
+  .transport-top > .ab-btn { padding: 0; font-size: 11px; }
+  .transport-top > .time-block { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; margin: 0; text-align: right; font-size: 10px; line-height: 1.2; white-space: nowrap; }
+  .transport-top .time-sep, .transport-top > .spacer { display: none; }
+  .transport-top > #btnPreview { padding: 0; font-size: 0; }
+  #btnPreview::before { content: "试听"; font-size: 11px; }
+  #btnPreview[aria-pressed="true"]::before { content: "停听"; }
+  #btnPreview[aria-busy="true"]::before { content: "载入"; }
+}
+#btnPreview[hidden] { display: none; }

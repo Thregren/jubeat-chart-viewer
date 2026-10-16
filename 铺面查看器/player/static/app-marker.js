@@ -20,7 +20,7 @@
   //
   //   MA 浮动/提示  24 帧，帧 = floor((u + 155) / 10)，u ∈ [-155, 84]；第 15 帧 = 命中瞬间
   //   H  命中爆发   4 档 × 16 帧，帧 = floor(u / 10)，u ∈ [0, 160)；第 0 帧 = 命中瞬间
-  //   FR 面板边框   静态装饰（只有部分设计有）
+  //   FR 背景帧     保留原始素材，不绘制到面板（避免常驻彩色底光）
   //
   // u = 当前谱面时间 - 该 note 的命中时间，单位是引擎时钟单位（1 单位 = 3.3333 ms，
   // 即每动画帧 10 单位 ≈ 33.333 ms，见 manifest.unit_ms）。
@@ -287,8 +287,8 @@
   /**
    * 一套设计要用的帧分两组 —— 切过去之前等的只有第一组：
    *
-   *   gateFrameUrls()   MA 接近动画（24 帧）+ 面板边框 FR。这两样缺了是肉眼一眼能看出来
-   *                     的「这套 marker 缺前半段 / 整块没边框」，所以必须到齐才切设计。
+   *   gateFrameUrls()   MA 接近动画（24 帧），到齐后才切设计。
+   *                     FR 常驻背景不显示，也不下载。
    *   burstFrameUrls()  命中爆发 H（只用得到 PERFECT 那一档，16 帧）。它只在命中那一瞬
    *                     出现，画的时候又有退帧兜底，所以不挡切换，跟着后台补齐就行。
    *
@@ -299,8 +299,6 @@
     const urls = [];
     const ma = Math.max(0, Number(design.ma) || 0);
     for (let i = 0; i < ma; i++) urls.push(frameUrl(design, "MA", i));
-    const fr = Math.max(0, Number(design.fr) || 0);
-    for (let i = 0; i < fr; i++) urls.push(frameUrl(design, "FR", i));
     return urls;
   }
 
@@ -325,7 +323,7 @@
   // 切设计的令牌 + 门槛：连着换两次时只让最后一次生效（先来的那套加载慢，不能把
   // 后来选的顶掉）；要用的素材没齐就先别切过去。
   //
-  // 这个超时是**安全网**，不是常规路径：门槛只卡 MA + FR（一套约 0.5 MB），
+  // 这个超时是**安全网**，不是常规路径：门槛只卡 MA 接近动画，
   // 正常情况下零点几秒就过；真撞上「连得上但慢得没边」的网络，也不能把界面钉死。
   // 超时兜底交出去之后，退帧策略（frameForChannel）保证格子不会开天窗。
   let selectToken = 0;
@@ -1064,19 +1062,9 @@
     ctx.restore();
   }
 
-  /**
-   * FR 通道 = 设计自带的面板边框（只有部分设计有，见 manifest 的 fr 字段）。
-   * 官方是垫在每格上的静态装饰、不随时间变化，所以选中有 FR 的设计时 16 格全铺一张，
-   * 让后面的 marker / 长押箭头盖在上面。
-   */
-  function drawPanelFrames() {
-    const d = markerCfg.design;
-    const n = d ? Number(d.fr) || 0 : 0;
-    if (!n || !state.padRects || state.padRects.length < 16) return;
-    const frame = Math.max(0, Math.min(n - 1, Number(markerCfg.frStatic) || 0));
-    const img = frameImage(frameUrl(d, "FR", frame));
-    for (const rect of state.padRects) drawFrameImage(img, rect);
-  }
+  // Retain the renderer hook for callers, but never paint the per-design FR
+  // background: some designs fill every idle pad with a permanent colored glow.
+  function drawPanelFrames() {}
 
   /**
    * 官方 marker 的逐帧渲染 —— 严格按 jubeat.dll 反汇编出来的规格
@@ -1096,7 +1084,6 @@
     if(A.mode?.ownsFrame&&A.mode.draw?.(chartT))return;
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
-    drawPanelFrames();      // FR：设计自带的面板边框（最底层）
     drawComboOverlay();     // 连击在 marker 下面：marker 会压住它（和游戏一致）
     // 长押（官方「会移动的箭头」）画在 marker 下面：它不属于任何一张 marker 素材，
     // 就算设成「无（仅面板灯）」也要画，所以放在 design 的早退之前。

@@ -29,7 +29,7 @@
   function install(A) {
     const button = document.createElement('button');
     button.id = 'btnPreview'; button.type = 'button'; button.className = 'icon-btn';
-    button.textContent = '试听'; button.hidden = true;
+    button.textContent = '试听'; button.setAttribute('aria-label', '试听'); button.hidden = true;
     button.title = '循环播放原试听，再点停止'; button.setAttribute('aria-pressed', 'false');
     const audio = document.createElement('audio');
     audio.id = 'previewAudio'; audio.preload = 'none'; audio.loop = true;
@@ -39,7 +39,7 @@
     function stopPreview() {
       previewGeneration++; loading = false; automatic = false; audio.pause();
       try { audio.currentTime = 0; } catch (_) { /* no source yet */ }
-      button.textContent = '试听'; button.setAttribute('aria-pressed', 'false');
+      button.textContent = '试听'; button.setAttribute('aria-label', '试听'); button.setAttribute('aria-pressed', 'false');
       button.setAttribute('aria-busy', 'false');
     }
     async function playPreview(asAutomatic = false) {
@@ -47,12 +47,12 @@
       A.pause();
       const generation = ++previewGeneration;
       loading = true; automatic = asAutomatic; audio.preload = 'auto';
-      button.textContent = '试听加载中…'; button.setAttribute('aria-busy', 'true');
+      button.textContent = '试听加载中…'; button.setAttribute('aria-label', '试听加载中'); button.setAttribute('aria-busy', 'true');
       try {
         await audio.play();
         if (generation === previewGeneration) {
           loading = false; button.setAttribute('aria-busy', 'false');
-          button.textContent = '停止试听'; button.setAttribute('aria-pressed', 'true');
+          button.textContent = '停止试听'; button.setAttribute('aria-label', '停止试听'); button.setAttribute('aria-pressed', 'true');
           return true;
         }
       } catch (error) {

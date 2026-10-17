@@ -4,17 +4,24 @@
   else root.JubeatTimeline = factory(root.JubeatCore);
 })(typeof window === "undefined" ? globalThis : window, function (Core) {
   "use strict";
-  function create(notes, events) {
+  function create(notes, events, grid = null) {
     const map = Core.buildTimeMap(events);
+    // This origin belongs to the visual beat grid, never the audio/note clock.
+    const calibrated = grid?.version === 1 && Number.isFinite(grid.origin_chart_seconds)
+      && Math.abs(grid.origin_chart_seconds) <= 60;
+    const originSeconds = calibrated ? grid.origin_chart_seconds : 0;
+    const originBeat = calibrated ? map.secToBeat(originSeconds) : 0;
+    const beatToSec = beat => map.beatToSec(beat + originBeat);
+    const secToBeat = sec => map.secToBeat(sec) - originBeat;
     const entries = notes.map(n => ({
-      beat: n.beat, end: n.endBeat ?? n.beat, index: n.index,
+      beat: n.beat - originBeat, end: (n.endBeat ?? n.beat) - originBeat, index: n.index,
       hold: n.kind === "hold",
     })).filter(n => Number.isFinite(n.beat) && Number.isFinite(n.end)).sort((a,b) => a.beat-b.beat);
     const maxHold = entries.reduce((v,n) => Math.max(v, n.end-n.beat), 0);
     function frame(sec, width, span = 4, division = 1) {
       span = [4,8,16].includes(span) ? span : 4;
       division = [1,2,3,4].includes(division) ? division : 1;
-      const beat = map.secToBeat(sec), left = beat - span * .2, right = left + span;
+      const beat = secToBeat(sec), left = beat - span * .2, right = left + span;
       const scale = Math.max(1,width) / span;
       const x = b => (b-left)*scale;
       const lines = [];
@@ -30,7 +37,7 @@
       }
       return {beat,left,right,scale,playhead:width*.2,lines,notes:visible};
     }
-    return {frame, beatToSec:map.beatToSec, secToBeat:map.secToBeat};
+    return {frame, beatToSec, secToBeat, calibrated, originSeconds, originBeat};
   }
   return {create};
 });

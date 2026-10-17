@@ -45,3 +45,26 @@ test('different viewport widths and zoom preserve the same current beat',()=>{
   assert.ok(Math.abs(f.left+f.playhead/f.scale-f.beat)<1e-9);
  }
 });
+
+test('calibrated grid moves only beat lines, preserving note pixels, holds and audio/chart clocks',()=>{
+ const p=Core.parseNotes(chart),before=JSON.stringify(p),plain=Timeline.create(p.notes,p.timeEvents);
+ const m=Timeline.create(p.notes,p.timeEvents,{version:1,origin_chart_seconds:.375});
+ assert.equal(m.originBeat,.75);assert.equal(m.beatToSec(0),.375);assert.equal(m.secToBeat(.375),0);
+ for(const sec of [0,.25,.5,1,1.25,2])for(const width of [320,1200])for(const span of [4,8,16]){
+  const a=plain.frame(sec,width,span,4),b=m.frame(sec,width,span,4);
+  assert.equal(b.playhead,a.playhead);assert.equal(b.notes.length,a.notes.length);
+  for(let i=0;i<a.notes.length;i++){assert.ok(Math.abs(a.notes[i].x-b.notes[i].x)<1e-9);assert.ok(Math.abs(a.notes[i].endX-b.notes[i].endX)<1e-9);}
+  assert.ok(Math.abs(m.beatToSec(m.secToBeat(sec))-sec)<1e-9);
+ }
+ assert.equal(JSON.stringify(p),before);
+ assert.equal(m.beatToSec(3)-m.beatToSec(2),.25); // existing BPM change still respected
+ assert.equal(m.frame(.375,400).lines.find(l=>l.beat===0).x,80);
+});
+
+test('missing, invalid or unknown grid metadata preserves the original mapping',()=>{
+ for(const grid of [null,{}, {version:2,origin_chart_seconds:.1}, {version:1,origin_chart_seconds:'0.1'}, {version:1,origin_chart_seconds:NaN}, {version:1,origin_chart_seconds:Infinity}, {version:1,origin_chart_seconds:61}]){
+  const m=Timeline.create([],chart.time,grid);assert.equal(m.originSeconds,0);assert.equal(m.beatToSec(1),.5);assert.equal(m.calibrated,false);
+ }
+ const zero=Timeline.create([],chart.time,{version:1,origin_chart_seconds:0});assert.equal(zero.calibrated,true);assert.equal(zero.beatToSec(0),0);
+ const negative=Timeline.create([],chart.time,{version:1,origin_chart_seconds:-.1});assert.equal(negative.beatToSec(0),-.1);
+});

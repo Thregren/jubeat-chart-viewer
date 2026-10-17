@@ -6,15 +6,17 @@
   const canvas=document.getElementById("timelineCanvas"), slot=document.getElementById("chartOverview");
   const division=document.getElementById("timelineDivision"), span=document.getElementById("timelineSpan");
   const ctx=canvas.getContext("2d"), colors=["#66dcff","#b9a0ff","#ffd16a","#7ce3a5"];
-  let shown=false, model=null, notes=null, events=null, view=null, drag=null;
+  let shown=false, model=null, notes=null, events=null, chart=null, view=null, drag=null;
   const recording=!!window.__recActive;
   button.hidden=recording;
   (button.closest('label') || button).hidden=recording;
   button.disabled=recording;
   function getModel() {
-    if(notes!==state.notes || events!==state.bpmEvents) {
-      notes=state.notes;events=state.bpmEvents;
-      model=window.JubeatTimeline.create(notes,events);
+    if(notes!==state.notes || events!==state.bpmEvents || chart!==state.chart) {
+      notes=state.notes;events=state.bpmEvents;chart=state.chart;
+      model=window.JubeatTimeline.create(notes,events,chart?.meta?.rhythm_grid);
+      canvas.title=model.calibrated
+        ? "节拍起点已校准（估计值，未核对官方小节）" : "节奏轴";
     }
     return model;
   }

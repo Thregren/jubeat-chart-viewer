@@ -112,11 +112,8 @@
     if (url.song) {
       const ready = () => {
         const song = state.songs.find((s) => s.id === url.song);
-        if (!song) return;
-        selectSong(song).then(() => {
-          if (url.chart) return loadChart(url.chart);
-          return null;
-        }).then(() => {
+        if (!song) { toast("分享的曲目不在当前曲库中", true); return; }
+        selectSong(song, url.chart).then(() => {
           if (url.play) play();
           // 不自动播就把界面摆成暂停态。别直接 pause()：音源还在下的时候
           // 用户可能已经点过播放，那是个排队中的请求，不能被这里取消。

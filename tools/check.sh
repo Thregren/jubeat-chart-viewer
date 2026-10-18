@@ -54,6 +54,7 @@ run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
 run "前端、平台与录制纯逻辑单测" node --test tools/test_*.mjs
+run "分享页面、封面及路径安全" "$PY" tools/test_share_pages.py
 
 run "开放目录曲库、WAV Range 与缺失素材" "$PY" tools/test_directory_library.py
 run "母库转码与精简目录曲库" "$PY" tools/test_compress_directory.py

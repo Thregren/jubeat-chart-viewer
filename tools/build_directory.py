@@ -61,6 +61,8 @@ def build_directory(source: Path, out: Path, include_markers=True):
         write_atomic(out / 'data/markers.json', json.dumps(manifest, ensure_ascii=False).encode())
     else:
         write_atomic(out / 'data/markers.json', b'{"designs":[],"error":null}')
+    from build_share_pages import build_share_pages
+    build_share_pages(out, out, version=(REPO/'VERSION').read_text().strip(), songs=data['songs'])
     stats = dict(format='jubeat-directory-v1', status='complete', songs=len(data['songs']),
                  charts=sum(len(s['charts']) for s in data['songs']),
                  resourceOnly=sum(bool(s.get('resourceOnly')) for s in data['songs']),

@@ -87,6 +87,7 @@
     densityWrap: $("#densityWrap"),
     densityInfo: $("#densityInfo"),
     btnPlay: $("#btnPlay"),
+    btnShare: $("#btnShare"),
     playIcon: $("#playIcon"),
     btnRestart: $("#btnRestart"),
     btnStop: $("#btnStop"),

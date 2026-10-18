@@ -62,7 +62,7 @@ def package_common(root: Path, output: Path, rebuild=True):
     names={'index.html','data/library.json','data/markers.json','data/build.json','data/export.json',
            'tools/serve.py','铺面查看器/player/media.py','铺面查看器/player/source_revision.py',
            '启动查看器.py','使用说明.txt'}
-    for top in ('static','markers'):
+    for top in ('static','markers','share'):
         names.update(p.relative_to(root).as_posix() for p in (root/top).rglob('*') if p.is_file() and not any(x.startswith('.') for x in p.relative_to(root).parts))
     output.parent.mkdir(parents=True,exist_ok=True);temp=output.with_name(output.name+'.partial')
     with zipfile.ZipFile(temp,'w',compression=zipfile.ZIP_DEFLATED,allowZip64=True) as z:

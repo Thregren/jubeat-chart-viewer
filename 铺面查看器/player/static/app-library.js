@@ -328,6 +328,9 @@
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
     state.song = song;
+    els.btnShare.disabled = false;
+    els.btnShare.dataset.chart = "";
+    document.title = song.title + " · 谱面确认";
     A.directory.show(song);
     els.btnPlay.disabled = !!song.assets && (!song.assets.audio || song.resourceOnly);
     updateActiveSongRow();
@@ -359,7 +362,7 @@
     });
 
     // pick difficulty
-    let pick = song.charts.find((c) => preferredCode && c.code === preferredCode);
+    let pick = preferredCode ? pickChart(song.charts, preferredCode) : null;
     if (!pick) pick = song.charts.find((c) => c.code === "EXT") || song.charts[song.charts.length - 1];
     if (!pick) {
       chartRequests.cancel(); stopForLoad();
@@ -411,10 +414,12 @@
     A.mode?.chartChanging?.();
     if (!state.song) return;
     const song = state.song;
+    els.btnShare.disabled = true;
     const request = chartRequests.start();
     const started = performance.now();
     const picked = pickChart(song.charts, code);
     const chart = picked || { code: "EXT" };
+    els.btnShare.dataset.chart = chart.code;
     const key = `${song.id}::${chart.code}`;
     const src = audioUrl(song);
     // 同首歌切难度时保留已经下载/解码好的音源；只有换歌才重置后端。
@@ -499,7 +504,10 @@
       A.audioLoad.pending = false;
       A.updateLoadMeter();
       toast(`谱面加载失败：${err.message}，请重新选择难度重试`, true);
-    } finally { chartRequests.finish(request); }
+    } finally {
+      if (chartRequests.active === request && state.song === song) els.btnShare.disabled = false;
+      chartRequests.finish(request);
+    }
   }
 
   function clearPads() {

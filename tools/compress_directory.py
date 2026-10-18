@@ -116,6 +116,8 @@ def convert(source, out, master, report, jobs=4):
                     try:os.link(p,dest)
                     except OSError:shutil.copyfile(p,dest)
     shutil.copyfile(source/'data/markers.json',out/'data/markers.json')
+    from build_share_pages import build_share_pages
+    build_share_pages(out, out, version=(REPO/'VERSION').read_text().strip(), songs=songs)
     summary=dict(status='complete',format='jubeat-directory-v1',profile=PROFILE,songs=len(songs),charts=sum(len(s['charts']) for s in songs),audio=sum('audio' in s['assets'] for s in songs),previews=sum('preview' in s['assets'] for s in songs),covers=sum('cover' in s['assets'] for s in songs),sourceAudioBytes=original_bytes,compressedAudioBytes=compressed_bytes,mczOpened=0,legacyMetadataRead=False,webMediaImported=False,originalsAndExactEventsIncluded=False)
     write(out/'data/build.json',summary);write(report/'转码结果.json',summary)
     print(json.dumps(summary,ensure_ascii=False,indent=2),flush=True)

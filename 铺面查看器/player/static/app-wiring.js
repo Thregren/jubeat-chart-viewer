@@ -32,6 +32,7 @@
   // —— events ——
   function urlState() {
     const p = new URLSearchParams(location.search);
+    const sharedSong = document.querySelector('meta[name="jubeat-share-song"]')?.content;
     const tRaw = p.get("t");
     // ?t=：只认「非空 + 是有限数 + 不为负」。以前只判 isFinite()，于是
     // `?t=%20%20`（全空格）→ Number("") = 0、`?t=-5` 也被放行，定位到莫名其妙的位置。
@@ -41,11 +42,11 @@
     const chartRaw = p.get("chart");
     const chart = chartRaw && /^[A-Za-z0-9_-]{1,8}$/.test(chartRaw) ? chartRaw : null;
     return {
-      song: p.get("song"),
+      song: sharedSong || p.get("song"),
       chart,
-      t: Number.isFinite(tNum) && tNum >= 0 ? tNum : null,
-      paused: p.get("paused") === "1",
-      play: p.get("play") === "1",
+      t: !sharedSong && Number.isFinite(tNum) && tNum >= 0 ? tNum : null,
+      paused: !!sharedSong || p.get("paused") === "1",
+      play: !sharedSong && p.get("play") === "1",
     };
   }
 
@@ -72,6 +73,7 @@
   }
 
   function bindEvents() {
+    window.JubeatSongLinks.install(A);
     // 兜底重画：暂停时渲染循环是停着的（见 updateFrame / requestPaint），
     // 而设置区任何控件改动都要立刻反映到画面（字号滑杆、透明度、序号位置…）。
     // 与其在每个控件的回调里挨个补 requestPaint()、漏一个就出现「改了没反应」，

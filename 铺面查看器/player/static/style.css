@@ -1331,3 +1331,20 @@ input[type="range"] {
 #btnPreview[hidden] { display: none; }
 
 .settings-switches .checkbox[hidden] { display: none; }
+
+/* Share sits within the existing heading; no extra mobile transport row. */
+.np-main { position: relative; }
+.stage .np-main h2, .stage .np-kicker { padding-right: 36px; }
+.stage .np-kicker { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.song-share-btn { position:absolute; top:0; right:0; width:30px; height:28px; padding:0; border:1px solid var(--line); border-radius:7px; background:var(--cabinet); color:var(--muted); font:11px var(--font); cursor:pointer; }
+.song-share-btn:disabled { opacity:.4; cursor:default; }
+.song-share-btn:hover:not(:disabled), .song-share-btn:focus-visible { color:var(--amber); border-color:var(--amber); }
+.share-dialog { max-width:min(90vw,480px); padding:20px; border:1px solid var(--line); border-radius:14px; background:var(--cabinet); color:var(--ink); }
+.share-dialog::backdrop { background:rgba(0,0,0,.65); }
+.share-dialog h3 { margin:0 0 8px; }
+.share-dialog p { font-size:13px; color:var(--muted); }
+.share-dialog textarea { width:100%; min-width:0; margin-bottom:12px; background:var(--void); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:8px; }
+.share-dialog button { float:right; padding:6px 16px; cursor:pointer; }
+
+.share-dialog[open] { position:fixed; inset:0; margin:auto; z-index:100; }
+.share-dialog:not([open]) { display:none; }

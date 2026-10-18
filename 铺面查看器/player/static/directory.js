@@ -78,7 +78,7 @@
       currentSong = song; audio.preload = 'none';
       const preview = song.assets?.preview;
       button.hidden = !preview;
-      if (preview) audio.src = path(preview);
+      if (preview) audio.src = A.resourcePath(path(preview));
       playAutoPreview(song);
     }
     audio.addEventListener('error', () => {

@@ -6,6 +6,7 @@ import hashlib
 import html
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 from urllib.parse import quote, urlencode, urlsplit
@@ -55,7 +56,7 @@ def load_songs(root):
     return songs
 
 
-def build_share_pages(library, out, base_url='https://ub.thregren.world/', version='dev', songs=None):
+def build_share_pages(library, out, base_url='https://ub.thregren.world/', version='dev', songs=None, template=None):
     library, out = Path(library).resolve(), Path(out).resolve()
     parsed = urlsplit(base_url)
     if parsed.scheme not in ('http', 'https') or not parsed.netloc or parsed.query or parsed.fragment or parsed.username:
@@ -66,6 +67,11 @@ def build_share_pages(library, out, base_url='https://ub.thregren.world/', versi
         if os.path.commonpath([str(out), str(target.resolve())]) != str(out):
             raise ValueError('分享输出路径越界')
         write(target, data)
+    template = Path(template) if template else (out / 'index.html' if (out / 'index.html').is_file() else Path(__file__).resolve().parents[1] / '铺面查看器/player/static/index.html')
+    viewer = template.read_text(encoding='utf-8')
+    if 'id="app"' not in viewer or 'id="panel"' not in viewer:
+        raise ValueError('分享模板必须是完整查看器入口')
+    viewer = re.sub(r'((?:src|href)=["\'])static/', lambda m: m[1] + html.escape(base_url, quote=True) + 'static/', viewer)
     records, seen = [], {}
     try:
         from PIL import Image, ImageOps
@@ -114,19 +120,22 @@ def build_share_pages(library, out, base_url='https://ub.thregren.world/', versi
         description = (artist + ' · ' if artist else '') + '查看歌曲谱面，打开后从头开始。'
         page = 'share/' + key + '.html'
         page_url = base_url + page + '?' + urlencode({'song': identity})
-        direct = base_url + '?' + urlencode({'song': identity})
         e = lambda value: html.escape(str(value), quote=True)
         image_type = 'image/jpeg' if image_path.lower().endswith(('.jpg', '.jpeg')) else 'image/png'
         size = '' if not width else '<meta property="og:image:width" content="%s"><meta property="og:image:height" content="%s">' % (width, height)
-        content = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0a0d14">
-<base href="{base}"><title>{title} · 谱面确认</title><meta name="description" content="{description}">
-<meta name="jubeat-share-song" content="{id}"><meta property="og:type" content="website"><meta property="og:site_name" content="jubeat 谱面确认">
+        metadata = '''
+<meta name="jubeat-share-root" content="{base}"><meta name="jubeat-share-song" content="{id}">
+<meta name="description" content="{description}"><meta property="og:type" content="website"><meta property="og:site_name" content="jubeat 谱面确认">
 <meta property="og:title" content="{title} · 谱面确认"><meta property="og:description" content="{description}"><meta property="og:url" content="{url}">
 <meta property="og:image" content="{image}"><meta property="og:image:secure_url" content="{image}"><meta property="og:image:type" content="{image_type}">{size}
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="{title} · 谱面确认"><meta name="twitter:image" content="{image}">
-<link rel="canonical" href="{url}"><style>.share-intro{{margin:0;background:#0a0d14;color:#e8ebf2;min-height:100vh;display:flex;align-items:center;justify-content:center;font:16px system-ui}}.share-intro main{{max-width:480px;padding:24px;text-align:center}}.share-intro img{{width:200px;height:200px;object-fit:cover;border-radius:16px}}.share-intro h1{{font-size:22px}}.share-intro p{{color:#98a3b9}}.share-intro a{{color:#ffb020}}</style>
-</head><body class="share-intro"><main><img src="{image}" alt="{image_alt}" width="200" height="200"><h1>{title}</h1><p>{artist}</p><p data-share-status>正在打开谱面…</p><a href="{direct}">打开歌曲谱面</a><noscript><p>启用 JavaScript 后可自动打开。</p></noscript></main><script src="static/share-entry.js?v={version}"></script></body></html>'''.format(base=e(base_url), title=e(title), description=e(description), id=e(identity), url=e(page_url), image=e(image_url), image_type=e(image_type), size=size, artist=e(artist), direct=e(direct), version=e(version), image_alt=e(title+' 专辑封面' if cover else '谱面确认图标'))
+<link rel="canonical" href="{url}">
+'''.format(base=e(base_url), title=e(title), description=e(description), id=e(identity), url=e(page_url), image=e(image_url), image_type=e(image_type), size=size)
+        content = re.sub(r'<title>.*?</title>', lambda _: '<title>' + e(title) + ' · 谱面确认</title>', viewer, count=1, flags=re.S)
+        content = content.replace('</head>', metadata + '</head>', 1)
+        content = re.sub(r'<img id="cover"[^>]*>', lambda _: '<img id="cover" class="on" src="' + e(image_url) + '" alt="' + e(title + ' 专辑封面') + '" />', content, count=1)
+        for tag, identifier, value in [('h2', 'npTitle', title), ('div', 'npArtist', artist)]:
+            content = re.sub(r'(<'+tag+r'[^>]*id="'+identifier+r'"[^>]*>).*?(</'+tag+'>)', lambda m: m[1] + e(value) + m[2], content, count=1, flags=re.S)
         emit(page, content.encode('utf-8'))
         records.append({'id': identity, 'page': page, 'image': image_path, 'title': title})
     summary = {'version': 1, 'songs': len(records), 'base_url': base_url, 'pages': records}
@@ -140,6 +149,7 @@ if __name__ == '__main__':
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('--base-url', default='https://ub.thregren.world/')
     parser.add_argument('--version', default='dev')
+    parser.add_argument('--template', type=Path, help='完整查看器 index.html；部署时使用带缓存摘要的入口')
     args = parser.parse_args()
-    result = build_share_pages(args.library, args.out, args.base_url, args.version)
+    result = build_share_pages(args.library, args.out, args.base_url, args.version, template=args.template)
     print(json.dumps({'songs': result['songs'], 'base_url': result['base_url']}, ensure_ascii=False))

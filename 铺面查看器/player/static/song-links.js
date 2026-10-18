@@ -36,7 +36,7 @@
     }
     async function share(){
       const song=A.state.song;if(!song?.id)return;
-      const url=build(song.id,button.dataset.chart||null,document.baseURI);
+      const url=build(song.id,button.dataset.chart||null,A.shareBase||document.baseURI);
       if(navigator.share){
         try{await navigator.share({title:song.title+' · 谱面确认',text:song.artist||'查看歌曲谱面',url});return;}
         catch(error){if(error.name==='AbortError')return;}

@@ -21,10 +21,19 @@ function parse(search,shared){
  vm.runInNewContext(source,{window:{JubeatApp:A},URLSearchParams,location:{search},document:{querySelector:()=>shared?{content:shared}:null}});
  return A.urlState();
 }
-test('share pages always open their card song at the beginning without autoplay',()=>{
- const value=parse('?song=other&chart=ADV&t=99&play=1','音乐魔方/song');
+test('direct shared viewer ignores progress/autoplay and uses the page song',()=>{
+ const value=parse('?song=wrong&chart=ADV&t=90&play=1','音乐魔方/song');
  assert.equal(value.song,'音乐魔方/song');assert.equal(value.chart,'ADV');assert.equal(value.t,null);assert.equal(value.play,false);assert.equal(value.paused,true);
 });
 test('existing root deep links retain recording/automation time compatibility',()=>{
  const value=parse('?song=legacy&chart=EXT&t=45.25&play=1');assert.equal(value.song,'legacy');assert.equal(value.t,45.25);assert.equal(value.play,true);
+});
+
+test('shared pages resolve all data/media assets from the configured same-origin site root',()=>{
+ const full=fs.readFileSync(new URL('../铺面查看器/player/static/app-base.js',import.meta.url),'utf8');
+ const code=full.slice(full.indexOf('  let shareBase ='),full.indexOf('  /**\n   * 同押光晕'));
+ function resources(root){return vm.runInNewContext(code+';({shareBase,resourcePath,PATHS,chartPath,audioUrl,coverUrl,thumbUrl})',{URL,location:{href:'https://example.com/view/share/key.html',origin:'https://example.com'},document:{baseURI:'https://example.com/view/share/key.html',querySelector:()=>root?{content:root}:null}});}
+ const A=resources('https://example.com/view/'),song={assets:{audio:'songs/a.wav',cover:'songs/a.png',thumb:'songs/a.jpg','chart:EXT':'songs/a.json'}};
+ assert.equal(A.PATHS.library,'/view/data/library.json');assert.equal(A.audioUrl(song),'/view/songs/a.wav');assert.equal(A.chartPath(song,{code:'EXT'}),'/view/songs/a.json');assert.equal(A.coverUrl(song),'/view/songs/a.png');assert.equal(A.thumbUrl(song),'/view/songs/a.jpg');assert.equal(A.resourcePath('media/se/clap.ogg'),'/view/media/se/clap.ogg');
+ assert.equal(resources('https://evil.example/').PATHS.library,'data/library.json');assert.equal(resources(null).audioUrl(song),'songs/a.wav');
 });

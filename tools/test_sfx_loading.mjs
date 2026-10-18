@@ -19,7 +19,7 @@ function player({online = true, initialContext = true, suspended = false} = {}) 
     createBufferSource() {return {...node(), start(t) {started.push({buffer: this.buffer, t});}};},
   };
   let contexts = 0, synths = 0;
-  const A = {
+  const A = {resourcePath: value => value,
     frontVersion: () => 'test', els: {metroSound: {value: 'billy'}, metroVolume: {value: '100'}, rate: {value: '1'}},
     state: {playing: false, notes: [{t: .1}], _parsed: {secToBeat: t => t}},
     master: () => null, requestPaint() {}, rawMediaTime: () => position, currentMediaTime: () => position,

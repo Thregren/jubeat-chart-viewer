@@ -311,7 +311,21 @@
   //   media/cover/<曲目>.<ext>              封面原图
   //   media/thumb/<曲目>.jpg                列表缩略图
   //   markers/<设计目录>/<前缀>_<通道><帧>.png   marker 素材（见 marker/jubeat_official/README.md）
-  const PATHS = {
+  // 分享页位于 /share/，资源仍从站点根目录读取；不依赖 CSP 禁止的 <base>。
+  let shareBase = document.baseURI;
+  let resourcePrefix = "";
+  const shareRoot = document.querySelector('meta[name="jubeat-share-root"]');
+  if (shareRoot) {
+    try {
+      const root = new URL(shareRoot.content, location.href);
+      if (root.origin === location.origin && /^https?:$/.test(root.protocol) && !root.username && !root.password && !root.search && !root.hash && root.pathname.endsWith("/")) {
+        shareBase = root.href;
+        resourcePrefix = root.pathname;
+      }
+    } catch (_) { /* 无效元数据按普通入口处理 */ }
+  }
+  const resourcePath = path => resourcePrefix + path;
+  const PATHS = Object.fromEntries(Object.entries({
     library: "data/library.json",
     markers: "data/markers.json",
     markersBase: "markers/",
@@ -319,7 +333,7 @@
     audio: "media/audio/",
     cover: "media/cover/",
     thumb: "media/thumb/",
-  };
+  }).map(([key, value]) => [key, resourcePath(value)]));
 
   /** 逐段 encodeURIComponent：曲名里可能有空格、#、?、日文等 */
   function encPath(path) {
@@ -332,24 +346,24 @@
   }
 
   function chartPath(song, chart) {
-    if (song.assets && song.assets[`chart:${chart.code}`]) return encPath(song.assets[`chart:${chart.code}`]);
+    if (song.assets && song.assets[`chart:${chart.code}`]) return resourcePath(encPath(song.assets[`chart:${chart.code}`]));
     return `${PATHS.charts}${encPath(stemOf(song.id))}/${encodeURIComponent(chart.code)}.json`;
   }
 
   function audioUrl(song) {
     if (song.assets && !song.assets.audio) return "";
-    if (song.assets && song.assets.audio) return encPath(song.assets.audio);
+    if (song.assets && song.assets.audio) return resourcePath(encPath(song.assets.audio));
     return `${PATHS.audio}${encPath(stemOf(song.id))}.ogg`;
   }
 
   function coverUrl(song) {
-    if (song.assets && song.assets.cover) return encPath(song.assets.cover);
+    if (song.assets && song.assets.cover) return resourcePath(encPath(song.assets.cover));
     const ext = (String(song.cover || "").match(/\.[a-z0-9]+$/i) || [".png"])[0];
     return `${PATHS.cover}${encPath(stemOf(song.id))}${ext}`;
   }
 
   function thumbUrl(song) {
-    if (song.assets && song.assets.thumb) return encPath(song.assets.thumb);
+    if (song.assets && song.assets.thumb) return resourcePath(encPath(song.assets.thumb));
     return `${PATHS.thumb}${encPath(stemOf(song.id))}.jpg`;
   }
 
@@ -518,6 +532,8 @@
     normalizeSearch,
     chartOf,
     PATHS,
+    resourcePath,
+    shareBase,
     encPath,
     chartPath,
     audioUrl,

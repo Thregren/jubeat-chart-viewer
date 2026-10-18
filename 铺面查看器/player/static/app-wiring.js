@@ -547,11 +547,19 @@
     if (now - versionCheckedAt < 60_000) return;
     versionCheckedAt = now;
     try {
-      const res = await fetch(`index.html?__v=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(A.resourcePath(`index.html?__v=${Date.now()}`), { cache: "no-store" });
       if (!res.ok) return;
       const m = /app\.js(?:\.[a-f0-9]{20}\.js)?\?v=([^"'&\s]+)/.exec(await res.text());
       if (!m || m[1] === frontVersion()) return;
-      versionReloaded = true;                                 // 只重载一次，别来回刷
+      versionReloaded = true;
+      if (document.querySelector('meta[name="jubeat-share-song"]')) {
+        // 分享页在部署时重建；更新期间最多刷新一次，避免旧页面反复重载。
+        const key = "jubeat-share-refresh:" + location.pathname + ":" + m[1];
+        try {
+          if (sessionStorage.getItem(key)) return;
+          sessionStorage.setItem(key, "1");
+        } catch (_) { return; }
+      }
       console.info(`[jubeat] 前端已更新 ${frontVersion()} → ${m[1]}，重载`);
       location.reload();
     } catch (_) {

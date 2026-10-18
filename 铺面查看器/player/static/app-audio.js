@@ -70,7 +70,7 @@
       try {
         for (const ext of SE_EXT) {
           try {
-            const res = await fetch(`media/se/${name}.${ext}?v=${frontVersion()}`, {
+            const res = await fetch(A.resourcePath(`media/se/${name}.${ext}?v=${frontVersion()}`), {
               cache: previous ? "reload" : "force-cache", signal: load.controller.signal,
             });
             if (!current()) return;

@@ -92,7 +92,7 @@
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const manifest = await Runtime.readJSON(res);
       const assembled = await window.JubeatDirectory.loadCatalog(manifest, async (path) => {
-        const part = await fetch(path + (force ? '?reindex=1' : ''),
+        const part = await fetch(A.resourcePath(path) + (force ? '?reindex=1' : ''),
           { signal: request.signal, cache: force ? 'reload' : 'default' });
         if (part.status === 404) return null;
         if (!part.ok) throw new Error(`版本索引读取失败（${part.status}）`);

@@ -63,8 +63,9 @@ try {
             $indexes = $data['versionIndexes'] ?? [];
             if (!is_array($indexes) || count($indexes)>256 || count(array_unique($indexes))!==count($indexes)) throw new RuntimeException('Invalid version indexes');
             foreach ($indexes as $relative) {
-                if (!is_string($relative) || !preg_match('~^data/versions/[a-zA-Z0-9_./-]+\\.json$~D', $relative)
-                    || preg_match('~(?:^|/)\\.\\.?(?:/|$)|//~', $relative)) throw new RuntimeException('Unsafe version index');
+                if (!is_string($relative) || strlen($relative)>512 || !str_starts_with($relative, 'data/versions/')
+                    || !str_ends_with($relative, '.json') || strpbrk($relative, "\\\\\0?#") !== false
+                    || array_intersect(['', '.', '..'], explode('/', $relative))) throw new RuntimeException('Unsafe version index');
                 $path = $site . '/' . $relative;
                 if (!file_exists($path)) continue; // Partially installed libraries are supported by the viewer.
                 $resolved = realpath($path);

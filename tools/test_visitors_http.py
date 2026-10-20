@@ -48,8 +48,8 @@ def main():
                     except OSError:time.sleep(.05)
                 assert counts['visitors']==14
                 versions=root/'data/versions';versions.mkdir(parents=True)
-                part=versions/'a.json';part.write_text(json.dumps({'songs':[{'id':'directory/song','title':'Split Song','charts':[{'code':'ADV'}]}]}))
-                catalog.write_text(json.dumps({'format':'jubeat-directory-v1','songs':[],'versionIndexes':['data/versions/a.json','data/versions/missing.json']}))
+                part=versions/'版本 (plus)+.json';part.write_text(json.dumps({'songs':[{'id':'directory/song','title':'Split Song','charts':[{'code':'ADV'}]}]}))
+                catalog.write_text(json.dumps({'format':'jubeat-directory-v1','songs':[],'versionIndexes':['data/versions/版本 (plus)+.json','data/versions/missing.json']}))
                 status,_,counts=request({'event':'song','song':'directory/song','chart':'ADV'},cookie);assert status==200 and counts['visitors']==14,(status,counts)
                 missing=versions/'missing.json';missing.write_text(json.dumps({'songs':[{'id':'directory/added','title':'New Version','charts':[{'code':'EXT'}]}]}))
                 assert request({'event':'song','song':'directory/added','chart':'EXT'},cookie)[0]==200

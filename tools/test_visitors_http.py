@@ -47,6 +47,14 @@ def main():
                     try:counts=request()[2];break
                     except OSError:time.sleep(.05)
                 assert counts['visitors']==14
+                versions=root/'data/versions';versions.mkdir(parents=True)
+                part=versions/'a.json';part.write_text(json.dumps({'songs':[{'id':'directory/song','title':'Split Song','charts':[{'code':'ADV'}]}]}))
+                catalog.write_text(json.dumps({'format':'jubeat-directory-v1','songs':[],'versionIndexes':['data/versions/a.json','data/versions/missing.json']}))
+                status,_,counts=request({'event':'song','song':'directory/song','chart':'ADV'},cookie);assert status==200 and counts['visitors']==14,(status,counts)
+                missing=versions/'missing.json';missing.write_text(json.dumps({'songs':[{'id':'directory/added','title':'New Version','charts':[{'code':'EXT'}]}]}))
+                assert request({'event':'song','song':'directory/added','chart':'EXT'},cookie)[0]==200
+                catalog.write_text(json.dumps({'songs':[],'versionIndexes':['../outside.json']}))
+                assert request({'event':'song','song':'directory/song','chart':'ADV'},cookie)[0]==503
                 assert (private/'secret').stat().st_mode & 0o077==0 and logs[0].stat().st_mode & 0o077==0
                 print('Visitor HTTP checks passed: deduplication, signed cookies, whitelist, origin, bounds, log fields, concurrency, persistence and private permissions.')
             finally:

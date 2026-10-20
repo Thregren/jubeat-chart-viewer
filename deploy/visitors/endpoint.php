@@ -55,16 +55,40 @@ try {
         $song = null; $title = null; $chart = null;
         if ($event['event'] === 'song') {
             $catalog = getenv('VISITOR_STATS_CATALOG') ?: dirname($root) . '/data/library.json';
-            $st = stat($catalog);
-            if (!$st) throw new RuntimeException('Catalog unavailable');
-            $signature = implode(':', [$st['ino'], $st['size'], $st['mtime'], $st['ctime']]);
+            $data = json_decode(file_get_contents($catalog), true, 64, JSON_THROW_ON_ERROR);
+            if (!is_array($data['songs'] ?? null)) throw new RuntimeException('Invalid catalog');
+            $site = realpath(basename(dirname($catalog)) === 'data' ? dirname($catalog, 2) : dirname($catalog));
+            if (!$site) throw new RuntimeException('Catalog root unavailable');
+            $sources = [$catalog];
+            $indexes = $data['versionIndexes'] ?? [];
+            if (!is_array($indexes) || count($indexes)>256 || count(array_unique($indexes))!==count($indexes)) throw new RuntimeException('Invalid version indexes');
+            foreach ($indexes as $relative) {
+                if (!is_string($relative) || !preg_match('~^data/versions/[a-zA-Z0-9_./-]+\\.json$~D', $relative)
+                    || preg_match('~(?:^|/)\\.\\.?(?:/|$)|//~', $relative)) throw new RuntimeException('Unsafe version index');
+                $path = $site . '/' . $relative;
+                if (!file_exists($path)) continue; // Partially installed libraries are supported by the viewer.
+                $resolved = realpath($path);
+                if (!$resolved || !str_starts_with($resolved, $site . DIRECTORY_SEPARATOR)) throw new RuntimeException('Escaped version index');
+                $sources[] = $resolved;
+            }
+            $identities = [];
+            foreach ($sources as $file) {
+                $st = stat($file);
+                if (!$st || $st['size']>32*1024*1024) throw new RuntimeException('Invalid catalog file');
+                $identities[] = [$file,$st['ino'],$st['size'],$st['mtime'],$st['ctime']];
+            }
+            $signature = hash('sha256', json_encode($identities));
             $q = $db->query("SELECT value FROM meta WHERE key='catalog'");
             if ($q->fetchColumn() !== $signature) {
-                $data = json_decode(file_get_contents($catalog), true, 64, JSON_THROW_ON_ERROR);
-                if (!is_array($data['songs'] ?? null)) throw new RuntimeException('Invalid catalog');
                 $db->exec('DELETE FROM catalog');
                 $q = $db->prepare('INSERT INTO catalog VALUES(?,?,?)');
-                foreach ($data['songs'] as $item) $q->execute([$item['id'], $item['title'], json_encode(array_column($item['charts'], 'code'))]);
+                foreach ($sources as $index=>$file) {
+                    $part = $index===0 ? $data : json_decode(file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
+                    if (!is_array($part['songs'] ?? null)) throw new RuntimeException('Invalid catalog part');
+                    foreach ($part['songs'] as $item) $q->execute([$item['id'], $item['title'], json_encode(array_column($item['charts'], 'code'))]);
+                    clearstatcache(true,$file);$st=stat($file);
+                    if ([$file,$st['ino'],$st['size'],$st['mtime'],$st['ctime']] !== $identities[$index]) throw new RuntimeException('Catalog changed');
+                }
                 $q = $db->prepare("INSERT INTO meta VALUES('catalog',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"); $q->execute([$signature]);
             }
             $q = $db->prepare('SELECT title,charts FROM catalog WHERE id=?'); $q->execute([$event['song']]); $row = $q->fetch(PDO::FETCH_ASSOC);

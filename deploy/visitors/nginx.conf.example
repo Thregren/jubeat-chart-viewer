@@ -1,0 +1,13 @@
+# Inside this site's server {}. PHP 8.1+ with pdo_sqlite is required.
+# Adapt both absolute paths and the existing PHP-FPM socket for your server.
+location = /.visitor-private { return 404; }
+location ^~ /.visitor-private/ { return 404; }
+location = /api/visitors {
+    client_max_body_size 2k;
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME /www/wwwroot/jubeat/.visitor-private/endpoint.php;
+    fastcgi_param SCRIPT_NAME /api/visitors;
+    fastcgi_read_timeout 5s;
+    fastcgi_pass unix:/tmp/php-cgi-85.sock;
+    # Include your existing security-header snippet here if it uses add_header.
+}

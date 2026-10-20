@@ -1348,3 +1348,7 @@ input[type="range"] {
 
 .share-dialog[open] { position:fixed; inset:0; margin:auto; z-index:100; }
 .share-dialog:not([open]) { display:none; }
+
+/* Secondary information stays in the sidebar, outside the chart layout. */
+.visitor-count { flex: 0 0 auto; padding: 8px 16px max(8px, env(safe-area-inset-bottom)); color: var(--muted); font-size: 11px; line-height: 1.4; text-align: right; font-variant-numeric: tabular-nums; }
+.visitor-count[hidden] { display: none; }

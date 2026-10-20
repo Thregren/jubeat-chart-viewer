@@ -1051,3 +1051,7 @@ window.__player.seState()          // 每个打点音用的是真素材（sample
 `python3 tools/site_gc.py --out site` 预览旧哈希资源清理；加 `--apply` 才执行，并通过构建锁及事务发布。保留至少三代与最近七天引用，首次接管旧资源有七天宽限期。不要把生成的 `.build-sources.json` 和 `.asset-history.json` 当成公开曲库数据上传。
 
 版本顺序、界面名称及录制署名写法统一在 `铺面查看器/player/static/versions.json`，修改后运行 `python3 tools/version_data.py`。录制复用模块在 `tools/recording_fingerprint.mjs` 和 `tools/recording_audit.py`；私用批量工具仍不入库，接入后旧的无源指纹成片不能自动证明为最新。现有录制进程不会被中断，新核验在下次启动生效。
+
+### 可选访客统计
+
+线上站点在侧边栏底部显示累计访客数，按浏览器 cookie 去重。访问网站和加载谱面时记录 IP、UA、歌曲与难度；详细记录保存在站点根目录的受保护目录中，公开接口只返回计数。纯静态、离线与录制环境不依赖统计。部署与访问保护见 [访客统计说明](deploy/visitors/README.md)。

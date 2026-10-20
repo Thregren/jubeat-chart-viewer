@@ -114,6 +114,7 @@ fi
 if [ "$WANT_PHP" = 1 ]; then
   if command -v php >/dev/null 2>&1; then
     run "PHP 入口冒烟（tools/php_smoke_test.py）" "$PY" tools/php_smoke_test.py
+    run "访客统计 HTTP、去重与私有日志" "$PY" tools/test_visitors_http.py
   else
     run "PHP 发布检查要求解释器" sh -c 'echo "--release 必须安装 php；本地开发可运行 --full" >&2; exit 1'
   fi

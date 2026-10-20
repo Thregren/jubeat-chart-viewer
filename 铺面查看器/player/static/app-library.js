@@ -463,6 +463,7 @@
       // （code 来自 .mcz 文件名，记在曲库条目的 charts[] 里）。
       // 之前拿 chartJson.code 去比，永远是 undefined，三个难度按钮哪个都不亮。
       const activeCode = (payload.chartMeta || chart || {}).code || "";
+      A.visitors?.song(song.id, activeCode);
       for (const btn of els.diffRow.querySelectorAll(".diff-btn")) {
         btn.classList.toggle("active", !!activeCode && btn.dataset.code === activeCode);
       }

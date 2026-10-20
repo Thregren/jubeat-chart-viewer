@@ -57,3 +57,6 @@ directory-library/
 android/out/
 android/keystore/
 frontend/
+
+# Private visitor statistics and raw access records
+.visitor-private/

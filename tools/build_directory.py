@@ -32,7 +32,7 @@ def copy_or_link(source, dest):
         shutil.copyfile(source, dest)
 
 
-def build_directory(source: Path, out: Path, include_markers=True):
+def _build_directory(source: Path, out: Path, include_markers=True):
     source, out = source.resolve(), out.resolve()
     data, assets = load_directory(source)
     # 先检查再写前端，部分安装的版本只检查已安装索引中的资源。
@@ -61,6 +61,11 @@ def build_directory(source: Path, out: Path, include_markers=True):
         write_atomic(out / 'data/markers.json', json.dumps(manifest, ensure_ascii=False).encode())
     else:
         write_atomic(out / 'data/markers.json', b'{"designs":[],"error":null}')
+    from web_assets import publish_catalog, optimize_markers, hash_frontend
+    publish_catalog(out)
+    if include_markers:
+        optimize_markers(out, manifest)
+    hash_frontend(out)
     from build_share_pages import build_share_pages
     build_share_pages(out, out, version=(REPO/'VERSION').read_text().strip(), songs=data['songs'])
     stats = dict(format='jubeat-directory-v1', status='complete', songs=len(data['songs']),
@@ -71,6 +76,17 @@ def build_directory(source: Path, out: Path, include_markers=True):
     write_atomic(out / 'data/build.json', json.dumps(stats, ensure_ascii=False, indent=2).encode())
     print(json.dumps(stats, ensure_ascii=False, indent=2), flush=True)
     return stats
+
+
+def build_directory(source: Path, out: Path, include_markers=True):
+    from site_transaction import SiteTransaction
+    from web_assets import record_web_assets
+    source,out=source.resolve(),out.resolve()
+    with SiteTransaction(out) as build:
+        result=_build_directory(source,build.stage,include_markers)
+        record_web_assets(build.stage)
+        build.publish()
+    return result
 
 
 def main(argv=None):

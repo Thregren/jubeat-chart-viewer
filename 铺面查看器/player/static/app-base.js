@@ -9,6 +9,20 @@
 
   const A = (window.JubeatApp = window.JubeatApp || {});
 
+  const services = new window.JubeatServices.Services();
+  A.services = services;
+  const settings = services.register('settings', new window.JubeatServices.SettingsStore(
+    () => window.__recActive ? null : window.JubeatPreferences, () => localStorage));
+  const renderer = services.register('renderer', new window.JubeatServices.CanvasRenderer());
+  const quality = settings.access('jubeat.renderQuality');
+  if (['auto', 'sharp', 'eco'].includes(quality)) renderer.mode = quality;
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)');
+  A.renderRatio = (width, height) => renderer.ratio(width, height, {
+    dpr: window.devicePixelRatio, recording: !!window.__recActive,
+    memoryGiB: window.navigator?.deviceMemory, coarse: !!coarsePointer?.matches,
+  });
+  window.addEventListener('pagehide', event => { if (!event.persisted) services.dispose(); });
+
   const $ = (sel) => document.querySelector(sel);
 
   // 纯逻辑（谱面解析 / 顺序数字 / 难度匹配）在 core.js：node 可测，这里只薄封装
@@ -40,7 +54,6 @@
     versionFilter: $("#versionFilter"),
     listCount: $("#listCount"),
     songList: $("#songList"),
-    reindex: $("#reindex"),
     cover: $("#cover"),
     npVersion: $("#npVersion"),
     npTitle: $("#npTitle"),
@@ -212,6 +225,7 @@
   const abLoop = { a: null, b: null };
 
   const STORAGE = {
+    renderQuality: "jubeat.renderQuality",
     autoPreview: "jubeat.autoPreview",
     markerNormalSpeed: "jubeat.markerNormalSpeed",
     marker: "jubeat.marker",   // 选中的 marker 设计 id（如 tm0001）
@@ -386,28 +400,7 @@
   ];
 
   function store(key, value) {
-    const bridge = window.__recActive ? null : window.JubeatPreferences;
-    if (bridge) {
-      try {
-        if (value === undefined) {
-          const saved = bridge.getItem(key);
-          if (saved != null) return saved;
-          const legacy = localStorage.getItem(key);
-          if (legacy != null) bridge.setItem(key, legacy);
-          return legacy;
-        }
-        if (value === null) bridge.removeItem(key);
-        else bridge.setItem(key, String(value));
-      } catch (_) { /* The web storage fallback remains available. */ }
-    }
-    try {
-      if (value === undefined) return localStorage.getItem(key);
-      if (value === null) localStorage.removeItem(key);
-      else localStorage.setItem(key, String(value));
-    } catch (_) {
-      /* private mode */
-    }
-    return null;
+    return settings.access(key, value);
   }
 
   // —— utils（纯逻辑在 core.js，node 可测） ——

@@ -55,13 +55,21 @@
       tick();
     }
   }
-  async function readBytes(res, maxBytes, onProgress = () => {}) {
+  class ByteBudget {
+    constructor(limit) { this.limit = limit; this.used = 0; this.exceeded = false; }
+    add(bytes) {
+      this.used += bytes;
+      if (this.exceeded || this.used > this.limit) { this.exceeded = true; throw Error('曲库累计资源超过允许大小'); }
+    }
+  }
+  async function readBytes(res, maxBytes, onProgress = () => {}, budget = null) {
     if (!res.ok) throw new Error(`读取失败（${res.status}）`);
     const total = Number(res.headers.get("Content-Length")) || 0;
     if (total > maxBytes) { await res.body?.cancel().catch(() => {}); throw new Error("资源超过允许大小"); }
     if (!res.body || !res.body.getReader) {
       const bytes = await res.arrayBuffer();
       if (bytes.byteLength > maxBytes) throw new Error("资源超过允许大小");
+      budget?.add(bytes.byteLength);
       onProgress(bytes.byteLength, total || bytes.byteLength);
       return bytes;
     }
@@ -73,6 +81,7 @@
         if (done) break;
         length += value.byteLength;
         if (length > maxBytes) throw new Error("资源超过允许大小");
+        budget?.add(value.byteLength);
         chunks.push(value); onProgress(length, total);
       }
     } catch (err) { await reader.cancel().catch(() => {}); throw err; }
@@ -81,8 +90,8 @@
     for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.byteLength; }
     return bytes.buffer;
   }
-  async function readJSON(res) {
-    const bytes = await readBytes(res, 8 * 1024 * 1024);
+  async function readJSON(res, {budget = null, maxBytes = 8 * 1024 * 1024} = {}) {
+    const bytes = await readBytes(res, maxBytes, () => {}, budget);
     return JSON.parse(new TextDecoder().decode(bytes));
   }
   function object(value) { return !!value && typeof value === "object" && !Array.isArray(value); }
@@ -93,11 +102,12 @@
   }
   function validateLibrary(data) {
     if (!object(data) || !Array.isArray(data.songs) || data.songs.length > 50000
-      || !Array.isArray(data.versions)) throw new Error("曲库索引格式无效");
+      || !Array.isArray(data.versions) || data.versions.length > 512
+      || data.versions.some(v => typeof v !== "string" || v.length > 256)) throw new Error("曲库索引格式无效");
     const seen = new Set();
     for (const song of data.songs) {
       if (!object(song) || !safePath(song.id) || seen.has(song.id)
-        || typeof song.title !== "string" || typeof song.version !== "string"
+        || typeof song.title !== "string" || song.title.length > 4096 || typeof song.version !== "string" || song.version.length > 256
         || !Array.isArray(song.charts) || (!song.charts.length && song.resourceOnly !== true) || song.charts.length > 32
         || song.charts.some((c) => !object(c) || !safePath(c.code) || c.code.includes("/")))
         throw new Error("曲库中存在无效或重复曲目");
@@ -126,6 +136,44 @@
     }
     return data;
   }
+  function pngSize(bytes) {
+    const view = new DataView(bytes);
+    if (bytes.byteLength < 24 || view.getUint32(0) !== 0x89504e47 || view.getUint32(4) !== 0x0d0a1a0a
+        || view.getUint32(12) !== 0x49484452) throw Error('无效 marker PNG');
+    const width=view.getUint32(16),height=view.getUint32(20);
+    if (!width || !height || width>4096 || height>4096 || width*height>4*1024*1024) throw Error('Marker 图片超过像素预算');
+    return {width,height};
+  }
+  function validateMarkers(data) {
+    if(!object(data) || !Array.isArray(data.designs) || data.designs.length>128)throw Error('无效 marker 清单');
+    const seen=new Set();
+    for(const design of data.designs) {
+      if(!object(design)||!safePath(design.dir)||!safePath(design.prefix)||design.prefix.includes('/')
+          ||typeof design.id!=='string'||design.id.length>128||seen.has(design.id)||!object(design.h))throw Error('无效 marker 路径');
+      seen.add(design.id);
+      const counts=[design.ma??0,design.fr??0,...Object.values(design.h)];
+      if(counts.some(n=>!Number.isInteger(n)||n<0||n>256)||counts.reduce((a,b)=>a+b,0)>512)throw Error('Marker 帧数超出限制');
+      for(const [channel,atlas] of Object.entries(design.atlases||{})) {
+        const count=channel==='MA'?design.ma:design.h[channel.slice(1)];
+        if(!/^(MA|H[1-4])$/.test(channel)||!object(atlas)||!safePath(atlas.file)||!atlas.file.startsWith(design.dir+'/')
+            ||!Number.isInteger(atlas.width)||!Number.isInteger(atlas.height)||atlas.width<1||atlas.height<1
+            ||atlas.width>4096||atlas.height>4096||atlas.width*atlas.height>4*1024*1024
+            ||!Array.isArray(atlas.rects)||atlas.rects.length!==count)throw Error('无效 marker 图集');
+        let pixels=0;
+        for(const rect of atlas.rects) {
+          if(!Array.isArray(rect)||rect.length!==5||!rect.every(Number.isFinite)
+              ||rect.slice(0,4).some(x=>!Number.isInteger(x))||rect[0]<0||rect[1]<0||rect[2]<1||rect[3]<1
+              ||rect[2]>512||rect[3]>512||rect[0]+rect[2]>atlas.width||rect[1]+rect[3]>atlas.height
+              ||rect[4]<0||rect[4]>1)throw Error('无效 marker 图集帧');
+          pixels+=rect[2]*rect[3];if(pixels>4*1024*1024)throw Error('Marker 图集帧超过累计预算');
+        }
+      }
+    }
+    for(const [value,min,max] of [[data.unit_ms??3.3333,.1,100],[data.units_per_frame??10,1,120],
+      [data.hit_window_units?.early??-155,-4096,-1],[data.hit_window_units?.late??160,1,4096]])
+      if(!Number.isFinite(value)||value<min||value>max)throw Error('Marker 时间参数超出限制');
+    return data;
+  }
   class Semaphore {
     constructor(limit) { this.limit = limit; this.active = 0; this.queue = []; }
     run(job) { return new Promise((resolve, reject) => { this.queue.push({ job, resolve, reject }); this.drain(); }); }
@@ -139,5 +187,5 @@
   function markerRate(rate, normal) {
     return normal && Number.isFinite(rate) && rate > 0 ? rate : 1;
   }
-  return { markerRate, RequestScope, AudioSession, readBytes, readJSON, validateLibrary, validateChart, safePath, Semaphore };
+  return { ByteBudget, pngSize, validateMarkers, markerRate, RequestScope, AudioSession, readBytes, readJSON, validateLibrary, validateChart, safePath, Semaphore };
 });

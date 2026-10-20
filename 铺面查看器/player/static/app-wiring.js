@@ -74,6 +74,15 @@
 
   function bindEvents() {
     window.JubeatSongLinks.install(A);
+    const quality = document.getElementById('renderQuality');
+    if (quality) {
+      quality.value = A.services.renderer.mode;
+      quality.addEventListener('change', () => {
+        A.services.renderer.mode = ['sharp', 'eco'].includes(quality.value) ? quality.value : 'auto';
+        store('jubeat.renderQuality', A.services.renderer.mode);
+        layoutCanvas(); layoutDensity(); A.requestPaint();
+      });
+    }
     // 兜底重画：暂停时渲染循环是停着的（见 updateFrame / requestPaint），
     // 而设置区任何控件改动都要立刻反映到画面（字号滑杆、透明度、序号位置…）。
     // 与其在每个控件的回调里挨个补 requestPaint()、漏一个就出现「改了没反应」，
@@ -386,21 +395,6 @@
       searchTimer = setTimeout(renderList, 120); // 本地筛选，不用打服务器
     });
     els.versionFilter.addEventListener("change", renderList);
-    els.reindex.addEventListener("click", async () => {
-      els.reindex.disabled = true;
-      els.listCount.textContent = "重新读取…";
-      try {
-        // 静态站点：重新拉一次 data/library.json；开发服务器：带 ?reindex=1 会重建索引
-        if (A.markerLibrary?.active) await A.loadMarkers();
-        else await loadLibrary(true);
-        toast("曲库已重新读取");
-      } catch (e) {
-        toast(String(e), true);
-      } finally {
-        els.reindex.disabled = false;
-      }
-    });
-
     els.autoPreview.addEventListener("change", () => {
       store(STORAGE.autoPreview, els.autoPreview.checked ? "1" : "0");
       if (els.autoPreview.checked) A.directory.playAutoPreview(state.song);
@@ -472,6 +466,8 @@
       if(A.mode?.ownsFrame)return;
       if (e.target?.closest?.('#btnMarkerLibrary, #markerList')) return;
       const tag = (e.target && e.target.tagName) || "";
+      if (e.defaultPrevented || e.target.isContentEditable || tag === 'SUMMARY'
+          || (e.code === 'Space' && e.target.closest?.('button,a'))) return;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
         if (e.code === "Space" && e.target === els.search) return;
         if (e.target !== els.offset && e.target !== els.search) return;
@@ -538,20 +534,22 @@
    */
   let versionReloaded = false;
   let versionCheckedAt = 0;
+  const versionRequests = new window.JubeatRuntime.RequestScope();
 
   async function checkFrontVersion() {
-    if (versionReloaded || frontVersion() === "dev") return;   // dev（没有 ?v=）不参与
+    if (document.hidden || versionReloaded || frontVersion() === "dev") return;   // dev（没有 ?v=）不参与
     // 节流：切前台很频繁（每次都可能触发），一分钟查一次足够。
     // 这个请求是 cache:no-store + 唯一 query，会穿透 CDN 直达源站，别打太勤。
     const now = Date.now();
     if (now - versionCheckedAt < 60_000) return;
     versionCheckedAt = now;
+    const request = versionRequests.start(5000);
     try {
-      const res = await fetch(A.resourcePath(`index.html?__v=${Date.now()}`), { cache: "no-store" });
+      const res = await fetch(A.resourcePath('static/release.json'), {cache:'no-store', signal:request.signal});
       if (!res.ok) return;
-      const m = /app\.js(?:\.[a-f0-9]{20}\.js)?\?v=([^"'&\s]+)/.exec(await res.text());
+      const data = await window.JubeatRuntime.readJSON(res, {maxBytes:4096});
+      const m = typeof data.version === 'string' && /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(data.version) ? [null,data.version] : null;
       if (!m || m[1] === frontVersion()) return;
-      versionReloaded = true;
       if (document.querySelector('meta[name="jubeat-share-song"]')) {
         // 分享页在部署时重建；更新期间最多刷新一次，避免旧页面反复重载。
         const key = "jubeat-share-refresh:" + location.pathname + ":" + m[1];
@@ -560,15 +558,26 @@
           sessionStorage.setItem(key, "1");
         } catch (_) { return; }
       }
+      if (!document.querySelector('meta[name="jubeat-share-song"]')) {
+        // A partial rollout or cached HTML must not cause a reload loop across boots.
+        const key='jubeat-version-reload:'+location.pathname+':'+frontVersion()+':'+m[1];
+        try {
+          const last=Number(sessionStorage.getItem(key))||0;
+          if(now-last<60000)return;
+          sessionStorage.setItem(key,String(now));
+        } catch (_) { return; }
+      }
+      versionReloaded = true;
       console.info(`[jubeat] 前端已更新 ${frontVersion()} → ${m[1]}，重载`);
       location.reload();
     } catch (_) {
       /* 离线 / 被拦截就算了，下次再说 */
-    }
+    } finally { versionRequests.finish(request); }
   }
 
 
 
+  A.services.register('versionCheck', {dispose: () => versionRequests.cancel()});
   // —— 对外接口 ——
   Object.assign(A, {
     pulseGlow,

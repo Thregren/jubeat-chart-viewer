@@ -60,3 +60,6 @@ frontend/
 
 # Private visitor statistics and raw access records
 .visitor-private/
+
+# Browser regression tooling only
+tools/browser/node_modules/

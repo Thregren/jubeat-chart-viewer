@@ -100,6 +100,9 @@ def check() -> int:
     """返回不一致的项数。"""
     want = read_version()
     problems: list[str] = []
+    release = REPO / '铺面查看器/player/static/release.json'
+    if not release.is_file() or json.loads(release.read_text()).get('version') != want:
+        problems.append('release.json 与 VERSION 不一致')
 
     raw = INDEX_HTML.read_text(encoding="utf-8")
     found = sorted(html_versions(raw))
@@ -142,6 +145,7 @@ def check() -> int:
 
 def apply(version: str) -> None:
     VERSION_FILE.write_text(version + "\n", encoding="utf-8")
+    (REPO / '铺面查看器/player/static/release.json').write_text(json.dumps({'version':version},separators=(',',':'))+'\n')
     n = _bump_index(version)
     changed = [f"index.html（{n} 处 ?v= / 版本号徽章）"]
     m = _bump_html(SITE_INDEX, version)

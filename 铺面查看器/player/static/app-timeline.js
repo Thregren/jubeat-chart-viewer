@@ -8,6 +8,7 @@
   const ctx=canvas.getContext("2d"), colors=["#66dcff","#b9a0ff","#ffd16a","#7ce3a5"];
   let shown=false, model=null, notes=null, events=null, chart=null, view=null, drag=null;
   const recording=!!window.__recActive;
+  let activeBefore=null, size={w:0,h:0,dirty:true}, ariaAt=null;
   button.hidden=recording;
   (button.closest('label') || button).hidden=recording;
   button.disabled=recording;
@@ -22,12 +23,15 @@
   }
   function drawTimeline(sec) {
     const active=shown && !recording && !A.mode?.ownsFrame;
-    wrap.hidden=!active;slot.classList.toggle("timeline-open",active);
+    if (activeBefore !== active) {
+      activeBefore=active; wrap.hidden=!active;slot.classList.toggle("timeline-open",active);size.dirty=true;
+    }
     if(!active)return;
     if(drag && drag.notes!==state.notes)finish(null,true);
-    const w=canvas.clientWidth,h=canvas.clientHeight;
+    if(size.dirty){size={w:canvas.clientWidth,h:canvas.clientHeight,dirty:false};}
+    const {w,h}=size;
     if(w<1 || h<1)return;
-    const dpr=window.devicePixelRatio||1;
+    const dpr=A.renderRatio(w,h);
     if(canvas.width!==Math.round(w*dpr) || canvas.height!==Math.round(h*dpr)) {
       canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
     }
@@ -58,9 +62,13 @@
       if(n.x>=0&&n.x<=w)ctx.fillRect(n.x-2.5,y-size/2,5,size);
     }
     ctx.strokeStyle="#ff7c88";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(view.playhead,0);ctx.lineTo(view.playhead,h);ctx.stroke();ctx.lineWidth=1;
-    canvas.setAttribute("aria-valuenow",String(Math.max(0,Math.round(sec*100)/100)));
-    canvas.setAttribute("aria-valuemax",String(state.duration||0));
-    canvas.setAttribute("aria-valuetext",`第 ${(view.beat+1).toFixed(2)} 拍，${A.fmtTime(sec)}`);
+    const ariaKey=Math.floor(sec*10)+':'+state.duration;
+    if(ariaAt!==ariaKey) {
+      ariaAt=ariaKey;
+      canvas.setAttribute("aria-valuenow",String(Math.max(0,Math.round(sec*100)/100)));
+      canvas.setAttribute("aria-valuemax",String(state.duration||0));
+      canvas.setAttribute("aria-valuetext",`第 ${(view.beat+1).toFixed(2)} 拍，${A.fmtTime(sec)}`);
+    }
   }
   // Scripts can arrive across separate animation frames. Boot builds the pads before
   // starting its render loop; early resize/visibility callbacks must wait for it.
@@ -68,14 +76,14 @@
   function setShown(value) {
     if(drag)finish(null,true);
     shown=!!value&&!recording;
-    wrap.hidden=!shown;slot.classList.toggle("timeline-open",shown);
+    activeBefore=null;size.dirty=true;
     button.checked=shown;
     button.setAttribute("aria-expanded",String(shown));
     repaint();
   }
   button.addEventListener("change",()=>setShown(button.checked));
   for(const select of [division,span])select.addEventListener("change",repaint);
-  const xOf=e=>(e.clientX-canvas.getBoundingClientRect().left)*canvas.clientWidth/canvas.getBoundingClientRect().width;
+  const xOf=e=>{const rect=canvas.getBoundingClientRect();return (e.clientX-rect.left)*(size.w||canvas.clientWidth)/rect.width;};
   const clamp=t=>Math.max(0,Math.min(t,state.duration||0));
   function position(e,click=false) {
     const x=xOf(e),beat=click ? drag.view.left+x/drag.view.scale : drag.beat-(x-drag.x)/drag.view.scale;
@@ -121,8 +129,11 @@
     else return;
     e.preventDefault();e.stopPropagation();A.seekTo(clamp(sec));
   });
-  if(window.ResizeObserver)new ResizeObserver(repaint).observe(slot);
-  window.addEventListener("resize",repaint);
+  const resized=()=>{size.dirty=true;repaint();};
+  const observer=window.ResizeObserver ? new ResizeObserver(resized) : null;
+  observer?.observe(slot);
+  window.addEventListener("resize",resized);
+  A.services.register('timeline', {dispose(){observer?.disconnect();window.removeEventListener('resize',resized);}});
   Object.assign(A,{drawTimeline});
   setShown(false);
 })();

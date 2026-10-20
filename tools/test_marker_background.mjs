@@ -7,7 +7,7 @@ const manifest=JSON.parse(fs.readFileSync(new URL('../marker/jubeat_official/man
 test('all marker designs keep idle pads free of static backgrounds, including cached FR textures',()=>{
  let draws=0;
  const ctx=new Proxy({drawImage(){draws++;}},{get:(target,key)=>key in target?target[key]:()=>{}});
- const A={els:{markerCanvas:{getContext:()=>ctx},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},
+ const A={services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},
   state:{notes:[],padRects:Array.from({length:16},()=>({x:0,y:0,w:80,h:80}))},
   markerCfg:{design:null,images:new Map(),frStatic:1},PATHS:{markersBase:'markers/'},encPath:String};
  vm.runInNewContext(source,{window:{JubeatApp:A,JubeatRuntime:{Semaphore:class{},markerRate:()=>1}}});

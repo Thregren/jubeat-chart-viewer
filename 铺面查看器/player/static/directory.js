@@ -5,22 +5,47 @@
   else root.JubeatDirectory = api;
 })(typeof window !== 'undefined' ? window : globalThis, () => {
   'use strict';
-  async function loadCatalog(manifest, fetchIndex, validPath) {
+  async function loadCatalog(manifest, fetchIndex, validPath, {signal, validate, concurrency = 4, maxSongs = 50000} = {}) {
     if (!manifest.versionIndexes) return manifest;
-    if (manifest.format !== 'jubeat-directory-v1' || !Array.isArray(manifest.versionIndexes)
-        || manifest.versionIndexes.length > 256 || new Set(manifest.versionIndexes).size !== manifest.versionIndexes.length)
+    const paths = manifest.versionIndexes;
+    if (manifest.format !== 'jubeat-directory-v1' || !Array.isArray(paths)
+        || paths.length > 256 || new Set(paths).size !== paths.length
+        || !Array.isArray(manifest.songs) || manifest.songs.length > maxSongs)
       throw Error('版本索引清单无效');
-    const songs = [...(manifest.songs || [])], installed = [], absent = [], versions = [...(manifest.versions || [])];
-    for (const path of manifest.versionIndexes) {
+    for (const path of paths) {
       if (!validPath(path) || !path.startsWith('data/versions/') || !path.endsWith('.json')) throw Error('版本索引路径无效');
-      const data = await fetchIndex(path);
-      if (data === null) { absent.push(path); continue; }
-      if (data.format !== 'jubeat-directory-v1' || !Array.isArray(data.songs)) throw Error('版本曲库格式无效');
-      songs.push(...data.songs); installed.push(path);
+    }
+    const parts = new Array(paths.length); let next = 0, total = manifest.songs.length, failure = null;
+    const workers = Array.from({length: Math.min(4, Math.max(1, concurrency), paths.length)}, async () => {
+      while (!failure) {
+        if (signal?.aborted) { failure = signal.reason || Error('曲库加载已取消'); break; }
+        const i = next++;
+        if (i >= paths.length) break;
+        try {
+          const part = await fetchIndex(paths[i]);
+          if (part !== null) {
+            if (part?.format !== 'jubeat-directory-v1' || !Array.isArray(part.songs)) throw Error('版本曲库格式无效');
+            total += part.songs.length;
+            if (total > maxSongs) throw Error('曲库曲目数超过允许上限');
+            validate?.({...part, versions: part.versions || []});
+          }
+          parts[i] = part;
+        } catch (error) { failure ||= error; }
+      }
+    });
+    await Promise.all(workers);
+    if (failure) throw failure;
+    if (signal?.aborted) throw signal.reason || Error('曲库加载已取消');
+    const songs = [...manifest.songs], installed = [], absent = [], versions = [...(manifest.versions || [])];
+    for (let i = 0; i < parts.length; i++) {
+      const data = parts[i];
+      if (data === null) { absent.push(paths[i]); continue; }
+      for (const song of data.songs) songs.push(song);
+      installed.push(paths[i]);
       if (Array.isArray(data.versions)) versions.push(...data.versions);
     }
-    return { ...manifest, songs, versions: [...new Set([...versions, ...songs.map(s => s.version)])].sort(),
-             installedVersions: installed, absentVersionIndexes: absent };
+    return {...manifest, songs, versions: [...new Set([...versions, ...songs.map(s => s.version)])].sort(),
+      installedVersions: installed, absentVersionIndexes: absent};
   }
   function missingLabels(song) {
     const labels = {bgm:'完整音频', preview:'原试听', cover:'封面'};

@@ -62,6 +62,7 @@ run "母库转码与精简目录曲库" "$PY" tools/test_compress_directory.py
 run "PWA manifest 与安装图标" "$PY" tools/test_pwa_assets.py
 
 run "资源预算与增量索引" "$PY" tools/test_resource_limits.py
+run "版本索引、音频信息与无损 marker 图集" "$PY" tools/test_web_assets.py
 run "录制合流时间核验" "$PY" tools/test_recording_audit.py
 run "录制时间轴" "$PY" tools/test_recording_timeline.py
 run "录制片尾定格" "$PY" tools/test_recording_freeze.py

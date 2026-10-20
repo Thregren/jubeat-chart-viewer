@@ -43,6 +43,12 @@ def portable_files(root: Path) -> tuple[set[str], dict[str, bytes]]:
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     if not isinstance(catalog.get("songs"), list): raise ValueError("Invalid package catalog")
     replacements = {}
+    for index, relative in enumerate(catalog.get('versionIndexes', [])):
+        canonical = HASHED.sub('', relative)
+        if canonical != relative:
+            if not equal_files(safe_file(root, relative), safe_file(root, canonical)):
+                raise ValueError('Version index changed while packaging')
+            catalog['versionIndexes'][index] = canonical
     for song in catalog["songs"]:
         stem = song["id"][:-4] if song["id"].lower().endswith(".mcz") else song["id"]
         assets = song.get("assets", {})
@@ -63,6 +69,11 @@ def portable_files(root: Path) -> tuple[set[str], dict[str, bytes]]:
             assets[key] = canonical
     replacements["data/library.json"] = json.dumps(catalog, ensure_ascii=False, separators=(",", ":")).encode()
     retained_hashes = {rel for song in catalog["songs"] for rel in song.get("assets", {}).values() if hashed_path(rel)}
+    marker_path = root / 'data/markers.json'
+    if marker_path.is_file():
+        marker_manifest=json.loads(marker_path.read_bytes())
+        retained_hashes.update('markers/'+atlas['file'] for design in marker_manifest.get('designs', [])
+          for atlas in design.get('atlases', {}).values())
     index = root / "index.html"
     if index.is_file():
         html = index.read_text(encoding="utf-8")

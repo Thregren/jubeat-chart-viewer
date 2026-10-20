@@ -1,136 +1,79 @@
 <?php
 declare(strict_types=1);
-// Mounted only at /api/visitors by nginx; never serve the storage directory.
-umask(0077);
+// Mount only /api/visitors; all storage and helper files remain private.
+umask(0077);ini_set('display_errors','0');ini_set('log_errors','1');
+require_once __DIR__.'/visitor-storage.php';
+require_once __DIR__.'/visitor-catalog.php';
 header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store');
-header('X-Content-Type-Options: nosniff');
-function reply(int $status, array $data): never {
-    http_response_code($status);
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-    exit;
+header('Cache-Control: no-store');header('X-Content-Type-Options: nosniff');
+function reply(int $status,array $data): never {
+    http_response_code($status);echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);exit;
 }
-function private_file(string $path): void {
-    if (is_link($path)) throw new RuntimeException('Unsafe storage');
-}
-$db = null;
+$db=null;
 try {
-    $method = $_SERVER['REQUEST_METHOD'] ?? '';
-    if (!in_array($method, ['GET', 'POST'], true)) {
-        header('Allow: GET, POST'); reply(405, ['error' => 'method_not_allowed']);
+    $method=$_SERVER['REQUEST_METHOD']??'';
+    if (!in_array($method,['GET','POST'],true)) {header('Allow: GET, POST');reply(405,['error'=>'method_not_allowed']);}
+    $event=null;
+    if ($method==='POST') {
+        $expected=getenv('VISITOR_STATS_ORIGIN')?:'https://'.($_SERVER['SERVER_NAME']??'');
+        if (($_SERVER['HTTP_ORIGIN']??'')!==$expected) reply(403,['error'=>'origin_not_allowed']);
+        if (strtolower(trim(explode(';',$_SERVER['CONTENT_TYPE']??'')[0]))!=='application/json') reply(415,['error'=>'json_required']);
+        if (!ctype_digit((string)($_SERVER['CONTENT_LENGTH']??''))||(int)$_SERVER['CONTENT_LENGTH']>2048) reply(413,['error'=>'request_too_large']);
+        $event=json_decode(file_get_contents('php://input',false,null,0,2049)?:'',true);
+        if (!is_array($event)||!in_array($event['event']??null,['page','song'],true)) reply(400,['error'=>'invalid_event']);
+        if (isset($event['id'])&&(!is_string($event['id'])||!preg_match('/^[A-Za-z0-9_-]{8,80}$/D',$event['id']))) reply(400,['error'=>'invalid_id']);
+        if ($event['event']==='song'&&(!is_string($event['song']??null)||strlen($event['song'])>512
+            ||!is_string($event['chart']??null)||strlen($event['chart'])>32)) reply(400,['error'=>'invalid_song']);
     }
-    $event = null;
-    if ($method === 'POST') {
-        $expected = getenv('VISITOR_STATS_ORIGIN') ?: 'https://' . ($_SERVER['SERVER_NAME'] ?? '');
-        if (($_SERVER['HTTP_ORIGIN'] ?? '') !== $expected) reply(403, ['error' => 'origin_not_allowed']);
-        if (strtolower(trim(explode(';', $_SERVER['CONTENT_TYPE'] ?? '')[0])) !== 'application/json') reply(415, ['error' => 'json_required']);
-        if (!ctype_digit((string)($_SERVER['CONTENT_LENGTH'] ?? '')) || (int)$_SERVER['CONTENT_LENGTH'] > 2048) reply(413, ['error' => 'request_too_large']);
-        $body = file_get_contents('php://input', false, null, 0, 2049);
-        $event = json_decode($body ?: '', true);
-        if (!is_array($event) || !in_array($event['event'] ?? null, ['page', 'song'], true)) reply(400, ['error' => 'invalid_event']);
-        if ($event['event'] === 'song' && (!is_string($event['song'] ?? null) || strlen($event['song']) > 512 || !is_string($event['chart'] ?? null) || strlen($event['chart']) > 32)) reply(400, ['error' => 'invalid_song']);
-    }
-    $root = getenv('VISITOR_STATS_ROOT') ?: __DIR__;
-    private_file($root);
-    if (!is_dir($root) && !mkdir($root, 0700, true)) throw new RuntimeException('Storage unavailable');
-    foreach (['visitors.sqlite', 'secret', 'secret.lock'] as $name) private_file($root . '/' . $name);
-    $db = new PDO('sqlite:' . $root . '/visitors.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    $db->exec('PRAGMA busy_timeout=3000; PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;');
-    $db->exec('CREATE TABLE IF NOT EXISTS counters (id INTEGER PRIMARY KEY CHECK(id=1), visitors INTEGER NOT NULL DEFAULT 0, views INTEGER NOT NULL DEFAULT 0);
-        INSERT OR IGNORE INTO counters(id) VALUES(1);
-        CREATE TABLE IF NOT EXISTS visitors (id TEXT PRIMARY KEY, last_key TEXT, last_at INTEGER);
-        CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT PRIMARY KEY, bucket INTEGER NOT NULL, hits INTEGER NOT NULL);
-        CREATE TABLE IF NOT EXISTS catalog (id TEXT PRIMARY KEY, title TEXT NOT NULL, charts TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);');
-    if ($event !== null) {
+    $root=getenv('VISITOR_STATS_ROOT')?:__DIR__;$db=visitor_db($root);
+    if ($event!==null) {
+        $now=time();$ip=$_SERVER['REMOTE_ADDR']??'';
+        if (!filter_var($ip,FILTER_VALIDATE_IP)) throw new RuntimeException('Client address unavailable');
+        $song=null;$title=null;$chart=null;
+        if ($event['event']==='song') {
+            $catalog=getenv('VISITOR_STATS_CATALOG')?:dirname($root).'/data/library.json';
+            $row=visitor_catalog($db,$catalog,$event['song'],$event['chart']);
+            if (!$row) reply(422,['error'=>'unknown_chart']);
+            $song=$event['song'];$title=$row['title'];$chart=$event['chart'];
+        }
+        $secret=visitor_secret($root);$eventId=$event['id']??bin2hex(random_bytes(16));
+        $cookie=$_COOKIE['jv_visitor']??'';$parts=is_string($cookie)?explode('.',$cookie):[];
+        if (count($parts)!==2||!preg_match('/^[a-f0-9]{32}$/D',$parts[0])
+            ||!hash_equals(hash_hmac('sha256',$parts[0],$secret),$parts[1])) {
+            // An initial response lost before Set-Cookie can retry without inventing another visitor.
+            $token=substr(hash_hmac('sha256','visitor:'.$eventId,$secret),0,32);
+            $cookie=$token.'.'.hash_hmac('sha256',$token,$secret);
+            setcookie('jv_visitor',$cookie,['expires'=>$now+31536000,'path'=>'/','secure'=>true,'httponly'=>true,'samesite'=>'Lax']);
+        } else $token=$parts[0];
+        $visitor=hash('sha256',$token);$bucket=intdiv($now,60);
         $db->exec('BEGIN IMMEDIATE');
-        $now = time();
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-        if (!filter_var($ip, FILTER_VALIDATE_IP)) throw new RuntimeException('Client address unavailable');
-        $ipHash = hash('sha256', $ip); $bucket = intdiv($now, 60);
-        $q = $db->prepare('INSERT INTO rate_limits VALUES(?,?,1) ON CONFLICT(ip) DO UPDATE SET hits=CASE WHEN bucket=excluded.bucket THEN hits+1 ELSE 1 END,bucket=excluded.bucket'); $q->execute([$ipHash, $bucket]);
-        $q = $db->prepare('SELECT hits FROM rate_limits WHERE ip=?'); $q->execute([$ipHash]);
-        if ((int)$q->fetchColumn() > 120) { $db->exec('COMMIT'); header('Retry-After: 60'); reply(429, ['error'=>'rate_limited']); }
-        $db->exec('DELETE FROM rate_limits WHERE bucket < ' . ($bucket - 2));
-        $song = null; $title = null; $chart = null;
-        if ($event['event'] === 'song') {
-            $catalog = getenv('VISITOR_STATS_CATALOG') ?: dirname($root) . '/data/library.json';
-            $data = json_decode(file_get_contents($catalog), true, 64, JSON_THROW_ON_ERROR);
-            if (!is_array($data['songs'] ?? null)) throw new RuntimeException('Invalid catalog');
-            $site = realpath(basename(dirname($catalog)) === 'data' ? dirname($catalog, 2) : dirname($catalog));
-            if (!$site) throw new RuntimeException('Catalog root unavailable');
-            $sources = [$catalog];
-            $indexes = $data['versionIndexes'] ?? [];
-            if (!is_array($indexes) || count($indexes)>256 || count(array_unique($indexes))!==count($indexes)) throw new RuntimeException('Invalid version indexes');
-            foreach ($indexes as $relative) {
-                if (!is_string($relative) || strlen($relative)>512 || !str_starts_with($relative, 'data/versions/')
-                    || !str_ends_with($relative, '.json') || strpbrk($relative, "\\\\\0?#") !== false
-                    || array_intersect(['', '.', '..'], explode('/', $relative))) throw new RuntimeException('Unsafe version index');
-                $path = $site . '/' . $relative;
-                if (!file_exists($path)) continue; // Partially installed libraries are supported by the viewer.
-                $resolved = realpath($path);
-                if (!$resolved || !str_starts_with($resolved, $site . DIRECTORY_SEPARATOR)) throw new RuntimeException('Escaped version index');
-                $sources[] = $resolved;
+        $q=$db->prepare('INSERT INTO rate_limits VALUES(?,?,1) ON CONFLICT(ip) DO UPDATE SET hits=CASE WHEN bucket=excluded.bucket THEN hits+1 ELSE 1 END,bucket=excluded.bucket');
+        $q->execute([hash('sha256',$ip),$bucket]);
+        $q=$db->prepare('SELECT hits FROM rate_limits WHERE ip=?');$q->execute([hash('sha256',$ip)]);
+        if ((int)$q->fetchColumn()>120) {$db->exec('COMMIT');header('Retry-After: 60');reply(429,['error'=>'rate_limited']);}
+        $db->exec('DELETE FROM rate_limits WHERE bucket < '.($bucket-2));
+        $q=$db->prepare('INSERT OR IGNORE INTO receipts VALUES(?,?)');$q->execute([$eventId,$now]);
+        if ($q->rowCount()) {
+            $q=$db->prepare('INSERT OR IGNORE INTO visitors(id) VALUES(?)');$q->execute([$visitor]);
+            if ($q->rowCount()) $db->exec('UPDATE counters SET visitors=visitors+1 WHERE id=1');
+            $key=hash('sha256',json_encode([$event['event'],$song,$chart]));
+            $q=$db->prepare('SELECT last_key,last_at FROM visitors WHERE id=?');$q->execute([$visitor]);$previous=$q->fetch(PDO::FETCH_ASSOC);
+            if ($previous['last_key']!==$key||$now-(int)$previous['last_at']>=10) {
+                $entry=['time'=>gmdate('c',$now),'event'=>$event['event'],'event_id'=>$eventId,'visitor'=>substr($visitor,0,16),
+                    'ip'=>$ip,'song'=>$song,'title'=>$title,'chart'=>$chart,'ua'=>substr($_SERVER['HTTP_USER_AGENT']??'',0,1024)];
+                $payload=json_encode($entry,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
+                if (strlen($payload)>32767) throw new RuntimeException('Log record too large');
+                $q=$db->prepare('INSERT INTO events(id,at,day,payload) VALUES(?,?,?,?)');$q->execute([$eventId,$now,gmdate('Y-m-d',$now),$payload]);
+                $q=$db->prepare('UPDATE visitors SET last_key=?,last_at=? WHERE id=?');$q->execute([$key,$now,$visitor]);
+                if ($event['event']==='page') $db->exec('UPDATE counters SET views=views+1 WHERE id=1');
             }
-            $identities = [];
-            foreach ($sources as $file) {
-                $st = stat($file);
-                if (!$st || $st['size']>32*1024*1024) throw new RuntimeException('Invalid catalog file');
-                $identities[] = [$file,$st['ino'],$st['size'],$st['mtime'],$st['ctime']];
-            }
-            $signature = hash('sha256', json_encode($identities));
-            $q = $db->query("SELECT value FROM meta WHERE key='catalog'");
-            if ($q->fetchColumn() !== $signature) {
-                $db->exec('DELETE FROM catalog');
-                $q = $db->prepare('INSERT INTO catalog VALUES(?,?,?)');
-                foreach ($sources as $index=>$file) {
-                    $part = $index===0 ? $data : json_decode(file_get_contents($file), true, 64, JSON_THROW_ON_ERROR);
-                    if (!is_array($part['songs'] ?? null)) throw new RuntimeException('Invalid catalog part');
-                    foreach ($part['songs'] as $item) $q->execute([$item['id'], $item['title'], json_encode(array_column($item['charts'], 'code'))]);
-                    clearstatcache(true,$file);$st=stat($file);
-                    if ([$file,$st['ino'],$st['size'],$st['mtime'],$st['ctime']] !== $identities[$index]) throw new RuntimeException('Catalog changed');
-                }
-                $q = $db->prepare("INSERT INTO meta VALUES('catalog',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"); $q->execute([$signature]);
-            }
-            $q = $db->prepare('SELECT title,charts FROM catalog WHERE id=?'); $q->execute([$event['song']]); $row = $q->fetch(PDO::FETCH_ASSOC);
-            if (!$row || !in_array($event['chart'], json_decode($row['charts'], true), true)) { $db->exec('COMMIT'); reply(422, ['error'=>'unknown_chart']); }
-            $song = $event['song']; $title = $row['title']; $chart = $event['chart'];
-        }
-        $lock = fopen($root . '/secret.lock', 'c');
-        if (!$lock || !flock($lock, LOCK_EX)) throw new RuntimeException('Secret lock unavailable');
-        if (!is_file($root . '/secret')) {
-            $f = fopen($root . '/secret', 'x');
-            if (!$f || fwrite($f, bin2hex(random_bytes(32))) !== 64) throw new RuntimeException('Secret unavailable');
-            fclose($f);
-        }
-        $secret = file_get_contents($root . '/secret'); flock($lock, LOCK_UN); fclose($lock);
-        if (!is_string($secret) || !preg_match('/^[a-f0-9]{64}$/D', $secret)) throw new RuntimeException('Invalid secret');
-        $cookie = $_COOKIE['jv_visitor'] ?? ''; $parts = is_string($cookie) ? explode('.', $cookie) : [];
-        if (count($parts) !== 2 || !preg_match('/^[a-f0-9]{32}$/D', $parts[0]) || !hash_equals(hash_hmac('sha256', $parts[0], $secret), $parts[1])) {
-            $token = bin2hex(random_bytes(16)); $cookie = $token . '.' . hash_hmac('sha256', $token, $secret);
-            setcookie('jv_visitor', $cookie, ['expires'=>$now+31536000,'path'=>'/','secure'=>true,'httponly'=>true,'samesite'=>'Lax']);
-        } else $token = $parts[0];
-        $visitor = hash('sha256', $token);
-        $q = $db->prepare('INSERT OR IGNORE INTO visitors(id) VALUES(?)'); $q->execute([$visitor]);
-        if ($q->rowCount()) $db->exec('UPDATE counters SET visitors=visitors+1 WHERE id=1');
-        $key = hash('sha256', json_encode([$event['event'], $song, $chart]));
-        $q = $db->prepare('SELECT last_key,last_at FROM visitors WHERE id=?'); $q->execute([$visitor]); $previous = $q->fetch(PDO::FETCH_ASSOC);
-        if ($previous['last_key'] !== $key || $now-(int)$previous['last_at'] >= 10) {
-            $entry = ['time'=>gmdate('c', $now),'event'=>$event['event'],'visitor'=>substr($visitor,0,16),'ip'=>$ip,'song'=>$song,'title'=>$title,'chart'=>$chart,'ua'=>substr($_SERVER['HTTP_USER_AGENT'] ?? '',0,1024)];
-            $path = $root . '/visits-' . gmdate('Y-m-d',$now) . '.log'; private_file($path);
-            $line = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
-            $f = fopen($path, 'ab');
-            if (!$f || !flock($f, LOCK_EX) || fwrite($f, $line) !== strlen($line) || !fflush($f)) throw new RuntimeException('Log unavailable');
-            flock($f, LOCK_UN); fclose($f);
-            $q = $db->prepare('UPDATE visitors SET last_key=?,last_at=? WHERE id=?'); $q->execute([$key,$now,$visitor]);
-            if ($event['event']==='page') $db->exec('UPDATE counters SET views=views+1 WHERE id=1');
         }
         $db->exec('COMMIT');
+        try {visitor_export($db,$root);} catch (Throwable $error) {error_log('[visitor-stats] export pending: '.get_class($error));}
     }
-    $counts = $db->query('SELECT visitors,views FROM counters WHERE id=1')->fetch(PDO::FETCH_ASSOC);
-    reply(200, ['visitors'=>(int)$counts['visitors'],'views'=>(int)$counts['views']]);
-} catch (Throwable $e) {
-    if ($db instanceof PDO) { try { $db->exec('ROLLBACK'); } catch (Throwable $ignored) {} }
-    error_log('[visitor-stats] ' . get_class($e));
-    reply(503, ['error'=>'statistics_unavailable']);
+    $counts=$db->query('SELECT visitors,views FROM counters WHERE id=1')->fetch(PDO::FETCH_ASSOC);
+    reply(200,['visitors'=>(int)$counts['visitors'],'views'=>(int)$counts['views']]);
+} catch (Throwable $error) {
+    if ($db instanceof PDO) {try {$db->exec('ROLLBACK');} catch (Throwable $ignored) {}}
+    error_log('[visitor-stats] '.get_class($error));reply(503,['error'=>'statistics_unavailable']);
 }

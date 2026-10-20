@@ -36,7 +36,9 @@ test('viewer storage migrates legacy values but recording presets stay local',()
  const local=new Map([['jubeat.marker','record-marker']]),persistent=new Map([['jubeat.marker','user-marker']]);
  const adapter=map=>({getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)});
  const window={JubeatPreferences:adapter(persistent)};
- const store=vm.runInNewContext(code+';store',{window,localStorage:adapter(local)});
+ const {SettingsStore}=createRequire(import.meta.url)('../铺面查看器/player/static/services.js');
+ const settings=new SettingsStore(()=>window.__recActive?null:window.JubeatPreferences,()=>adapter(local));
+ const store=vm.runInNewContext(code+';store',{window,settings});
  assert.equal(store('jubeat.marker'),'user-marker');
  local.set('jubeat.sort','title');assert.equal(store('jubeat.sort'),'title');assert.equal(persistent.get('jubeat.sort'),'title');
  window.__recActive=true;assert.equal(store('jubeat.marker'),'record-marker');

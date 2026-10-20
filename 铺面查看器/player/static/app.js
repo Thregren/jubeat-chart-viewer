@@ -42,14 +42,17 @@
       setTimeout(() => toast("检测到 iOS / iPadOS：请关掉系统静音（侧边拨片），否则可能没有声音", false, 7000), 900);
     }
     checkFrontVersion();
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) checkFrontVersion();
-    });
-    setInterval(checkFrontVersion, 5 * 60 * 1000);
+    const onVisible = () => { if (!document.hidden) checkFrontVersion(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const versionTimer = setInterval(onVisible, 5 * 60 * 1000);
+    A.services.register('boot', {dispose() {
+      clearInterval(versionTimer); document.removeEventListener('visibilitychange', onVisible);
+      cancelAnimationFrame(state.raf); state.raf=0; A.setPlaying(false);
+    }});
     layoutCanvas();
     layoutDensity();
     setSidebarOpen(!isNarrow());   // 窄屏默认收起曲库抽屉
-    loadLibrary();
+    const libraryReady = loadLibrary();
     loadMarkers();
     state.raf = requestAnimationFrame(updateFrame);
     // 打点音排程器（25ms 一次，和渲染帧率解耦）不再常驻：setPlaying() 会在
@@ -109,34 +112,20 @@
       }),
     };
     const url = urlState();
-    if (url.song) {
-      const ready = () => {
-        const song = state.songs.find((s) => s.id === url.song);
-        if (!song) { toast("分享的曲目不在当前曲库中", true); return; }
-        selectSong(song, url.chart).then(() => {
-          if (url.play) play();
-          // 不自动播就把界面摆成暂停态。别直接 pause()：音源还在下的时候
-          // 用户可能已经点过播放，那是个排队中的请求，不能被这里取消。
-          else if (!state.playing) pause();
-        });
-      };
-      if (state.songs.length) ready();
-      else {
-        // 曲库是异步加载的，深链接要等它。以前这里是个没有上限的 setInterval：
-        // 曲库加载失败（404 / 断网）就永远每 200ms 醒一次，闭包还一直挂着 ready。
-        // 给个上限，到点就放弃并说明，别默默烧一辈子。
-        const deadline = Date.now() + 20000;
-        const timer = setInterval(() => {
-          if (state.songs.length) {
-            clearInterval(timer);
-            ready();
-          } else if (Date.now() > deadline) {
-            clearInterval(timer);
-            console.warn("[jubeat] 曲库 20s 内没加载出来，放弃深链接定位");
-          }
-        }, 200);
-      }
-    }
+    let restored = false;
+    A.restoreSharedSong = async () => {
+      if (!url.song || restored) return;
+      const song = state.songs.find(s => s.id === url.song);
+      if (!song) { toast('分享的曲目不在当前曲库中', true); return; }
+      restored = true;
+      await selectSong(song, url.chart);
+      if (url.play) await play();
+      else if (!state.playing) pause();
+    };
+    window.__player.ready = libraryReady;
+    const library = await libraryReady;
+    if (library) await A.restoreSharedSong();
+
   }
 
   main().catch((err) => {

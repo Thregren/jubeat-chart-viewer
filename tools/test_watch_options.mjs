@@ -37,7 +37,7 @@ test('sustained faster rhythm splits once; BPM changes, simultaneous heads and h
 });
 function renderer(search=''){
  const fills=[],ctx=new Proxy({measureText:()=>({width:20}),fillText(text){fills.push({text,color:this.fillStyle});}},{get(target,key){return key in target?target[key]:()=>{};}});
- const A={els:{markerCanvas:{getContext:()=>ctx},showNumbers:{checked:true}},state:{notes:make([0,.25,.75])},numCfg:{color:'#123456',colorMode:'custom',scale:1,alpha:1,corner:true},normalizeHexColor:color=>color};
+ const A={services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},showNumbers:{checked:true}},state:{notes:make([0,.25,.75])},numCfg:{color:'#123456',colorMode:'custom',scale:1,alpha:1,corner:true},normalizeHexColor:color=>color};
  const window={JubeatApp:A,JubeatCore:Core,JubeatRuntime:{Semaphore:class{}}};
  // Expose the existing renderer only in this VM, then assert actual canvas fill colors.
  const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js',import.meta.url),'utf8').replace('Object.assign(A, {','Object.assign(A, { testDraw: drawOrderNumber,');

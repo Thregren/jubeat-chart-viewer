@@ -15,7 +15,7 @@ test('density renderer independently bounds tick count and tolerates invalid cal
  for(const duration of [Infinity,1e300,21600]){
   let strokes=0;const ctx=new Proxy({}, {get:(_,key)=>key==='stroke'?()=>{if(++strokes>513)throw Error('unbounded ticks')}:()=>{}});
   const canvas=()=>({width:640,height:40,style:{},parentElement:{getBoundingClientRect:()=>({width:640})},getContext:()=>ctx});
-  const A={Core,els:{densityCanvas:canvas()},state:{duration,notes:[{t:duration}]},abLoop:{},fmtTime:String,currentMediaTime:()=>0};
+  const A={renderRatio:()=>1,Core,els:{densityCanvas:canvas()},state:{duration,notes:[{t:duration}]},abLoop:{},fmtTime:String,currentMediaTime:()=>0};
   vm.runInNewContext(fs.readFileSync(new URL('../铺面查看器/player/static/app-density.js',import.meta.url),'utf8'),{window:{JubeatApp:A,devicePixelRatio:1},document:{createElement:canvas},getComputedStyle:()=>({})});
   A.layoutDensity();assert.ok(strokes<=512);assert.ok(Number.isFinite(A.density.dur));
  }

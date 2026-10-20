@@ -20,6 +20,17 @@ from smoke_test import make_fixture
 REPO = Path(__file__).resolve().parent.parent
 
 class BuildAssets(unittest.TestCase):
+    def test_library_archive_excludes_online_pages_and_local_helpers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);site=root/'site';(site/'data').mkdir(parents=True)
+            (site/'data/library.json').write_text(json.dumps({'format':'jubeat-directory-v1','songs':[],'versionIndexes':[]}))
+            for name in ['index.html','static/app.js','share/song.html','启动查看器.py','使用说明.txt']:
+                path=site/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('not a library resource')
+            result=subprocess.run([sys.executable,str(REPO/'tools/pack_android_res.py'),'--src',str(site),'--out',str(root/'out'),'--verify'],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            with zipfile.ZipFile(next((root/'out').glob('*.zip'))) as archive:
+                self.assertEqual(archive.namelist(),['data/library.json'])
+
     def test_source_replaced_with_same_mtime_rebuilds_chart_and_audio(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); source = root/'song.mcz'; out = root/'site'
@@ -74,14 +85,17 @@ class BuildAssets(unittest.TestCase):
             unpack = root/'unpacked'
             with zipfile.ZipFile(archive) as zf:
                 self.assertIn('.htaccess', zf.namelist())
-                self.assertFalse(any(hashed_path(name) or name.startswith('.build-state/') for name in zf.namelist()))
+                self.assertFalse(any((hashed_path(name) and not name.startswith('markers/')) or name.startswith('.build-state/') for name in zf.namelist()))
                 zf.extractall(unpack)
             self.assertEqual(before, (site/'data/library.json').read_bytes())
             stage_portable(site, root/'desktop-site')
             stage_php(site, root/'php-site')
             for staged in [root/'desktop-site',root/'php-site']:
                 self.assertEqual((staged/'data/library.json').read_bytes(), (unpack/'data/library.json').read_bytes())
-                self.assertFalse(any(hashed_path(p.relative_to(staged).as_posix()) for p in staged.rglob('*') if p.is_file()))
+                self.assertFalse(any((hashed_path(p.relative_to(staged).as_posix()) and 'markers' not in p.relative_to(staged).parts) for p in staged.rglob('*') if p.is_file()))
+            marker_data=json.loads((unpack/'data/markers.json').read_text())
+            for design in marker_data['designs']:
+                for atlas in design.get('atlases',{}).values():self.assertTrue((unpack/'markers'/atlas['file']).is_file())
             self.assertTrue((root/'php-site/.htaccess').is_file())
             catalog = json.loads((unpack/'data/library.json').read_text())
             for song in catalog['songs']:

@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const KEYS = new Set([
+  'renderQuality',
   'markerNormalSpeed','marker','metroSound','metroVolume','showCombo','firstMarker','showNumbers',
   'numScale','numAlpha','numGlowAlpha','numCorner','numColorMode','numColor','showChordGlow',
   'chordGlowStyle','phraseMult','phraseFloor','phraseMax','chordGlowPair','settingsVersion',

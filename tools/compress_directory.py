@@ -66,7 +66,7 @@ def convert(source, out, master, report, jobs=4):
                 tmp.replace(dest)
             info=probe(dest);stream=info['streams'][0]
             if stream['codec_name']!='opus' or stream['sample_rate']!='48000':raise ValueError('编码格式不符：'+str(dest))
-            record[key]=dict(source=fingerprint,bytes=dest.stat().st_size,duration=float(info['format']['duration']),codec='opus')
+            record[key]=dict(source=fingerprint,bytes=dest.stat().st_size,duration=float(info['format']['duration']),sampleRate=int(stream['sample_rate']),channels=int(stream['channels']),codec='opus')
             assets[key]=base+'/'+dest.name;before_bytes+=st.st_size;after_bytes+=dest.stat().st_size
         if 'cover' in s['assets']:
             src=asset_path(source,s['assets']['cover']);native=asset_path(master,s['id']+'/cover.png')
@@ -90,6 +90,8 @@ def convert(source, out, master, report, jobs=4):
             value.get('meta',{})['song']='bgm.ogg'
             dest=out/base/'charts'/(code+'.json');write(dest,value);assets['chart:'+code]=base+'/charts/'+code+'.json'
         row={k:s[k] for k in FIELDS if k in s};row['assets']=assets
+        if record.get('audio'):
+            row['audioInfo']={'duration':record['audio']['duration'],'sampleRate':record['audio']['sampleRate'],'channels':record['audio']['channels']}
         with lock:
             state['done'][s['id']]=record;finished+=1;original_bytes+=before_bytes;compressed_bytes+=after_bytes
             if finished%50==0:
@@ -116,10 +118,16 @@ def convert(source, out, master, report, jobs=4):
                     try:os.link(p,dest)
                     except OSError:shutil.copyfile(p,dest)
     shutil.copyfile(source/'data/markers.json',out/'data/markers.json')
+    from web_assets import publish_catalog, optimize_markers, hash_frontend
+    publish_catalog(out)
+    optimize_markers(out, read(out/'data/markers.json'))
+    hash_frontend(out)
     from build_share_pages import build_share_pages
     build_share_pages(out, out, version=(REPO/'VERSION').read_text().strip(), songs=songs)
     summary=dict(status='complete',format='jubeat-directory-v1',profile=PROFILE,songs=len(songs),charts=sum(len(s['charts']) for s in songs),audio=sum('audio' in s['assets'] for s in songs),previews=sum('preview' in s['assets'] for s in songs),covers=sum('cover' in s['assets'] for s in songs),sourceAudioBytes=original_bytes,compressedAudioBytes=compressed_bytes,mczOpened=0,legacyMetadataRead=False,webMediaImported=False,originalsAndExactEventsIncluded=False)
     write(out/'data/build.json',summary);write(report/'转码结果.json',summary)
+    from web_assets import record_web_assets
+    record_web_assets(out)
     print(json.dumps(summary,ensure_ascii=False,indent=2),flush=True)
     return summary
 

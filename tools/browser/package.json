@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "Isolated browser regression tooling; no browser dependency is shipped to users.",
+  "devDependencies": {"playwright": "1.62.1"}
+}

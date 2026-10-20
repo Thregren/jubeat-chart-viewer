@@ -178,6 +178,7 @@
         return;
       }
     }
+    const forceUi = paintDirty || !state.playing || state.scrubbing;
     paintDirty = false;
     state.raf = requestAnimationFrame(updateFrame);
     const mediaT = renderMediaTime();   // 画面比音频位置提前一个输出延迟，和耳朵对齐
@@ -207,7 +208,7 @@
     // 百分秒没变化时不要反复提交 textContent。
     const timeText = fmtTime(mediaT + (state.baseOffset || 0)
       - (Number(els.offset.value) || 0) / 1000);
-    if (state.lastTimeText !== timeText) {
+    if (A.services.renderer.uiDue(now, forceUi) && state.lastTimeText !== timeText) {
       state.lastTimeText = timeText;
       els.timeNow.textContent = timeText;
     }

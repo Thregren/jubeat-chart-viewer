@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import zipfile
@@ -66,7 +67,14 @@ def package_common(root: Path, output: Path, rebuild=True):
         names.update(p.relative_to(root).as_posix() for p in (root/top).rglob('*') if p.is_file() and not any(x.startswith('.') for x in p.relative_to(root).parts))
     output.parent.mkdir(parents=True,exist_ok=True);temp=output.with_name(output.name+'.partial')
     with zipfile.ZipFile(temp,'w',compression=zipfile.ZIP_DEFLATED,allowZip64=True) as z:
-        for name in sorted(names): z.write(root/name,name)
+        for name in sorted(names):
+            if name == 'data/library.json':
+                manifest=json.loads((root/name).read_bytes())
+                manifest['versionIndexes']=[re.sub(r'\.[a-f0-9]{20}(?=\.json$)', '', p) for p in manifest.get('versionIndexes', [])]
+                manifest.pop('catalogRevision', None)
+                z.writestr(name,json.dumps(manifest,ensure_ascii=False,separators=(',',':')))
+            else:
+                z.write(root/name,name)
     with zipfile.ZipFile(temp) as z:
         if z.testzip(): raise ValueError('公共包CRC校验失败')
     temp.replace(output)

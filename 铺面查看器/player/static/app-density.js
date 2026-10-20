@@ -148,10 +148,10 @@
     const cv = els.densityCanvas;
     if (!cv || !cv.getContext) return;
     const box = cv.parentElement.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
     const w = Math.max(40, Math.round(box.width));
     // 高度由宽度决定（官方那张图就是「宽 × 39/768」），所以窗口一变条子也跟着变高变矮
     const h = Math.max(24, Math.round(densityHeight(w)));
+    const dpr = A.renderRatio(w, h);
     cv.style.width = "100%";
     cv.style.height = h + "px";
     cv.width = Math.max(1, Math.round(w * dpr));

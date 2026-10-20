@@ -4,7 +4,7 @@ const a=src.indexOf('  function drawOrderNumber('),b=src.indexOf('  function dra
 src=src.slice(0,a)+'  function drawOrderNumber(n,r,opacity){window.numbers.push({n,opacity});}\n'+src.slice(b);
 src=src.replace('frameForChannel(design, channel, frame, total);','window.testFrame(frame);');
 let sampled=null,reads=0;const frames=Array.from({length:16},(_,i)=>({complete:true,naturalWidth:1,naturalHeight:1,alpha:i===15?6:255}));
-const A={els:{markerCanvas:{getContext:()=>({clearRect(){},save(){},restore(){},beginPath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},closePath(){},clip(){},arcTo(){},drawImage(){}})},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},state:{notes:[{t:1,index:0,groupSize:2}],padRects:[{x:0,y:0,w:100,h:100}]},markerCfg:{design:{ma:24,h:{4:16}},unitMs:1,unitsPerFrame:10,window:{early:-155,late:160}}};
+const A={services:{register(){}},els:{markerCanvas:{getContext:()=>({clearRect(){},save(){},restore(){},beginPath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},closePath(){},clip(){},arcTo(){},drawImage(){}})},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},state:{notes:[{t:1,index:0,groupSize:2}],padRects:[{x:0,y:0,w:100,h:100}]},markerCfg:{design:{ma:24,h:{4:16}},unitMs:1,unitsPerFrame:10,window:{early:-155,late:160}}};
 const w={JubeatApp:A,JubeatRuntime:{Semaphore:class{},markerRate:(r,normal)=>normal?r:1},numbers:[],testFrame:i=>frames[i]};
 vm.runInNewContext(src,{window:w,console,document:{createElement:()=>({getContext:()=>({drawImage:i=>sampled=i,getImageData:()=>{reads++;return{data:[0,0,0,sampled.alpha]}}})})}});
 function draw(t){w.numbers=[];A.drawMarkers(t);return w.numbers;}

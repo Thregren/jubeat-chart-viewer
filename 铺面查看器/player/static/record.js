@@ -22,8 +22,9 @@
 
   // 成片构图：类横屏（4:3 宽扁），尺寸由录制脚本通过 rw / rh 传进来，缺省与
   // tools/rec/record.mjs 的 --card-w / --card-h 一致。
-  const CARD_W = Number(query.get("rw")) || 1440;
-  const CARD_H = Number(query.get("rh")) || 1080;
+  const size=(value,fallback)=>Number.isInteger(Number(value))&&Number(value)>=240&&Number(value)<=7680?Number(value):fallback;
+  let CARD_W=size(query.get('rw'),1440),CARD_H=size(query.get('rh'),1080);
+  if(CARD_W*CARD_H>16*1024*1024){CARD_W=1440;CARD_H=1080;}
   // 固定构图按目标画幅同比例布局，Canvas 也按实际尺寸绘制；不是先画大图再缩片。
   const LAYOUT_SCALE = Math.min(CARD_W / 1830, CARD_H / 1372);
 

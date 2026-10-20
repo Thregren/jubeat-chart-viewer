@@ -6,7 +6,7 @@ import java.util.Set;
 /** The bridge exposes viewer settings only, never paths or arbitrary preference names. */
 public final class PreferenceRules {
     private static final Set<String> KEYS = new HashSet<String>(Arrays.asList(
-        "markerNormalSpeed", "marker", "metroSound", "metroVolume", "showCombo", "firstMarker", "showNumbers",
+        "renderQuality", "markerNormalSpeed", "marker", "metroSound", "metroVolume", "showCombo", "firstMarker", "showNumbers",
         "numScale", "numAlpha", "numGlowAlpha", "numCorner", "numColorMode", "numColor", "showChordGlow",
         "chordGlowStyle", "phraseMult", "phraseFloor", "phraseMax", "chordGlowPair", "settingsVersion",
         "autoPreview", "collapsed", "sort", "holdFilter"));

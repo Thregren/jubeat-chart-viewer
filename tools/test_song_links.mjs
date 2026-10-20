@@ -17,8 +17,8 @@ test('local desktop, android and file links share the public site, never a local
  assert.throws(()=>Links.build('','EXT','https://example.com/'));
 });
 function parse(search,shared){
- const A={},source=fs.readFileSync(new URL('../铺面查看器/player/static/app-wiring.js',import.meta.url),'utf8');
- vm.runInNewContext(source,{window:{JubeatApp:A},URLSearchParams,location:{search},document:{querySelector:()=>shared?{content:shared}:null}});
+ const A={services:{register(){}}},source=fs.readFileSync(new URL('../铺面查看器/player/static/app-wiring.js',import.meta.url),'utf8');
+ vm.runInNewContext(source,{window:{JubeatApp:A,JubeatRuntime:{RequestScope:class{}}},URLSearchParams,location:{search},document:{querySelector:()=>shared?{content:shared}:null}});
  return A.urlState();
 }
 test('direct shared viewer ignores progress/autoplay and uses the page song',()=>{

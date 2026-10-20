@@ -69,60 +69,97 @@
   const FRAME_CACHE_LIMIT = 256;
   const FRAME_CACHE_BYTES = 48 * 1024 * 1024;
   let pendingDesign = null;
+  let reservedFrameBytes = 0;
 
   function pinnedFrame(url) {
     return [markerCfg.design, pendingDesign].some((d) => d && url.startsWith(markerUrl(d.dir + "/")));
   }
 
-  function trimFrameCache() {
-    let bytes=0;for(const img of markerCfg.images.values())bytes+=(img.naturalWidth||0)*(img.naturalHeight||0)*4;
+  function trimFrameCache(reserve = 0) {
+    let bytes=0;for(const img of markerCfg.images.values())bytes+=img._ownedBytes || (img.naturalWidth||0)*(img.naturalHeight||0)*4;
     for (const [url, img] of markerCfg.images) {
-      if (markerCfg.images.size <= FRAME_CACHE_LIMIT && bytes<=FRAME_CACHE_BYTES) break;
+      if (markerCfg.images.size <= FRAME_CACHE_LIMIT && bytes+reserve<=FRAME_CACHE_BYTES) break;
       if (!img._settled || pinnedFrame(url)) continue;
       markerCfg.images.delete(url);
-      bytes-=(img.naturalWidth||0)*(img.naturalHeight||0)*4;
-      for (const [key, old] of lastDrawn) if (old === img) lastDrawn.delete(key);
+      img._abort?.abort();img._source?.close?.();
+      for(const frame of img._frames?.values() || [])frame.close?.();
+      for(const [key,view] of atlasViews)if(view._parent===img)atlasViews.delete(key);
+      bytes-=img._ownedBytes || (img.naturalWidth||0)*(img.naturalHeight||0)*4;
+      for (const [key, old] of lastDrawn) if (old === img || old?._parent===img) lastDrawn.delete(key);
     }
   }
 
   function downloadFrame(img, url, src = url) {
     img._settled = false;
-    frameDownloads.run(() => new Promise((resolve) => {
+    img._promise = frameDownloads.run(async () => {
       if (markerCfg.images.get(url) !== img || !pinnedFrame(url)) {
-        img._tries = FRAME_RETRIES;
-        img._settled = true;
-        img.dispatchEvent(new Event("error"));
-        trimFrameCache(); resolve(); return;
+        img._tries=FRAME_RETRIES;img._settled=true;img.dispatchEvent(new Event('error'));return;
       }
-      let timer;
-      const finish = () => {
-        clearTimeout(timer);
-        img.removeEventListener("load", finish);
-        img.removeEventListener("error", finish);
-        img._settled = true;
-        trimFrameCache(); resolve();
-      };
-      img.addEventListener("load", finish, { once: true });
-      img.addEventListener("error", finish, { once: true });
-      timer = setTimeout(() => {
-        img._tries = FRAME_RETRIES;
-        img.src = "";
-        img.dispatchEvent(new Event("error"));
-      }, 20000);
-      img.src = src;
-      decodeFrame(img);
-    })).catch(() => {});
+      const abort = new AbortController(); img._abort = abort;
+      const timer=setTimeout(()=>abort.abort(),20000);
+      let reserved=0,source=null;const crops=new Map();
+      try {
+        const response=await fetch(src,{signal:abort.signal,cache:/\.[a-f0-9]{20}\./.test(src)?'force-cache':'default'});
+        const bytes=await window.JubeatRuntime.readBytes(response,4*1024*1024);
+        const dimensions=window.JubeatRuntime.pngSize(bytes);
+        const entries=[...atlasFrames].filter(([,metadata])=>metadata.file===url);
+        reserved=dimensions.width*dimensions.height*4+entries.reduce((sum,[,entry])=>sum+entry.rect[2]*entry.rect[3]*4,0);
+        trimFrameCache(reserved+reservedFrameBytes);
+        const used=[...markerCfg.images.values()].reduce((sum,image)=>sum+(image._ownedBytes || image.naturalWidth*image.naturalHeight*4),0);
+        if(used+reservedFrameBytes+reserved>FRAME_CACHE_BYTES){reserved=0;throw Error('Marker 解码预算不足');}
+        reservedFrameBytes+=reserved;
+        if(window.createImageBitmap) source=await window.createImageBitmap(new Blob([bytes],{type:'image/png'}));
+        else source=await new Promise((resolve,reject)=>{
+          const native=new Image();
+          const cancel=()=>{native.src='';reject(Error('Marker 加载已取消'));};
+          const clear=()=>abort.signal.removeEventListener('abort',cancel);
+          native.onload=()=>{clear();resolve(native);};native.onerror=()=>{clear();reject(Error('Marker 解码失败'));};
+          abort.signal.addEventListener('abort',cancel,{once:true});
+          if(abort.signal.aborted)cancel();else native.src=src;
+        });
+        for(const [key,metadata] of entries) {
+          const [x,y,w,h]=metadata.rect;
+          if(window.createImageBitmap)crops.set(key,await window.createImageBitmap(source,x,y,w,h));
+          else {
+            const frame=document.createElement('canvas');frame.width=w;frame.height=h;
+            frame.getContext('2d').drawImage(source,x,y,w,h,0,0,w,h);crops.set(key,frame);
+          }
+        }
+        if(abort.signal.aborted || markerCfg.images.get(url)!==img)throw Error('Marker 加载已取消');
+        img._frames=crops;img._ownedBytes=reserved;img._source=source;img.naturalWidth=source.width;img.naturalHeight=source.height;img.complete=true;
+        img.dispatchEvent(new Event('load'));
+      } catch (_) {
+        if(img._source!==source){source?.close?.();for(const frame of crops.values())frame.close?.();}
+        img.complete=true;img.dispatchEvent(new Event('error'));
+      } finally {reservedFrameBytes-=reserved;clearTimeout(timer);img._settled=true;trimFrameCache();}
+    }).catch(()=>{});
   }
 
-  function frameImage(url) {
+  const atlasFrames=new Map(),atlasViews=new Map();
+  function atlasView(url, metadata) {
+    const parent=frameImage(metadata.file);
+    let view=atlasViews.get(url);
+    if(parent._settled&&parent._tries>=FRAME_RETRIES&&!ready(parent))return frameImage(url,false);
+    if(view?._parent===parent)return view;
+    view={_parent:parent,get _crop(){return parent._frames?.has(url)?null:metadata.rect;},_alpha:metadata.rect[4],
+      get complete(){return parent.complete;},get naturalWidth(){return metadata.rect[2];},
+      get naturalHeight(){return metadata.rect[3];},get _source(){return parent._frames?.get(url) || parent._source;},
+      get _tries(){return parent._tries;},get _settled(){return parent._settled;},decode(){return parent.decode();},
+      addEventListener(...args){parent.addEventListener(...args);},removeEventListener(...args){parent.removeEventListener(...args);}};
+    atlasViews.set(url,view);return view;
+  }
+
+  function frameImage(url, useAtlas = true) {
+    if(useAtlas&&atlasFrames.has(url))return atlasView(url,atlasFrames.get(url));
     let img = markerCfg.images.get(url);
     if (img) {
       markerCfg.images.delete(url); markerCfg.images.set(url, img);
       return img;
     }
-    img = new Image();
-    img.decoding = "async";
-    img.fetchPriority = "high";
+    img = new EventTarget();
+    Object.assign(img,{complete:false,naturalWidth:0,naturalHeight:0,_source:null});
+    img.decode=()=>img._promise || Promise.resolve();
+    img._url = url;
     img._tries = 0;
     img._settled = false;
     img.addEventListener("load", repaintSoon);
@@ -133,17 +170,12 @@
   }
 
   function ready(img) {
-    return !!img && img.complete && img.naturalWidth > 0;
+    return !!img && img.complete && img.naturalWidth > 0 && img._source !== null;
   }
 
   /** 贴图到货就补画一帧：暂停时渲染循环是停着的，不补就「下完了也不显示」。 */
   function repaintSoon() {
     if (typeof A.requestPaint === "function") A.requestPaint();
-  }
-
-  /** 解码预热：decode() 幂等，失败交给 ready() 判空，别抛到控制台。 */
-  function decodeFrame(img) {
-    if (typeof img.decode === "function") img.decode().catch(() => {});
   }
 
   /** 失败了退避重试；`markerRetry=N` 同时绕开可能被缓存下来的错误响应。 */
@@ -164,6 +196,7 @@
    * 有重试额度时 error 不算数（继续等下一趟），否则一次 429 会让整套设计「缺帧」。
    */
   function whenImageSettled(img, url) {
+    if(img?._parent){img=img._parent;url=img._url;}
     if (!img) return Promise.resolve(false);
     if (ready(img)) return Promise.resolve(true);
     if (img._settled && img._tries >= FRAME_RETRIES) return Promise.resolve(false);
@@ -244,12 +277,12 @@
       // 先看状态码再看内容：服务器挂了 / 被反代挡下时回来的是 HTML 错误页，
       // 直接 res.json() 只会抛一句 "Unexpected token '<'"，看不出真正的原因。
       if (!res.ok) throw new Error(`marker 清单读取失败（${res.status}）`);
-      const data = await window.JubeatRuntime.readJSON(res);
-      if(!data||typeof data!=="object"||!Array.isArray(data.designs)||data.designs.length>128)throw Error("无效 marker 清单");
-      for(const d of data.designs){
-        if(!d||!window.JubeatRuntime.safePath(d.dir)||!window.JubeatRuntime.safePath(d.prefix)||d.prefix.includes("/"))throw Error("无效 marker 路径");
-        const counts=[d.ma??0,d.fr??0,...Object.values(d.h||{})];
-        if(counts.some(n=>!Number.isInteger(n)||n<0||n>256)||counts.reduce((a,b)=>a+b,0)>512)throw Error("marker 帧数超出限制");
+      const data = window.JubeatRuntime.validateMarkers(await window.JubeatRuntime.readJSON(res));
+      atlasFrames.clear();atlasViews.clear();
+      for(const design of data.designs) {
+        for(const [channel,atlas] of Object.entries(design.atlases || {})) {
+          atlas.rects.forEach((rect,i)=>atlasFrames.set(frameUrl(design,channel,i),{file:markerUrl(atlas.file),rect}));
+        }
       }
       if (data.error) throw new Error(String(data.error));
       if (Number(data.unit_ms) > 0) markerCfg.unitMs = Number(data.unit_ms);
@@ -296,6 +329,7 @@
    * 见 drawMarkers），不预热它们，首次使用一套设计要拉的数据量直接减半。
    */
   function gateFrameUrls(design) {
+    if(design.atlases?.MA)return [markerUrl(design.atlases.MA.file)];
     const urls = [];
     const ma = Math.max(0, Number(design.ma) || 0);
     for (let i = 0; i < ma; i++) urls.push(frameUrl(design, "MA", i));
@@ -305,6 +339,7 @@
   function burstFrameUrls(design) {
     const tier = tierOf(design, 4);
     if (!tier) return [];
+    if(design.atlases?.["H"+tier])return [markerUrl(design.atlases["H"+tier].file)];
     const urls = [];
     const n = Math.max(0, Number(design.h && design.h[tier]) || 0);
     for (let i = 0; i < n; i++) urls.push(frameUrl(design, `H${tier}`, i));
@@ -312,7 +347,7 @@
   }
 
   /**
-   * 预热一组帧：建 Image 就等于「下载 + 解码」一起排队（frameImage 里挂了 decode()）。
+   * 预热通道图集或兼容帧，等待有界下载与解码完成。
    * 已经建过的再拉一次是空操作（最近使用缓存，最多保留 256 张已完成的贴图）。
    * 返回的 Promise 在「每一帧都有结果（就绪或彻底失败）」时兑现。
    */
@@ -395,9 +430,9 @@
     fitPanel();
     const bezel = els.panel.parentElement.getBoundingClientRect();
     const inner = els.panel.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
     canvasW = inner.width;
     canvasH = inner.height;
+    const dpr = A.renderRatio(canvasW, canvasH);
     canvas.style.left = `${inner.left - bezel.left}px`;
     canvas.style.top = `${inner.top - bezel.top}px`;
     canvas.style.width = `${canvasW}px`;
@@ -824,7 +859,8 @@
     if (alpha < 1) ctx.globalAlpha = alpha;
     roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, padClipRadius(rect));
     ctx.clip();
-    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
+    if(img._crop)ctx.drawImage(img._source,...img._crop.slice(0,4),rect.x,rect.y,rect.w,rect.h);
+    else ctx.drawImage(img._source || img, rect.x, rect.y, rect.w, rect.h);
     ctx.restore();
   }
 
@@ -888,6 +924,7 @@
   let opacityCanvas = null;
   function markerOpacity(img) {
     if (!ready(img)) return 0;
+    if(Number.isFinite(img._alpha))return img._alpha;
     if (markerOpacities.has(img)) return markerOpacities.get(img);
     let opacity = 1;
     try {
@@ -895,7 +932,7 @@
       opacityCanvas.width = img.naturalWidth;
       opacityCanvas.height = img.naturalHeight;
       const sample = opacityCanvas.getContext("2d", { willReadFrequently: true });
-      sample.drawImage(img, 0, 0);
+      sample.drawImage(img._source || img, 0, 0);
       const pixels = sample.getImageData(0, 0, opacityCanvas.width, opacityCanvas.height).data;
       let peak = 0;
       for (let i = 3; i < pixels.length; i += 4) peak = Math.max(peak, pixels[i]);
@@ -1233,6 +1270,10 @@
 
 
 
+  A.services.register('markerResources',{dispose(){
+    selectToken++;for(const img of markerCfg.images.values()){img._abort?.abort();img._source?.close?.();for(const frame of img._frames?.values() || [])frame.close?.();}
+    markerCfg.images.clear();atlasViews.clear();atlasFrames.clear();lastDrawn.clear();
+  }});
   // —— 跨层可变状态 ——
   // 这几个必须是活绑定：别的层读到的是「此刻的值」，不是加载那一刻的快照。
   Object.defineProperty(A, "canvasW", {

@@ -43,7 +43,7 @@
       let loader;
       const sources = d.id ? A.markerPreviewSources(d) : [];
       if (sources.length) {
-        const image = document.createElement('img'); image.alt = ''; image.width = 80; image.height = 80;
+        const image = document.createElement('img'); image.alt = ''; image.width = 56; image.height = 56;
         picture.append(image);
         loader = window.JubeatListImages.attach(image, {source: sources[0], fallback: sources[1], lazy: true,
           active: () => active && image.isConnected});
@@ -59,6 +59,7 @@
   function setActive(on) {
     if (on === active) return;
     A.cancelLibrarySearch?.();
+    A.libraryFilters?.close();
     if (on) {
       saved = {query: els.search.value, placeholder: els.search.placeholder, title: els.search.title,
         top: els.songList.scrollTop, disabled: filters.map(el => el.disabled)};
@@ -75,6 +76,7 @@
       toggle.textContent = '图选 Marker'; toggle.setAttribute('aria-pressed', 'false');
       A.renderList(saved.top);
     }
+    A.libraryFilters?.sync();
   }
   toggle.addEventListener('click', () => setActive(!active));
   list.addEventListener('click', event => {

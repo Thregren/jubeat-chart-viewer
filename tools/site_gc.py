@@ -53,7 +53,16 @@ def candidates(root, now=None):
             keep.update(snapshot['paths'])
     # Independently protect the current index even if a deployment left stale history.
     index = json.loads((root / 'data/library.json').read_text())
+    for relative in index.get('versionIndexes',[]):
+        keep.add(relative)
+        part=root/relative
+        if part.is_file():
+            for song in json.loads(part.read_text())['songs']:keep.update(song.get('assets',{}).values())
     for song in index['songs']: keep.update(song.get('assets', {}).values())
+    marker_path=root/'data/markers.json'
+    if marker_path.is_file():
+        for design in json.loads(marker_path.read_text()).get('designs',[]):
+            keep.update('markers/'+a['file'] for a in design.get('atlases',{}).values())
     keep.update(re.findall(r'(?:src|href)="(static/[^"?]+)', (root / 'index.html').read_text()))
     return sorted(p for p in root.rglob('*') if p.is_file() and not p.is_symlink()
                   and hashed(p.relative_to(root).as_posix())

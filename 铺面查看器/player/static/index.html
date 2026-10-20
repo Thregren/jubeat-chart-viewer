@@ -8,13 +8,13 @@
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.6.38" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.38" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.38" />
+  <link rel="manifest" href="static/manifest.json?v=0.6.40" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.40" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.40" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.38" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.38" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.40" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.40" />
 </head>
 <body>
   <div id="app">
@@ -44,7 +44,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.38</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.40</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -52,37 +52,40 @@
       </header>
 
       <div class="search-block">
-        <input id="search" type="search" placeholder="搜索曲名 / 机台 / 作曲…" autocomplete="off"
-               title="忽略符号匹配：输入 SCU 也能搜到 S-C-U" />
-        <div class="filter-row">
-          <select id="versionFilter" aria-label="机台版本">
+        <div class="library-search-row">
+          <input id="search" type="search" placeholder="搜索曲名 / 机台 / 作曲…" autocomplete="off"
+                 aria-label="搜索曲目" title="忽略符号匹配：输入 SCU 也能搜到 S-C-U" />
+          <details class="library-filters" id="libraryFilters">
+            <summary aria-label="筛选与排序">筛选<span id="libraryFilterCount" hidden></span></summary>
+            <div class="library-filter-panel">
+              <label>版本<select id="versionFilter" aria-label="机台版本">
             <option value="">全部版本</option>
-          </select>
-          <select id="sortSelect" aria-label="排序方式">
-            <option value="title">排序：曲名</option>
-            <option value="version">排序：推出版本（旧→新）</option>
-            <option value="bsc-lv">排序：BSC 难度（高→低）</option>
-            <option value="adv-lv">排序：ADV 难度（高→低）</option>
-            <option value="ext-lv">排序：EXT 难度（高→低）</option>
-            <option value="bsc-notes">排序：BSC note 数（多→少）</option>
-            <option value="adv-notes">排序：ADV note 数（多→少）</option>
-            <option value="ext-notes">排序：EXT note 数（多→少）</option>
-          </select>
-        </div>
-        <div class="filter-row marker-filter-row">
-          <select id="holdFilter" aria-label="长押筛选">
+          </select></label>
+              <label>谱面<select id="holdFilter" aria-label="长押筛选">
             <option value="">全部谱面</option>
             <option value="hold">只要长押</option>
             <option value="nohold">只要非长押</option>
-          </select>
-          <button id="btnMarkerLibrary" class="marker-library-toggle" type="button"
-                  aria-pressed="false" aria-controls="songList markerList">图选 Marker</button>
+          </select></label>
+              <label class="library-sort">排序<select id="sortSelect" aria-label="排序方式">
+            <option value="title">曲名</option>
+            <option value="version">推出版本（旧→新）</option>
+            <option value="bsc-lv">BSC 难度（高→低）</option>
+            <option value="adv-lv">ADV 难度（高→低）</option>
+            <option value="ext-lv">EXT 难度（高→低）</option>
+            <option value="bsc-notes">BSC note 数（多→少）</option>
+            <option value="adv-notes">ADV note 数（多→少）</option>
+            <option value="ext-notes">EXT note 数（多→少）</option>
+          </select></label>
+              <button id="resetLibraryFilters" class="ghost-btn" type="button">重置筛选</button>
+              <button id="closeLibraryFilters" class="ghost-btn" type="button">完成</button>
+            </div>
+          </details>
         </div>
       </div>
-
       <div class="list-meta">
         <span id="listCount">加载中…</span>
-        <button id="reindex" class="ghost-btn" type="button">重新读取</button>
+        <button id="btnMarkerLibrary" class="marker-library-toggle" type="button"
+                aria-pressed="false" aria-controls="songList markerList">图选 Marker</button>
       </div>
 
       <ul id="songList" class="song-list" aria-label="曲目列表"></ul>
@@ -246,6 +249,7 @@
                           <option value="">无（仅面板灯）</option>
                         </select>
                         <span class="ctl-hint" id="markerHint" hidden>素材载入中…</span></span></label>
+          <label class="ctl"><span class="setting-label">画质</span><span class="setting-control"><select id="renderQuality" aria-label="画质"><option value="auto">自动</option><option value="sharp">清晰</option><option value="eco">省电</option></select></span></label>
           </div><div class="settings-switches">
           <label class="ctl checkbox" title="接近和命中动画保持 1× 时长，拍点仍跟随歌曲速度；刷新后保留开关状态">
                         <input id="markerNormalSpeed" type="checkbox" checked autocomplete="off" />
@@ -371,29 +375,32 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.38"></script>
-  <script src="static/song-links.js?v=0.6.38"></script>
-  <script src="static/core.js?v=0.6.38"></script>
-  <script src="static/runtime.js?v=0.6.38"></script>
+  <script src="static/sfx.js?v=0.6.40"></script>
+  <script src="static/song-links.js?v=0.6.40"></script>
+  <script src="static/core.js?v=0.6.40"></script>
+  <script src="static/runtime.js?v=0.6.40"></script>
+  <script src="static/services.js?v=0.6.40"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.38"></script>
+  <script src="static/record.js?v=0.6.40"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.6.38"></script>
-<script src="static/app-base.js?v=0.6.38"></script>
-  <script src="static/app-audio.js?v=0.6.38"></script>
-  <script src="static/first-marker.js?v=0.6.38"></script>
-  <script src="static/app-marker.js?v=0.6.38"></script>
-  <script src="static/app-density.js?v=0.6.38"></script>
-  <script src="static/rhythm-timeline.js?v=0.6.38"></script>
-  <script src="static/app-timeline.js?v=0.6.38"></script>
-  <script src="static/directory.js?v=0.6.38"></script>
-  <script src="static/list-images.js?v=0.6.38"></script>
-  <script src="static/app-visitors.js?v=0.6.38"></script>
-  <script src="static/app-library.js?v=0.6.38"></script>
-  <script src="static/marker-library.js?v=0.6.38"></script>
-  <script src="static/app-player.js?v=0.6.38"></script>
-  <script src="static/app-render.js?v=0.6.38"></script>
-  <script src="static/app-wiring.js?v=0.6.38"></script>
-  <script src="static/app.js?v=0.6.38"></script>
+  <script src="static/version-data.js?v=0.6.40"></script>
+<script src="static/app-base.js?v=0.6.40"></script>
+  <script src="static/app-audio.js?v=0.6.40"></script>
+  <script src="static/first-marker.js?v=0.6.40"></script>
+  <script src="static/app-marker.js?v=0.6.40"></script>
+  <script src="static/app-density.js?v=0.6.40"></script>
+  <script src="static/rhythm-timeline.js?v=0.6.40"></script>
+  <script src="static/app-timeline.js?v=0.6.40"></script>
+  <script src="static/directory.js?v=0.6.40"></script>
+  <script src="static/list-images.js?v=0.6.40"></script>
+  <script src="static/visitor-queue.js?v=0.6.40"></script>
+  <script src="static/app-visitors.js?v=0.6.40"></script>
+  <script src="static/app-library.js?v=0.6.40"></script>
+  <script src="static/library-filters.js?v=0.6.40"></script>
+  <script src="static/marker-library.js?v=0.6.40"></script>
+  <script src="static/app-player.js?v=0.6.40"></script>
+  <script src="static/app-render.js?v=0.6.40"></script>
+  <script src="static/app-wiring.js?v=0.6.40"></script>
+  <script src="static/app.js?v=0.6.40"></script>
 </body>
 </html>

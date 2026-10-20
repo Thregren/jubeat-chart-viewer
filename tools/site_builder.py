@@ -321,6 +321,8 @@ def build_markers(out: Path, force: bool, stats: Stats) -> list[str]:
     print(f"  marker 贴图 {len(copied)} 张 / {len(manifest['designs'])} 套设计")
     write_atomic(out / "data" / "markers.json",
                  json.dumps(manifest, ensure_ascii=False, indent=1).encode("utf-8"))
+    from web_assets import optimize_markers
+    copied.extend(optimize_markers(out, manifest))
     return copied
 
 
@@ -540,6 +542,8 @@ def run_build(args, out: Path, extension=None) -> int:
             paths.update(cover=f"media/cover/{stem}{ext}", thumb=f"media/thumb/{stem}.jpg")
         paths.update({f"chart:{c['code']}": f"data/charts/{stem}/{c['code']}.json" for c in song["charts"]})
         song["assets"] = {key: asset_alias(out, rel) for key, rel in paths.items() if (out/rel).is_file()}
+    from web_assets import enrich_songs
+    enrich_songs(out, index['songs'])
     for song in index["songs"]:
         current_hashes.update(song["assets"].values())
     if extension: extra_paths.extend(extension.assets(args, out, index, sys.modules[__name__]))

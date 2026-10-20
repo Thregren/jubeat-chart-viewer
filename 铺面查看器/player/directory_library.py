@@ -37,12 +37,20 @@ def load_directory(root: Path):
     if not isinstance(indexes, list) or len(indexes) > 256 or any(not isinstance(x, str) for x in indexes) or len(set(indexes)) != len(indexes):
         raise ValueError('版本索引清单无效')
     catalogs = [manifest]
+    total_bytes = (root / "data/library.json").stat().st_size
+    total_songs = len(manifest["songs"])
     for name in indexes:
         if not isinstance(name, str) or not name.startswith('data/versions/') or not name.endswith('.json'):
             raise ValueError('版本索引路径无效')
         path = asset_path(root, name)
         if path.is_file():  # 允许只安装部分版本包。
-            catalogs.append(read_index(path))
+            total_bytes += path.stat().st_size
+            if total_bytes > 32*1024*1024:
+                raise ValueError('曲库累计索引过大')
+            part = read_index(path); total_songs += len(part['songs'])
+            if total_songs > 50000:
+                raise ValueError('曲库曲目数过大')
+            catalogs.append(part)
     songs, seen, assets = [], set(), set()
     for catalog in catalogs:
         for song in catalog['songs']:

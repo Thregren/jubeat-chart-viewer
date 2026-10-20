@@ -209,7 +209,18 @@ def main() -> int:
     except Exception as exc:
         r.check("data/library.json 可解析", False, str(exc))
         return r.summary()
+    directory_mode=lib.get('format')=='jubeat-directory-v1'
     songs = lib.get("songs") or []
+    if directory_mode:
+        try:
+            from directory_library import load_directory
+            merged,_=load_directory(out);songs=merged['songs']
+            for relative in lib.get('versionIndexes',[]):
+                if (out/relative).is_file():want.add(relative)
+                canonical=__import__('re').sub(r'\.[a-f0-9]{20}(?=\.json$)','',relative)
+                if (out/canonical).is_file():want.add(canonical)
+        except Exception as error:
+            r.check('目录索引完整性',False,str(error));return r.summary()
     r.check("曲库非空", len(songs) > 0, f"{len(songs)} 首")
 
     # 3) 构建报告 —— 提前读：里面的「降级清单」要给逐曲检查用
@@ -233,7 +244,8 @@ def main() -> int:
         print("  ! 没有构建缓存（cache/library_index.json）：音源只按「歌还在不在索引里」算，"
               "不再逐个核对文件大小")
     for song in songs:
-        check_song(out, song, want, r, degraded, audio_map)
+        if not directory_mode:
+            check_song(out, song, want, r, degraded, audio_map)
         for rel in song.get("assets", {}).values():
             want.add(rel)
             r.check(f"内容哈希资源 {rel}", not Path(rel).is_absolute() and ".." not in Path(rel).parts and (out/rel).is_file())
@@ -255,6 +267,9 @@ def main() -> int:
                 want.add(f"markers/{rel}")
                 if not (out / "markers" / rel).is_file():
                     missing.append(rel)
+            for atlas in design.get('atlases',{}).values():
+                relative='markers/'+atlas['file'];want.add(relative)
+                r.check('marker 图集 '+relative,(out/relative).is_file())
         r.check("marker 设计数量", len(designs) >= args.min_markers, f"{len(designs)} 套")
         r.check("marker 贴图齐全", not missing,
                 f"缺 {len(missing)}/{total} 张，例如 {missing[:2]}")

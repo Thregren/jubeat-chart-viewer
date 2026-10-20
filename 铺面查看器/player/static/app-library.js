@@ -76,13 +76,17 @@
    */
   const Runtime = window.JubeatRuntime;
   A.directory = window.JubeatDirectory.install(A);
-  const libraryRequests = new Runtime.RequestScope();
-  const chartRequests = new Runtime.RequestScope();
+  const catalog = A.services.register('catalog', new window.JubeatServices.CatalogStore(state.chartCache));
+  const {libraryRequests, chartRequests} = catalog;
   window.addEventListener("pagehide", (event) => {
     if (!event.persisted) { libraryRequests.cancel(); chartRequests.cancel(); }
   });
 
-  async function loadLibrary(force = false) {
+  function loadLibrary(force = false) {
+    catalog.ready = readLibrary(force);
+    return catalog.ready;
+  }
+  async function readLibrary(force = false) {
     const request = libraryRequests.start();
     const started = performance.now();
     els.listCount.textContent = "加载中…";
@@ -90,18 +94,19 @@
       const res = await fetch(PATHS.library + (force ? "?reindex=1" : ""),
                               { cache: force ? "reload" : "default", signal: request.signal });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      const manifest = await Runtime.readJSON(res);
+      const budget = new Runtime.ByteBudget(32 * 1024 * 1024);
+      const manifest = await Runtime.readJSON(res, {budget});
       const assembled = await window.JubeatDirectory.loadCatalog(manifest, async (path) => {
         const part = await fetch(A.resourcePath(path) + (force ? '?reindex=1' : ''),
           { signal: request.signal, cache: force ? 'reload' : 'default' });
         if (part.status === 404) return null;
         if (!part.ok) throw new Error(`版本索引读取失败（${part.status}）`);
-        return Runtime.readJSON(part);
-      }, Runtime.safePath);
+        return Runtime.readJSON(part, {budget});
+      }, Runtime.safePath, {signal: request.signal, validate: Runtime.validateLibrary});
       const data = Runtime.validateLibrary(assembled);
       if (!libraryRequests.current(request)) return;
       state.songs = data.songs;
-      state.chartCache.clear();chartSizes.clear();chartBytes=0;
+      catalog.clear();
       A.metrics = A.metrics || {}; A.metrics.libraryMs = performance.now() - started;
       invalidateSongCaches();
       {
@@ -117,10 +122,12 @@
         els.versionFilter.value = data.versions.includes(selectedVersion) ? selectedVersion : "";
       }
       renderList();
+      return data;
     } catch (err) {
       if (libraryRequests.active !== request || request.signal.reason?.name === "AbortError") return;
       els.listCount.textContent = "加载失败";
-      toast(`曲库加载失败：${err.message}，请检查网络后点击“重新读取”`, true);
+      toast(`曲库加载失败：${err.message}，请检查网络后刷新页面`, true);
+      return null;
     } finally { libraryRequests.finish(request); }
   }
 
@@ -254,6 +261,7 @@
     A.metrics=A.metrics||{};A.metrics.listRows=virtualRows.size;
   }
   function renderList(scrollTop = 0){
+    A.libraryFilters?.sync();
     if (A.markerLibrary?.active) { A.markerLibrary.refresh(); return; }
     const started=performance.now(),ul=els.songList;
     cancelAnimationFrame(listRaf);listRaf=0;for(const row of virtualRows.values())disposeCover(row);songButtonById.clear();virtualRows.clear();
@@ -383,32 +391,8 @@
   // 谱面 JSON 的缓存上限。一份 .mc 解析出来的 JSON 从几十 KB 到几百 KB，
   // 以前是只进不出的 Map：一首一首听下去，内存只涨不落（手机上很致命）。
   // 40 份够来回切歌不重读，同时把最早用过的挤出去。
-  const CHART_CACHE_MAX = 40, CHART_CACHE_BYTES = 24 * 1024 * 1024;
-  const chartSizes = new Map(); let chartBytes = 0;
-
-  /** 读缓存，顺带把这一项挪到队尾（Map 保持插入序 → 队首就是最久没用过的） */
-  function chartCacheGet(key) {
-    const c = state.chartCache;
-    if (!c.has(key)) return undefined;
-    const v = c.get(key);
-    c.delete(key);
-    c.set(key, v);
-    return v;
-  }
-
-  function chartCachePut(key, payload) {
-    const c = state.chartCache;
-    chartBytes-=chartSizes.get(key)||0;
-    const bytes=payload.bytes||JSON.stringify(payload.chart).length*4;
-    chartSizes.set(key,bytes);chartBytes+=bytes;
-    c.delete(key);
-    c.set(key, payload);
-    while (c.size > CHART_CACHE_MAX || chartBytes>CHART_CACHE_BYTES) {
-      const oldest = c.keys().next().value;
-      if(oldest===undefined)break;
-      c.delete(oldest);chartBytes-=chartSizes.get(oldest)||0;chartSizes.delete(oldest);
-    }
-  }
+  const chartCacheGet = key => catalog.get(key);
+  const chartCachePut = (key, payload) => catalog.put(key, payload);
 
   async function loadChart(code) {
     A.mode?.chartChanging?.();
@@ -468,6 +452,8 @@
         btn.classList.toggle("active", !!activeCode && btn.dataset.code === activeCode);
       }
 
+      state.duration = computeDuration(parsed);
+
       // audio：WebAudio 路径只需要 fetch 一次；只有它失败时才回落 <audio>。
       // 录制模式下不加载音源：画面时间由 setFrameTime() 给定，音源只在最后合流时
       // 由录制脚本从本地 .mcz 里解出来，页面完全不必碰它（也就不存在并发取音源的冲突）。
@@ -481,8 +467,6 @@
         A.audioLoad.pending = false;
         A.updateLoadMeter();
       }
-
-      state.duration = computeDuration(parsed);
 
       els.statBpm.textContent = Core.formatBpm(parsed.timeEvents, parsed.baseBpm);
       // 长押头尾各算一颗 note（和实机 / 上面的 nTotal 同一口径）
@@ -531,6 +515,7 @@
       delete els.audio.dataset.src;
       els.audio.load();
       A.backend.buf = null;
+      if(A.metrics)A.metrics.audioPCMBytes=0;
       A.backend.mode = "element";
       A.backend.url = "";
     }

@@ -29,8 +29,8 @@ sys.path.insert(0, str(TOOLS))
 
 from pack_zip import human, pack  # noqa: E402
 
-# 不进包：前端（App 自带）、robots.txt（只有线上才用得上）
-EXCLUDES = ("index.html", "static", "robots.txt")
+# 客户端自带前端；歌曲分享页面只供线上访问，不属于可导入的曲库资源。
+EXCLUDES = ("index.html", "static", "share", "robots.txt")
 
 
 def version() -> str:
@@ -64,7 +64,11 @@ def main() -> int:
     out = out_dir / f"jubeat-library-{version()}.zip"
 
     t0 = time.time()
-    files, raw = pack(src, out, "", EXCLUDES)
+    # A library folder may also contain launch scripts, previews or local guides.
+    # Importers accept only these four resource trees, never the website itself.
+    resource_roots = {"data", "media", "songs", "markers"}
+    excludes = tuple(p.name for p in src.iterdir() if p.name not in resource_roots)
+    files, raw = pack(src, out, "", excludes)
     size = out.stat().st_size
     print(f"✓ {out}")
     print(f"  {files} 个文件  ·  原始 {human(raw)}  →  压缩后 {human(size)}  ·  {time.time() - t0:.1f}s")

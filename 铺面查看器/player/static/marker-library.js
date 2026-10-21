@@ -81,7 +81,9 @@
   toggle.addEventListener('click', () => setActive(!active));
   list.addEventListener('click', event => {
     const button = event.target.closest('[data-marker-id]');
-    if (button) A.selectMarker(button.dataset.markerId);
+    if (!button) return;
+    A.selectMarker(button.dataset.markerId);
+    if (A.isNarrow()) A.setSidebarOpen(false); // 和选歌一致：只收起窄屏抽屉。
   });
   A.markerLibrary = {get active() { return active; }, refresh, sync, setActive};
 })();

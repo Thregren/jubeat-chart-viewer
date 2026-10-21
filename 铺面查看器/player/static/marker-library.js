@@ -21,7 +21,7 @@
     cards = []; list.replaceChildren();
     const query = A.normalizeSearch(els.search.value.trim());
     const designs = [{id: '', name: '无（仅面板灯）', num: 0}, ...markerCfg.designs];
-    const found = designs.filter(d => !query || A.normalizeSearch([d.num, d.name, d.name_zh, d.name_ja, d.id].join(' ')).includes(query));
+    const found = designs.filter(d => !query || A.normalizeSearch([d.num, d.name, d.name_zh, d.name_ja, d.id, d.release].join(' ')).includes(query));
     els.listCount.textContent = markerCfg.loaded ? `${found.length} / ${designs.length} 款 Marker` : 'Marker 加载中…';
     if (!markerCfg.loaded || !found.length) {
       const li = document.createElement('li'); li.className = 'empty-list';
@@ -39,6 +39,8 @@
       const picture = document.createElement('span'); picture.className = 'marker-picture';
       const title = document.createElement('span'); title.className = 'marker-name'; title.textContent = d.id ? name(d) : d.name;
       const caption = document.createElement('span'); caption.className = 'marker-caption'; caption.textContent = d.name_zh || (d.id ? d.name_ja || '' : '关闭按键动画');
+      const release = document.createElement('span'); release.className = 'marker-release';
+      release.textContent = d.release ? d.release.replace(/[（(](\d{4}-\d{2}-\d{2})[）)]/g, ' · $1') : '版本及推出时间暂无资料';
       button.title = [title.textContent, caption.textContent, d.release].filter(Boolean).join(' · ');
       let loader;
       const sources = d.id ? A.markerPreviewSources(d) : [];
@@ -51,7 +53,9 @@
         picture.classList.add('marker-none'); picture.setAttribute('aria-hidden', 'true');
         for (let i = 0; i < 16; i++) picture.append(document.createElement('i'));
       }
-      button.append(picture, title, caption); li.append(button); list.append(li);
+      button.append(picture, title, caption);
+      if (d.id) button.append(release);
+      li.append(button); list.append(li);
       if (loader) { cards.push(loader); loader.start(); }
     }
     sync();
@@ -64,7 +68,7 @@
       saved = {query: els.search.value, placeholder: els.search.placeholder, title: els.search.title,
         top: els.songList.scrollTop, disabled: filters.map(el => el.disabled)};
       active = true; els.songList.hidden = true; list.hidden = false;
-      els.search.value = ''; els.search.placeholder = '搜索 Marker 名称 / 编号…'; els.search.title = '按名称、中文名、日文名或编号筛选 Marker';
+      els.search.value = ''; els.search.placeholder = '搜索 Marker / 版本 / 日期…'; els.search.title = '按名称、中文名、日文名、编号、版本或推出日期筛选 Marker';
       filters.forEach(el => { el.disabled = true; });
       toggle.textContent = '返回选歌'; toggle.setAttribute('aria-pressed', 'true');
       refresh();

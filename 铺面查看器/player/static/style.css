@@ -1289,20 +1289,21 @@ input[type="range"] {
 .marker-list > li { min-width: 0; }
 .marker-list .empty-list { grid-column: 1 / -1; }
 .marker-card {
-  display: grid; grid-template-columns: 56px minmax(0, 1fr); grid-template-rows: auto auto;
+  display: grid; grid-template-columns: 56px minmax(0, 1fr); grid-template-rows: auto auto auto;
   align-items: center; gap: 2px 10px; width: 100%; min-height: 76px; text-align: left;
   padding: 8px; border: 1px solid transparent; border-radius: 9px;
   background: transparent; color: var(--ink); cursor: pointer;
 }
 .marker-card:hover { border-color: var(--muted); }
 .marker-card.active { border-color: var(--amber); background: #ffb41310; }
-.marker-picture { display: grid; grid-row: 1 / span 2; place-items: center; width: 56px; height: 56px; border-radius: 6px; background: #1a2030; }
+.marker-picture { display: grid; grid-row: 1 / span 3; place-items: center; width: 56px; height: 56px; border-radius: 6px; background: #1a2030; }
 .marker-picture img { width: 56px; height: 56px; object-fit: contain; }
 .marker-picture img[hidden] { display: none; }
 .marker-picture.ph::after { content: "截图暂不可用"; font-size: 10px; color: var(--muted); }
 .marker-name, .marker-caption { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 100%; line-height: 1.35; overflow-wrap: anywhere; }
 .marker-name { align-self: end; font-size: 13px; font-weight: 600; }
 .marker-caption { align-self: start; font-size: 11px; color: var(--muted); }
+.marker-release { grid-column: 2; min-width: 0; font-size: 11px; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
 .marker-none { grid-template-columns: repeat(4, 1fr); gap: 3px; padding: 6px; }
 .marker-none i { width: 100%; height: 100%; border: 1px solid #49536b; border-radius: 3px; }
 

@@ -1,0 +1,217 @@
+{
+ "checked_on": "2026-10-22",
+ "policy": "联动日期使用对应平台活动上线日；Stealth日期表示画风所属版本的日本正式稼动日，不宣称是玩家首次解锁日；本地归档日期不视为推出日期。",
+ "markers": [
+  {
+   "id": "tm0042",
+   "name": "NEW GAME!",
+   "version": "jubeat Qubell",
+   "release_date": "2016-08-09",
+   "display_release": "jubeat Qubell（2016-08-09）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://www.famitsu.com/news/201608/04112632.html",
+     "type": "KONAMI原始新闻稿转载",
+     "supports": "8月9日开始的Qubell限定NEW GAME!关卡可获得marker；8月4日只是歌曲/plus pack配信，不能用于本街机marker。"
+    }
+   ]
+  },
+  {
+   "id": "tm0044",
+   "name": "永谷園のお茶づけ",
+   "version": "jubeat Qubell",
+   "release_date": "2017-04-06",
+   "display_release": "jubeat Qubell（2017-04-06）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://prtimes.jp/a/?c=20257&f=d20257-38-pdf-0.pdf&r=38",
+     "type": "永谷園原始新闻稿PDF",
+     "supports": "新闻稿日期及活动开始日期为2017年4月6日，并明确可使用お茶づけマーカー。"
+    }
+   ]
+  },
+  {
+   "id": "tm1002",
+   "name": "Otoca d’or",
+   "version": "jubeat plus",
+   "release_date": "2016-12-22",
+   "display_release": "jubeat plus（2016-12-22）",
+   "confidence": "medium-high",
+   "evidence": [
+    {
+     "url": "https://p.eagate.573.jp/game/bemani/fansite/s/news/detail.html?post_id=10709643",
+     "type": "KONAMI BEMANI Fan Site官方公告",
+     "supports": "2016年12月22日19:00刊登オトカドール热门歌曲加入jubeat plus的公告；此页文本未单独写marker。"
+    },
+    {
+     "url": "https://w.atwiki.jp/asagaolabo/pages/4514.html",
+     "type": "辅助游戏百科",
+     "supports": "明确2016/12/22配信オトカドールパック，并说明jubeat购买特典附オトカドールmarker。"
+    }
+   ],
+   "inference": "由官方pack发布日期及辅助来源的购买特典描述共同确定marker日期；尚未找到保留完整marker文字的同期官方商品页。"
+  },
+  {
+   "id": "tm1001",
+   "name": "甜品站",
+   "version": "jubeat 音乐魔方（中国版）",
+   "release_date": null,
+   "display_release": "jubeat 音乐魔方（中国版；推出时间未公开）",
+   "confidence": "unknown-date",
+   "note": "华立新版jubeat音乐魔方于2025-12-27正式运营；该marker独立推出日期未查得公开可靠证据。归档标签20251222早于正式运营，只证明在该开发/归档版本中存在，不是marker发布日期。不可误称世宇旧版乐动魔方。",
+   "version_launch_date": "2025-12-27",
+   "evidence": [
+    {
+     "url": "https://static.cninfo.com.cn/finalpage/2026-01-20/1224942746.PDF",
+     "type": "华立科技原始投资者关系活动记录表2026-001",
+     "supports": "第1页公司明确2025年12月27日正式上线jubeat音乐魔方；没有marker发布时间。"
+    }
+   ]
+  }
+ ],
+ "stealth_versions": [
+  {
+   "version": "ripples",
+   "release_date": "2009-08-05",
+   "display_name": "Stealth (ripples)",
+   "display_release": "jubeat ripples（2009-08-05）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://wiki.bemani.cc/index.php?title=AC_jb_ripples",
+     "type": "辅助游戏资料库",
+     "supports": "稼动日期2009年8月5日。"
+    },
+    {
+     "url": "https://dengekionline.com/elem/000/000/184/184731/",
+     "type": "同期报道",
+     "supports": "2009年8月10日报道从8月5日开始运营。"
+    }
+   ]
+  },
+  {
+   "version": "knit",
+   "release_date": "2010-07-29",
+   "display_name": "Stealth (knit)",
+   "display_release": "jubeat knit（2010-07-29）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://www.4gamer.net/games/116/G011665/20100729017/",
+     "type": "KONAMI原始新闻稿原文转载",
+     "supports": "明确2010年7月29日起顺次稼动。"
+    }
+   ]
+  },
+  {
+   "version": "copious",
+   "release_date": "2011-09-15",
+   "display_name": "Stealth (copious)",
+   "display_release": "jubeat copious（2011-09-15）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://document.4gamer.net/games/127/G012787/20110915088/",
+     "type": "KONAMI原始新闻稿原文转载",
+     "supports": "明确2011年9月15日起顺次稼动。"
+    }
+   ]
+  },
+  {
+   "version": "saucer",
+   "release_date": "2012-09-25",
+   "display_name": "Stealth (saucer)",
+   "display_release": "jubeat saucer（2012-09-25）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://www.4gamer.net/games/153/G015366/20120913025/",
+     "type": "KONAMI原始新闻稿原文转载",
+     "supports": "宣布jubeat saucer于2012年9月25日起顺次稼动。"
+    }
+   ]
+  },
+  {
+   "version": "prop",
+   "release_date": "2015-02-20",
+   "display_name": "Stealth (prop)",
+   "display_release": "jubeat prop（2015-02-20）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://p.eagate.573.jp/game/bemani/fansite/p/benama/archive/no073.html",
+     "type": "KONAMI官方BEMANI生放送第73回",
+     "supports": "2015.02.25节目页面明确prop自2月20日起稼动。"
+    }
+   ]
+  },
+  {
+   "version": "Qubell",
+   "release_date": "2016-03-30",
+   "display_name": "Stealth (Qubell)",
+   "display_release": "jubeat Qubell（2016-03-30）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://www.4gamer.net/games/338/G033871/20160330086/",
+     "type": "KONAMI原始新闻稿转载",
+     "supports": "文中制造商新闻稿明确2016年3月30日起稼动。"
+    }
+   ]
+  },
+  {
+   "version": "clan",
+   "release_date": "2017-07-26",
+   "display_name": "Stealth (clan)",
+   "display_release": "jubeat clan（2017-07-26）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://www.4gamer.net/games/389/G038903/20170726115/",
+     "type": "コナミアミューズメント原始新闻稿原文转载",
+     "supports": "2017/07/26新闻稿宣布本日起开始稼动。"
+    }
+   ]
+  },
+  {
+   "version": "festo",
+   "release_date": "2018-09-05",
+   "display_name": "Stealth (festo)",
+   "display_release": "jubeat festo（2018-09-05）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://p.eagate.573.jp/game/jubeat/clan/top/?___REDIRECT=1",
+     "type": "KONAMI官方旧版转场页面",
+     "supports": "festo自9月5日星期三顺次稼动；年份由同期官方新闻稿核实。"
+    },
+    {
+     "url": "https://www.4gamer.net/games/432/G043242/20180905047/",
+     "type": "コナミアミューズメント原始新闻稿转载",
+     "supports": "2018/09/05新闻稿宣布本日起稼动。"
+    }
+   ]
+  },
+  {
+   "version": "Ave.",
+   "release_date": "2022-08-03",
+   "display_name": "Stealth (Ave.)",
+   "display_release": "jubeat Ave.（2022-08-03）",
+   "confidence": "high",
+   "evidence": [
+    {
+     "url": "https://www.konami.com/amusement/corporate/ja/topics/20220803/",
+     "type": "KONAMI官方公司公告",
+     "supports": "Ave.于2022年8月3日开始稼动。"
+    },
+    {
+     "url": "https://p.eagate.573.jp/game/jubeat/ave/pre",
+     "type": "KONAMI官方预告站",
+     "supports": "2022年8月3日星期三起更新完成的机台顺次service-in。"
+    }
+   ]
+  }
+ ]
+}

@@ -261,10 +261,7 @@
   /** MA 通道里对应「拍点上」的帧号（u → 0⁻ 时画的那一帧），夹在素材范围内。 */
   function maHitFrame(design) {
     const ma = Math.max(1, Number(design.ma) || 0);
-    const per = Number(markerCfg.unitsPerFrame) > 0 ? Number(markerCfg.unitsPerFrame) : 10;
-    const early = Number.isFinite(markerCfg.window && markerCfg.window.early)
-      ? markerCfg.window.early : -155;
-    const f = Math.floor((0 - early) / per);
+    const f = window.JubeatRuntime.markerTiming(design, markerCfg).hitFrame;
     return Math.max(0, Math.min(ma - 1, Number.isFinite(f) ? f : 0));
   }
 
@@ -1124,15 +1121,14 @@
     const maFrames = Math.max(1, Number(design.ma) || 0);
     const hFrames = Math.max(1, Number(design.h && design.h[tier]) || 0);
 
-    const unitMs = Number(markerCfg.unitMs) > 0 ? Number(markerCfg.unitMs) : 3.3333;
-    const per = Number(markerCfg.unitsPerFrame) > 0 ? Number(markerCfg.unitsPerFrame) : 10;
-    const win = markerCfg.window || {};
-    const early = Number.isFinite(win.early) ? win.early : -155;
-    const late = Number.isFinite(win.late) ? win.late : 160;
+    const timing = window.JubeatRuntime.markerTiming(design, markerCfg);
+    const early = timing.earlyMs, late = timing.lateMs;
+    const maPer = timing.maFrameMs;
+    const hPer = timing.burstMs ? timing.burstMs / hFrames : timing.hFrameMs;
     // Delta is in chart seconds; dividing by rate gives normal real-time animation.
     const animationRate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
-    const earlySec = (early * unitMs * animationRate) / 1000;
-    const lateSec = (Math.min(late, hFrames * per) * unitMs * animationRate) / 1000;
+    const earlySec = (early * animationRate) / 1000;
+    const lateSec = (Math.min(late, hFrames * hPer) * animationRate) / 1000;
     const holdBack = (state._parsed && state._parsed.maxHold) || 0;
     const counts = new Map();
     // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
@@ -1146,7 +1142,7 @@
       // 长押在松开（endT）那一瞬重播一次同一套命中动画：把 endT 当成新的 0 点
       const dur = n.kind === "hold" && n.endT != null ? n.endT - n.t : null;
       const rel = chartT - n.t;
-      const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / (unitMs * animationRate);
+      const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / animationRate;
 
       // 顺序数字：官方是「拍点前 0.10s」才出现（见 NUM_LEAD），跟上这一段的命中动画
       // 一起收尾；长押按住期间一直留着，松开时再跟着爆一次。这一段不属于 marker
@@ -1165,12 +1161,12 @@
       if (u < 0) {
         channel = "MA";
         total = maFrames;
-        frame = Math.min(maFrames - 1, Math.floor((u - early) / per));
+        frame = Math.min(maFrames - 1, Math.floor((u - early) / maPer));
         if (frame < 0) continue;
       } else {
         channel = `H${tier}`;
         total = hFrames;
-        frame = Math.floor(u / per);
+        frame = Math.floor(u / hPer);
         if (frame >= hFrames) continue;
       }
 
@@ -1194,9 +1190,8 @@
     }
     if (!firstCueBatch.length) return;
     const rate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
-    const early = Number.isFinite(markerCfg.window?.early) ? markerCfg.window.early : -155;
-    const unitMs = Number(markerCfg.unitMs) > 0 ? Number(markerCfg.unitMs) : 3.3333;
-    const lead = markerCfg.design ? Math.max(0, -early * unitMs * rate / 1000) : 0.5167 * rate;
+    const early = window.JubeatRuntime.markerTiming(markerCfg.design, markerCfg).earlyMs;
+    const lead = markerCfg.design ? Math.max(0, -early * rate / 1000) : 0.5167 * rate;
     // 音符已在当前渲染帧进入 MA 时，不让预告覆盖它（含被夹到 0 的早首音）。
     if (chartT >= firstCueBatch[0].t - lead) return;
     const base = Number(state.baseOffset) || 0;

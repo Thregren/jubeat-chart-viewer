@@ -7,8 +7,16 @@ from PIL import Image,ImageChops
 import web_assets as W
 from directory_library import load_directory
 from package_site import portable_files
+from markers import _normalize
 
 class WebAssets(unittest.TestCase):
+    def test_independent_marker_timing_survives_backend_normalization(self):
+        timing={'approach_ms':516.6615,'ma_hit_frame':30,'burst_ms':533.328}
+        design=dict(id='tm1001',num=1001,dir='tex_l44_tm1001',prefix='TM1001',ma=94,h={'4':100},timing=timing)
+        self.assertEqual(_normalize(dict(designs=[design]))['designs'][0]['timing'],timing)
+        for invalid in [dict(timing,ma_hit_frame=94),dict(timing,burst_ms=float('nan')),dict(timing,approach_ms=True)]:
+            self.assertEqual(_normalize(dict(designs=[dict(design,timing=invalid)]))['designs'],[])
+
     def test_without_pillow_legacy_frames_still_build(self):
         with tempfile.TemporaryDirectory() as temp,patch.dict(sys.modules,{'PIL':None}):
             root=Path(temp);manifest={'designs':[]}

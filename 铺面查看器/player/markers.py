@@ -13,6 +13,7 @@ manifest 由 `tools/import_official_markers.py` 生成；这里只做「读取 �
 from __future__ import annotations
 
 import json
+import math
 import threading
 import sys
 from typing import Any
@@ -78,7 +79,7 @@ def _clean_design(raw: Any) -> dict | None:
         num = int(raw.get("num") or 0)
     except (TypeError, ValueError):
         num = 0
-    return {
+    design = {
         "id": str(raw.get("id") or d),
         "num": num,
         "dir": d,
@@ -92,6 +93,17 @@ def _clean_design(raw: Any) -> dict | None:
         "h": h,
         "fr": max(0, fr),
     }
+    timing = raw.get("timing")
+    if timing is not None:
+        if not isinstance(timing, dict):
+            return None
+        approach, burst, hit = (timing.get(k) for k in ("approach_ms", "burst_ms", "ma_hit_frame"))
+        if (not all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+                    and 50 <= x <= 3000 for x in (approach, burst))
+                or not isinstance(hit, int) or isinstance(hit, bool) or not 0 <= hit < ma):
+            return None
+        design["timing"] = {"approach_ms": approach, "burst_ms": burst, "ma_hit_frame": hit}
+    return design
 
 
 def _normalize(raw: dict) -> dict:

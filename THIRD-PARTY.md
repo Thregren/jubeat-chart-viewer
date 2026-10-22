@@ -10,7 +10,7 @@ HTML/CSS/JS）、`tools/`、`deploy/`、`electron/` 里的脚本、配置与应�
 
 | 路径 | 内容 | 出处 / 说明 |
 |---|---|---|
-| `marker/jubeat_official/` | **官方** marker 逐帧 PNG（46 套设计 × MA/H1–H4/FR 三通道，4062 张 160×160） | 主要从街机 jubeat（beyond the ave.，l44）的 `contents/data/d3/model/*.bin` 里逐帧解出；小埋联动的 88 帧恢复自 Qubell L44-2017062001，角色版权及逐帧校验见 `marker/jubeat_official/tm0041-provenance.json`；渲染时序从 `jubeat.dll` 反汇编读出，见 `marker/jubeat_official/README.md` |
+| `marker/jubeat_official/` | **官方** marker 逐帧 PNG（58 套设计 × MA/H1–H4/FR 三通道，5524 张 160×160） | 主要从街机 jubeat（beyond the ave.，l44）的 `contents/data/d3/model/*.bin` 里逐帧解出；小埋/NEW GAME!/永谷园联动恢复自 Qubell，Otoca d’or 来自 plus，Stealth 历史画风来自各代 HDD，甜品站来自华立中国版并缩至160px；完整来源与转换见 `additional-markers-provenance.json`，推出时间来源见 `release-sources.json`；小埋的角色版权及逐帧校验见 `marker/jubeat_official/tm0041-provenance.json`；街机渲染时序从 `jubeat.dll` 反汇编读出，中国版甜品站采用单独的查看器适配时序，见 `marker/jubeat_official/README.md` |
 | `marker/jubeat_marker_frames/` | marker 逐帧 PNG、判定爆花特效、preview、filmstrip | 社区公开配布（yuisin、Amy、jujube / Stepland、jubeat analyser 等），逐条出处记在 `marker/jubeat_marker_frames/README.md` 与各素材的 `meta.json` |
 | `marker/jubeat_marker_banners/` | 各版本 banner | 官方素材整理 |
 | `marker/jubeat_official_markers.png` / `.csv` / `.md` | 官方 marker 一览（缩略图 + 清单） | 从游戏内 OPTION → マーカー选择画面整理（RemyWiki / jubeat@Wiki / BEMANIWiki 三方对照） |

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -116,12 +117,15 @@ def main() -> int:
     if manifest_path.is_file():
         for design in json.loads(manifest_path.read_text(encoding="utf-8")).get("designs", []):
             num = int(design["num"])
-            # Only reuse the expected local directory; never follow arbitrary manifest paths.
-            if design["dir"] != f"tex_l44_tm{num:04d}":
+            # Version variants share a number, but retain their own stable IDs/directories.
+            expected = f"tex_l44_tm{num:04d}"
+            if not re.fullmatch(re.escape(expected) + r"(?:_[a-z0-9]+)*", design["dir"]):
                 raise ValueError(f"Unexpected marker directory: {design['dir']}")
             if not (dest / design["dir"]).is_dir():
                 raise ValueError(f"Missing existing marker: {design['dir']}")
-            existing[num] = design
+            if design["id"] in existing:
+                raise ValueError(f"Duplicate marker ID: {design['id']}")
+            existing[design["id"]] = design
     designs = dict(existing)
     for d in sorted(banks.glob("tex_l44_tm*")):
         if not d.is_dir() or d.name.endswith("_m"):
@@ -130,6 +134,7 @@ def main() -> int:
         if not suffix.isdigit():
             continue
         num = int(suffix)
+        design_id = f"tm{num:04d}"
         prefix = f"TM{num:04d}"
 
         # 联动 marker 的美术没随版本进包（提取文档里标成「⚠️ 替代贴图」：tm0041 与
@@ -169,9 +174,11 @@ def main() -> int:
             "fr": fr,
         }
         for key in ("name", "name_ja", "name_zh", "release", "note"):
-            if key in existing.get(num, {}):
-                design[key] = existing[num][key]
-        designs[num] = design
+            if key in existing.get(design_id, {}):
+                design[key] = existing[design_id][key]
+        if "timing" in existing.get(design_id, {}):
+            design["timing"] = existing[design_id]["timing"]
+        designs[design_id] = design
 
     manifest = {
         "format": "jubeat-official",
@@ -185,7 +192,8 @@ def main() -> int:
               "end_units": 160},
         "fr": {"frames": FR_FRAMES, "static_frame": 1},
         "judge_tiers": {"POOR": 1, "GOOD": 2, "GREAT": 3, "PERFECT": 4},
-        "designs": [designs[num] for num in sorted(designs)],
+        "designs": sorted(designs.values(), key=lambda d: (
+            d["num"], (re.search(r"\d{4}-\d{2}-\d{2}", d.get("release", "")) or ["9999"])[0], d["id"])),
     }
     (dest / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")

@@ -1,11 +1,13 @@
 import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const runtime=createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
 let src=fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js',import.meta.url),'utf8');
 const a=src.indexOf('  function drawOrderNumber('),b=src.indexOf('  function drawPanelFrames()',a);
 src=src.slice(0,a)+'  function drawOrderNumber(n,r,opacity){window.numbers.push({n,opacity});}\n'+src.slice(b);
-src=src.replace('frameForChannel(design, channel, frame, total);','window.testFrame(frame);');
+src=src.replace('frameForChannel(design, channel, frame, total);','window.testFrame(channel,frame);');
 let sampled=null,reads=0;const frames=Array.from({length:16},(_,i)=>({complete:true,naturalWidth:1,naturalHeight:1,alpha:i===15?6:255}));
 const A={services:{register(){}},els:{markerCanvas:{getContext:()=>({clearRect(){},save(){},restore(){},beginPath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},closePath(){},clip(){},arcTo(){},drawImage(){}})},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},state:{notes:[{t:1,index:0,groupSize:2}],padRects:[{x:0,y:0,w:100,h:100}]},markerCfg:{design:{ma:24,h:{4:16}},unitMs:1,unitsPerFrame:10,window:{early:-155,late:160}}};
-const w={JubeatApp:A,JubeatRuntime:{Semaphore:class{},markerRate:(r,normal)=>normal?r:1},numbers:[],testFrame:i=>frames[i]};
+const w={JubeatApp:A,JubeatRuntime:{Semaphore:class{},markerTiming:runtime.markerTiming,markerRate:(r,normal)=>normal?r:1},numbers:[],testFrame:(_channel,i)=>frames[i]};
 vm.runInNewContext(src,{window:w,console,document:{createElement:()=>({getContext:()=>({drawImage:i=>sampled=i,getImageData:()=>{reads++;return{data:[0,0,0,sampled.alpha]}}})})}});
 function draw(t){w.numbers=[];A.drawMarkers(t);return w.numbers;}
 assert.equal(draw(1.1)[0].opacity,1);assert.equal(draw(1.155)[0].opacity,6/255);const previous=reads;draw(1.155);assert.equal(reads,previous);
@@ -22,3 +24,18 @@ A.state._parsed = {maxHold: 100};
 draw(90);assert.ok(padReads < 100, `visited ${padReads} ordinary pads`);
 assert.equal(w.numbers[0].n.kind, 'hold');
 console.log('Long-hold chart: finished taps are omitted without losing held numbers');
+
+// The 94/100-frame design uses its own visual hit point and complete judgement range.
+A.state.notes=[{t:1,index:0,groupSize:2}];A.state._parsed={};
+A.markerCfg.design={ma:94,h:{4:100},timing:{approach_ms:516.6615,ma_hit_frame:30,burst_ms:533.328}};
+let selected=null;w.testFrame=(channel,frame)=>{selected={channel,frame};return frames[0];};
+function frameAt(t){selected=null;draw(t);return selected;}
+assert.deepEqual(frameAt(.999999),{channel:'MA',frame:30});
+assert.deepEqual(frameAt(1),{channel:'H4',frame:0});
+assert.deepEqual(frameAt(1.533327),{channel:'H4',frame:99});
+assert.equal(frameAt(1.533329),null);
+A.els.rate.value='2';assert.deepEqual(frameAt(2.066655),{channel:'H4',frame:99});
+A.state.notes=[{t:1,index:0,groupSize:2,kind:'hold',endT:2}];A.state._parsed={maxHold:1};A.els.rate.value='1';
+assert.deepEqual(frameAt(2.533327),{channel:'H4',frame:99});
+assert.equal(frameAt(2.533329),null);
+console.log('Dessert timing: visual approach point, all 100 judgement frames, boundary, rate and hold-release passed');

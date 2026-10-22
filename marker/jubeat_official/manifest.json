@@ -492,15 +492,167 @@
    "fr": 0
   },
   {
+   "id": "tm0025_ripples",
+   "num": 25,
+   "dir": "tex_l44_tm0025_ripples",
+   "prefix": "TM0025",
+   "name": "Stealth (ripples)",
+   "name_ja": "ステルス（ripples）",
+   "name_zh": "隐形 / Stealth（ripples）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat ripples（2009-08-05）",
+   "note": "日期为该历史画风所属版本的稼动日。"
+  },
+  {
+   "id": "tm0025_knit",
+   "num": 25,
+   "dir": "tex_l44_tm0025_knit",
+   "prefix": "TM0025",
+   "name": "Stealth (knit)",
+   "name_ja": "ステルス（knit）",
+   "name_zh": "隐形 / Stealth（knit）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat knit（2010-07-29）",
+   "note": "日期为该历史画风所属版本的稼动日。"
+  },
+  {
+   "id": "tm0025_copious",
+   "num": 25,
+   "dir": "tex_l44_tm0025_copious",
+   "prefix": "TM0025",
+   "name": "Stealth (copious)",
+   "name_ja": "ステルス（copious）",
+   "name_zh": "隐形 / Stealth（copious）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat copious（2011-09-15）",
+   "note": "日期为该历史画风所属版本的稼动日。"
+  },
+  {
+   "id": "tm0025_saucer",
+   "num": 25,
+   "dir": "tex_l44_tm0025_saucer",
+   "prefix": "TM0025",
+   "name": "Stealth (saucer)",
+   "name_ja": "ステルス（saucer）",
+   "name_zh": "隐形 / Stealth（saucer）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat saucer（2012-09-25）",
+   "note": "日期为该历史画风所属版本的稼动日；saucer fulfill 沿用 saucer 画风。"
+  },
+  {
+   "id": "tm0025_prop",
+   "num": 25,
+   "dir": "tex_l44_tm0025_prop",
+   "prefix": "TM0025",
+   "name": "Stealth (prop)",
+   "name_ja": "ステルス（prop）",
+   "name_zh": "隐形 / Stealth（prop）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat prop（2015-02-20）",
+   "note": "日期为该历史画风所属版本的稼动日。"
+  },
+  {
+   "id": "tm0025_qubell",
+   "num": 25,
+   "dir": "tex_l44_tm0025_qubell",
+   "prefix": "TM0025",
+   "name": "Stealth (Qubell)",
+   "name_ja": "ステルス（Qubell）",
+   "name_zh": "隐形 / Stealth（Qubell）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat Qubell（2016-03-30）",
+   "note": "日期为该历史画风所属版本的稼动日。"
+  },
+  {
+   "id": "tm0025_clan",
+   "num": 25,
+   "dir": "tex_l44_tm0025_clan",
+   "prefix": "TM0025",
+   "name": "Stealth (clan)",
+   "name_ja": "ステルス（clan）",
+   "name_zh": "隐形 / Stealth（clan）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat clan（2017-07-26）",
+   "note": "日期为该历史画风所属版本的稼动日。"
+  },
+  {
+   "id": "tm0025_festo",
+   "num": 25,
+   "dir": "tex_l44_tm0025_festo",
+   "prefix": "TM0025",
+   "name": "Stealth (festo)",
+   "name_ja": "ステルス（festo）",
+   "name_zh": "隐形 / Stealth（festo）",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat festo（2018-09-05）",
+   "note": "日期为该历史画风所属版本的稼动日。"
+  },
+  {
    "id": "tm0025",
    "num": 25,
    "dir": "tex_l44_tm0025",
    "prefix": "TM0025",
-   "name": "Stealth",
-   "name_ja": "ステルス",
-   "name_zh": "潜行",
-   "release": "jubeat ripples（2009-08-05）",
-   "note": "",
+   "name": "Stealth (Ave.)",
+   "name_ja": "ステルス（Ave.）",
+   "name_zh": "隐形 / Stealth（Ave.）",
+   "release": "jubeat Ave.（2022-08-03）",
+   "note": "当前 Ave. / beyond the Ave. 沿用的画风；历史画风按版本另列。日期为 Ave. 稼动日。",
    "ma": 24,
    "h": {
     "1": 16,
@@ -815,6 +967,44 @@
    "fr": 0
   },
   {
+   "id": "tm0042",
+   "num": 42,
+   "dir": "tex_l44_tm0042",
+   "prefix": "TM0042",
+   "name": "NEW GAME!",
+   "name_ja": "NEW GAME!",
+   "name_zh": "NEW GAME!",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat Qubell（2016-08-09）",
+   "note": ""
+  },
+  {
+   "id": "tm0044",
+   "num": 44,
+   "dir": "tex_l44_tm0044",
+   "prefix": "TM0044",
+   "name": "Nagatanien Ochazuke",
+   "name_ja": "永谷園のお茶づけ",
+   "name_zh": "永谷园茶泡饭",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat Qubell（2017-04-06）",
+   "note": ""
+  },
+  {
    "id": "tm0045",
    "num": 45,
    "dir": "tex_l44_tm0045",
@@ -908,6 +1098,49 @@
     "4": 16
    },
    "fr": 2
+  },
+  {
+   "id": "tm1001",
+   "num": 1001,
+   "dir": "tex_l44_tm1001",
+   "prefix": "TM1001",
+   "name": "Dessert Station",
+   "name_ja": "",
+   "name_zh": "甜品站",
+   "ma": 94,
+   "h": {
+    "1": 100,
+    "2": 100,
+    "3": 100,
+    "4": 100
+   },
+   "fr": 0,
+   "release": "jubeat 音乐魔方（中国版；推出时间未公开）",
+   "note": "华立新版jubeat音乐魔方于2025-12-27正式运营；该marker独立推出日期未查得公开可靠证据。归档标签20251222早于正式运营，只证明在该开发/归档版本中存在，不是marker发布日期。不可误称世宇旧版乐动魔方。 查看器适配时序：原始MA30为视觉命中帧，预告516.7ms、判定533.3ms；未发现此设计的官方AnimationClip。图像从470px缩至160px，保留全部494帧。",
+   "timing": {
+    "approach_ms": 516.6614999999999,
+    "ma_hit_frame": 30,
+    "burst_ms": 533.328
+   }
+  },
+  {
+   "id": "tm1002",
+   "num": 1002,
+   "dir": "tex_l44_tm1002",
+   "prefix": "TM1002",
+   "name": "Otoca d’or",
+   "name_ja": "オトカドール",
+   "name_zh": "Otoca d’or",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0,
+   "release": "jubeat plus（2016-12-22）",
+   "note": "jubeat plus オトカドール pack 购买特典。"
   }
  ]
 }

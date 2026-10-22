@@ -153,6 +153,13 @@
       seen.add(design.id);
       const counts=[design.ma??0,design.fr??0,...Object.values(design.h)];
       if(counts.some(n=>!Number.isInteger(n)||n<0||n>256)||counts.reduce((a,b)=>a+b,0)>512)throw Error('Marker 帧数超出限制');
+      if (design.timing != null) {
+        const t=design.timing;
+        if(!object(t)||!Number.isFinite(t.approach_ms)||t.approach_ms<50||t.approach_ms>3000
+            ||!Number.isFinite(t.burst_ms)||t.burst_ms<50||t.burst_ms>3000
+            ||!Number.isInteger(t.ma_hit_frame)||t.ma_hit_frame<0||t.ma_hit_frame>=design.ma)
+          throw Error('无效 marker 独立时间参数');
+      }
       for(const [channel,atlas] of Object.entries(design.atlases||{})) {
         const count=channel==='MA'?design.ma:design.h[channel.slice(1)];
         if(!/^(MA|H[1-4])$/.test(channel)||!object(atlas)||!safePath(atlas.file)||!atlas.file.startsWith(design.dir+'/')
@@ -187,5 +194,17 @@
   function markerRate(rate, normal) {
     return normal && Number.isFinite(rate) && rate > 0 ? rate : 1;
   }
-  return { ByteBudget, pngSize, validateMarkers, markerRate, RequestScope, AudioSession, readBytes, readJSON, validateLibrary, validateChart, safePath, Semaphore };
+  function markerTiming(design, config = {}) {
+    const custom=design?.timing;
+    if(custom) return {earlyMs:-custom.approach_ms, lateMs:custom.burst_ms,
+      maFrameMs:custom.approach_ms/(custom.ma_hit_frame+.5), burstMs:custom.burst_ms,
+      hitFrame:custom.ma_hit_frame};
+    const unit=Number(config.unitMs)>0?Number(config.unitMs):3.3333;
+    const per=Number(config.unitsPerFrame)>0?Number(config.unitsPerFrame):10;
+    const early=Number.isFinite(config.window?.early)?config.window.early:-155;
+    const late=Number.isFinite(config.window?.late)?config.window.late:160;
+    return {earlyMs:early*unit, lateMs:late*unit, maFrameMs:per*unit,
+      hFrameMs:per*unit, hitFrame:Math.floor(-early/per)};
+  }
+  return { ByteBudget, pngSize, validateMarkers, markerRate, markerTiming, RequestScope, AudioSession, readBytes, readJSON, validateLibrary, validateChart, safePath, Semaphore };
 });

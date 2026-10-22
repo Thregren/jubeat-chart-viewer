@@ -1,7 +1,7 @@
 # jubeat 官方 marker 逐帧贴图（`jubeat_official/`）
 
 街机 jubeat 的**官方 marker 贴图**，从 `contents/data/d3/model/*.bin`
-（PXET → PMAN → orglz → TDXT）里逐帧解出来，一共 **46 套设计、4062 张 160×160 PNG**。
+（PXET → PMAN → orglz → TDXT）里逐帧解出来，一共 **58 套设计、5524 张 160×160 PNG**。
 主要素材来自 `beyond the ave.`，另从 **Qubell L44-2017062001** 恢复了
 `tm0041`（干物妹！小埋）的完整 MA/H1–H4 共 88 帧，来源与逐帧 SHA-256
 见 `tm0041-provenance.json`。版本和推出日期为 **jubeat Qubell / 2016-07-14**。
@@ -34,6 +34,23 @@ tex_l44_tm0001/           一套设计一个目录
 
 不是每个设计都满帧（少数设计会多出 `MA24` / `H416` 这类美术附加帧），
 引擎公式只到 24 / 16，清单按 24 / 16 记，多出来的帧按设计忽略。
+
+## 新增历史与联动素材（2026-10-22）
+
+NEW GAME!、永谷园茶泡饭、Otoca d’or 和 8 套 Stealth 历史画风已补齐。
+Stealth 按 ripples、knit、copious、saucer、prop、Qubell、clan、festo、Ave.
+分别显示；原 `tm0025` ID 保留给 Ave.，保持已保存选择兼容。
+推出日期与对应平台记录在 `release-sources.json`，Stealth 使用画风所属版本稼动日。
+逐帧来源、校验值与重命名映射见 `additional-markers-provenance.json`。
+
+甜品站来自华立新版 **jubeat 音乐魔方（中国版）**。独立推出日期未公开，
+不能把游戏正式运营日 2025-12-27 或归档日期当成此 marker 的首发日。
+保留全部 94 张 MA 和四档各 100 张 H，从原始 470px Sprite 用 LANCZOS 缩到 160px。
+现有包没有甜品站的 AnimationClip / MarkerAsset，采用明确的查看器适配时序：
+MA30 为视觉命中帧，预告 516.6615ms、命中爆发 533.328ms；
+`timing.approach_ms`、`ma_hit_frame`、`burst_ms` 单独配置，
+不改变其他 marker 的街机时序。接近动画命中前使用 MA0–30，后段帧保留供以后核验；
+各档 H 的 100 帧按爆发时长等距取样。此时序不宣称是中国版原生引擎时序。
 
 ## 时间模型（从 `jubeat.dll` 反汇编，已验证）
 
@@ -91,7 +108,7 @@ MA 的每一帧恰好对上录像的每一帧（MA01→第 1493 帧、MA02→149
 | `hit_window_units` | `{early: -155, late: 160}` |
 | `ma` / `h` / `fr` | 各通道的帧数、命中帧、结束位置 |
 | `judge_tiers` | `{POOR: 1, GOOD: 2, GREAT: 3, PERFECT: 4}` |
-| `designs[]` | 46 套：`id` / `num` / `dir` / `prefix` / 日英中文名 / 出现版本 / `ma` / `h` / `fr` |
+| `designs[]` | 58 套：`id` / `num` / `dir` / `prefix` / 日英中文名 / 出现版本 / `ma` / `h` / `fr` |
 
 `markers.py` 读取时会再做一遍白名单裁剪（目录必须以 `tex_l44_tm` 开头、
 前缀必须以 `TM` 开头、挡掉带斜杠的值），坏 json 返回空清单而不是 500。
@@ -107,14 +124,14 @@ python3 tools/import_official_markers.py --src "/path/到/jubeat marker提取"
 python3 tools/import_official_markers.py --src "…" --tiers 4
 ```
 
-仓库收录 `MA` + `H1…H4` + `FR` 共 4062 张（46 套设计）；
+仓库收录 `MA` + `H1…H4` + `FR` 共 5524 张（58 套设计）；
 导入脚本默认复制 `MA` + `H4` + `FR`，要导入四档请加 `--tiers 1,2,3,4`。
-重新导入会保留源包缺失或标为替代贴图的已有设计及人工维护的名字、版本与日期。不复制 mini 版
+重新导入会按稳定 ID 保留源包缺失或标为替代贴图的已有设计、历史版本变体，以及人工维护的名字、版本、日期和独立时序。不复制 mini 版
 （`*_m`，40×40）、`_sheets/`、`_src/` 和商店图标 —— 前端用不上。
 
 ## 版权
 
-jubeat 素材版权归 **KONAMI**；小埋联动美术另归
+jubeat 素材版权归 **KONAMI**；联动角色、美术及商标归各自权利人。小埋联动美术另归
 **©2015 サンカクヘッド／集英社・「干物妹！うまるちゃん」製作委員会**，见来源记录。这里只是把它转成逐帧 PNG
 方便查看器渲染，仅供**个人学习 / 离线查谱**使用，不随任何商业发行物分发。
 如果权利方有异议，删掉本目录即可 —— 查看器缺了 marker 素材会退化成

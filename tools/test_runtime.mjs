@@ -50,3 +50,16 @@ test("known oversized response is canceled before reading", async () => {
  const response=new Response(new ReadableStream({cancel(){canceled=true;}}),{headers:{'Content-Length':'100'}});
  await assert.rejects(R.readBytes(response,4));assert.equal(canceled,true);
 });
+test('dessert design has an independent bounded timeline without changing arcade defaults', () => {
+ const defaults={unitMs:3.3333,unitsPerFrame:10,window:{early:-155,late:160}};
+ const ordinary=R.markerTiming({ma:24,h:{4:16}},defaults);
+ assert.ok(Math.abs(ordinary.earlyMs+516.6615)<1e-9);assert.equal(ordinary.hitFrame,15);assert.ok(Math.abs(ordinary.hFrameMs-33.333)<1e-9);
+ const design={id:'tm1001',dir:'tex_l44_tm1001',prefix:'TM1001',ma:94,h:{1:100,2:100,3:100,4:100},timing:{approach_ms:516.6615,ma_hit_frame:30,burst_ms:533.328}};
+ assert.doesNotThrow(()=>R.validateMarkers({designs:[design]}));
+ const timing=R.markerTiming(design,defaults);
+ assert.equal(timing.hitFrame,30);assert.equal(Math.floor((-timing.earlyMs-.000001)/timing.maFrameMs),30);
+ assert.equal(timing.burstMs,533.328);
+ for(const timing of [{...design.timing,ma_hit_frame:94},{...design.timing,approach_ms:Infinity},{...design.timing,burst_ms:-1}])
+  assert.throws(()=>R.validateMarkers({designs:[{...design,timing}]}));
+ assert.deepEqual(R.markerTiming({ma:24,h:{4:16}},defaults),ordinary);
+});

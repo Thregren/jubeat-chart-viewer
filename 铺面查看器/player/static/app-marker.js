@@ -1293,8 +1293,12 @@
     loadMarkers,
     markerPreviewSources(design) {
       const sources = [];
-      if (design.ma) sources.push(frameUrl(design, "MA", maHitFrame(design)));
       const tier = tierOf(design, 4);
+      // Stealth's approach frames are intentionally invisible; show its version's judgement art.
+      if (Number(design.num) === 25 && tier) {
+        sources.push(frameUrl(design, `H${tier}`, Math.floor(Number(design.h[tier]) / 2)));
+      }
+      if (design.ma) sources.push(frameUrl(design, "MA", maHitFrame(design)));
       if (tier) sources.push(frameUrl(design, `H${tier}`, 0));
       return sources;
     },

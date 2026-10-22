@@ -796,6 +796,25 @@
    "fr": 2
   },
   {
+   "id": "tm0041",
+   "num": 41,
+   "dir": "tex_l44_tm0041",
+   "prefix": "TM0041",
+   "name": "Himouto! Umaru-chan",
+   "name_ja": "干物妹！うまるちゃん",
+   "name_zh": "干物妹！小埋",
+   "release": "jubeat Qubell（2016-07-14）",
+   "note": "",
+   "ma": 24,
+   "h": {
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+   },
+   "fr": 0
+  },
+  {
    "id": "tm0045",
    "num": 45,
    "dir": "tex_l44_tm0045",

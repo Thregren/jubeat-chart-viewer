@@ -1,14 +1,15 @@
 # jubeat 官方 marker 逐帧贴图（`jubeat_official/`）
 
-街机 jubeat（`beyond the ave.`，l44 资源）里的**官方 marker 贴图**，从
-`contents/data/d3/model/*.bin`（PXET → PMAN → orglz → TDXT）里逐帧解出来，
-一共 **45 套设计**、每套 88–92 张 160×160 PNG。
+街机 jubeat 的**官方 marker 贴图**，从 `contents/data/d3/model/*.bin`
+（PXET → PMAN → orglz → TDXT）里逐帧解出来，一共 **46 套设计、4062 张 160×160 PNG**。
+主要素材来自 `beyond the ave.`，另从 **Qubell L44-2017062001** 恢复了
+`tm0041`（干物妹！小埋）的完整 MA/H1–H4 共 88 帧，来源与逐帧 SHA-256
+见 `tm0041-provenance.json`。版本和推出日期为 **jubeat Qubell / 2016-07-14**。
 
-**没有收录的两套**：`tm0041`（干物妹！小埋）与 `tm0043`（AC 版迪士尼 松松）。
-这两个联动 marker 的美术没随版本进包 —— 提取出来的是 Qubell 的替代贴图，两套的
-88 帧逐像素完全相同（提取项目 `MARKER_NAMES.md` 标为「⚠️ 替代贴图」）。
-放在「官方 marker」列表里只会误导人，因此导入脚本直接跳过（`tools/import_official_markers.py`，
-判据是 `marker_names.json` 的 `art_status != ok`）。
+新版 HDD 中的 `tm0041` 与 `tm0043` 是 Qubell 替代贴图，不能据此认定限定美术齐全。
+小埋已由旧版真实美术补齐；`tm0043`（AC 版迪士尼 松松）仍未收录。
+导入脚本会跳过标有替代贴图的输入，并保留仓库已有的恢复素材，避免重新导入新版 HDD
+时覆盖掉小埋。未收录的其他历史设计另行核查，不按编号自动补入。
 
 渲染时序不是照着视频抄的，而是从 `jubeat.dll`（i386）反汇编读出来的
 ——见下面的「时间模型」。查看器（`铺面查看器/player/static/app-marker.js`）
@@ -90,7 +91,7 @@ MA 的每一帧恰好对上录像的每一帧（MA01→第 1493 帧、MA02→149
 | `hit_window_units` | `{early: -155, late: 160}` |
 | `ma` / `h` / `fr` | 各通道的帧数、命中帧、结束位置 |
 | `judge_tiers` | `{POOR: 1, GOOD: 2, GREAT: 3, PERFECT: 4}` |
-| `designs[]` | 45 套：`id` / `num` / `dir` / `prefix` / 日英中文名 / 出现版本 / `ma` / `h` / `fr` |
+| `designs[]` | 46 套：`id` / `num` / `dir` / `prefix` / 日英中文名 / 出现版本 / `ma` / `h` / `fr` |
 
 `markers.py` 读取时会再做一遍白名单裁剪（目录必须以 `tex_l44_tm` 开头、
 前缀必须以 `TM` 开头、挡掉带斜杠的值），坏 json 返回空清单而不是 500。
@@ -106,13 +107,15 @@ python3 tools/import_official_markers.py --src "/path/到/jubeat marker提取"
 python3 tools/import_official_markers.py --src "…" --tiers 4
 ```
 
-默认收 `MA` + `H1…H4` + `FR` 三条通道共 3974 张 / 77 MB（45 套设计）；
-跳过了 `tm0041` / `tm0043` 两套只有替代贴图的联动 marker。不复制 mini 版
+仓库收录 `MA` + `H1…H4` + `FR` 共 4062 张（46 套设计）；
+导入脚本默认复制 `MA` + `H4` + `FR`，要导入四档请加 `--tiers 1,2,3,4`。
+重新导入会保留源包缺失或标为替代贴图的已有设计及人工维护的名字、版本与日期。不复制 mini 版
 （`*_m`，40×40）、`_sheets/`、`_src/` 和商店图标 —— 前端用不上。
 
 ## 版权
 
-贴图版权归 **KONAMI**（jubeat 及其全部素材）。这里只是把它转成逐帧 PNG
+jubeat 素材版权归 **KONAMI**；小埋联动美术另归
+**©2015 サンカクヘッド／集英社・「干物妹！うまるちゃん」製作委員会**，见来源记录。这里只是把它转成逐帧 PNG
 方便查看器渲染，仅供**个人学习 / 离线查谱**使用，不随任何商业发行物分发。
 如果权利方有异议，删掉本目录即可 —— 查看器缺了 marker 素材会退化成
 「仅面板灯」模式，不会崩。

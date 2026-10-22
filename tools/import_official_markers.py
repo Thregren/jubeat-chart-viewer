@@ -22,6 +22,9 @@
 
 不复制：mini 版（`*_m`，40×40）、`_sheets/`、`_src/`、商店图标、总览图 —— 前端用不上。
 
+按编号合并导入：源包缺失或标为替代贴图的设计保留已有素材，避免丢失从旧 HDD
+恢复的联动美术；已有名字、版本和推出日期也会保留。
+
 为什么默认只收第 4 档（PERFECT）：本查看器是「按谱面自动全 PERFECT 播放」，
 只会用到 PERFECT 的爆发动画；把另外三档（GREAT/GOOD/POOR）也塞进来会让
 仓库和安装包多出 ≈42 MB 的**永远画不到**的贴图。想全收就加 `--tiers 1,2,3,4`。
@@ -107,15 +110,19 @@ def main() -> int:
                 continue
 
     dest = Path(args.dest).expanduser().resolve()
-    # 只清掉上一次导入的贴图目录，不碰 README / manifest（那两个由仓库维护）
-    for old in sorted(dest.glob("tex_l44_tm*")):
-        if old.is_dir():
-            shutil.rmtree(old)
     dest.mkdir(parents=True, exist_ok=True)
-
-    designs = []
-    total_files = 0
-    total_bytes = 0
+    existing = {}
+    manifest_path = dest / "manifest.json"
+    if manifest_path.is_file():
+        for design in json.loads(manifest_path.read_text(encoding="utf-8")).get("designs", []):
+            num = int(design["num"])
+            # Only reuse the expected local directory; never follow arbitrary manifest paths.
+            if design["dir"] != f"tex_l44_tm{num:04d}":
+                raise ValueError(f"Unexpected marker directory: {design['dir']}")
+            if not (dest / design["dir"]).is_dir():
+                raise ValueError(f"Missing existing marker: {design['dir']}")
+            existing[num] = design
+    designs = dict(existing)
     for d in sorted(banks.glob("tex_l44_tm*")):
         if not d.is_dir() or d.name.endswith("_m"):
             continue
@@ -135,6 +142,8 @@ def main() -> int:
             continue
 
         out_dir = dest / d.name
+        if out_dir.is_dir():
+            shutil.rmtree(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         ma = _copy_frames(d, out_dir, prefix, "MA", MA_FRAMES)
         if ma < MA_FRAMES:
@@ -146,12 +155,7 @@ def main() -> int:
                 h_counts[str(t)] = n
         fr = _copy_frames(d, out_dir, prefix, "FR", FR_FRAMES)
 
-        files = sorted(p for p in out_dir.iterdir() if p.is_file())
-        size = sum(p.stat().st_size for p in files)
-        total_files += len(files)
-        total_bytes += size
-
-        designs.append({
+        design = {
             "id": f"tm{num:04d}",
             "num": num,
             "dir": d.name,
@@ -163,7 +167,11 @@ def main() -> int:
             "ma": ma,
             "h": h_counts,
             "fr": fr,
-        })
+        }
+        for key in ("name", "name_ja", "name_zh", "release", "note"):
+            if key in existing.get(num, {}):
+                design[key] = existing[num][key]
+        designs[num] = design
 
     manifest = {
         "format": "jubeat-official",
@@ -172,16 +180,19 @@ def main() -> int:
         "units_per_frame": 10,
         "hit_window_units": {"early": -155, "late": 160},
         "ma": {"frames": MA_FRAMES, "hit_frame": 15, "start_units": -155, "end_units": 84},
-        "h": {"tiers": tiers, "frames_per_tier": H_FRAMES, "hit_frame": 0,
+        "h": {"tiers": sorted({int(t) for design in designs.values() for t in design["h"]}),
+              "frames_per_tier": H_FRAMES, "hit_frame": 0,
               "end_units": 160},
         "fr": {"frames": FR_FRAMES, "static_frame": 1},
         "judge_tiers": {"POOR": 1, "GOOD": 2, "GREAT": 3, "PERFECT": 4},
-        "designs": designs,
+        "designs": [designs[num] for num in sorted(designs)],
     }
     (dest / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
-    print(f"导入 {len(designs)} 套设计 · {total_files} 张 PNG · {total_bytes / 1048576:.1f} MB")
+    files = [p for design in designs.values() for p in (dest / design["dir"]).glob("*.png")]
+    total_bytes = sum(p.stat().st_size for p in files)
+    print(f"合并后 {len(designs)} 套设计 · {len(files)} 张 PNG · {total_bytes / 1048576:.1f} MB")
     print(f"输出：{dest}")
     return 0
 

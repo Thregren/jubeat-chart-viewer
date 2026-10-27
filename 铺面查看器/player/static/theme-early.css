@@ -1,0 +1,87 @@
+/* Version identities are interpreted for the viewer from historical artwork.
+   Do not apply these palettes to the black playfield: marker contrast is independent. */
+:root[data-theme="jubeat"] {
+  --void: #070f20; --cabinet: #0b1930; --cabinet-2: #122640;
+  --line: #2d4a69; --ink: #eef7ff; --muted: #a4bad0;
+  --amber: #90ccff; --amber-dim: #427da9; --theme-rgb: 96, 179, 255;
+}
+:root[data-theme="ripples"] {
+  --void: #f4fbf8; --cabinet: #effaf6; --cabinet-2: #e2f4ed;
+  --line: #b9dcd1; --ink: #193e37; --muted: #526e67;
+  --amber: #08755f; --amber-dim: #398f7d; --theme-rgb: 28, 148, 120;
+}
+:root[data-theme="knit"] {
+  --void: #fff9df; --cabinet: #fff8d5; --cabinet-2: #f8edb8;
+  --line: #dec875; --ink: #40320b; --muted: #6f602d;
+  --amber: #745300; --amber-dim: #96741c; --theme-rgb: 203, 155, 0;
+}
+:root[data-theme="copious"] {
+  --void: #080e24; --cabinet: #101b39; --cabinet-2: #192848;
+  --line: #35486d; --ink: #f2f4ff; --muted: #aebbd4;
+  --amber: #b6d4ff; --amber-dim: #6283ba; --theme-rgb: 125, 171, 243;
+}
+:root[data-theme="saucer"] {
+  --void: #fafafa; --cabinet: #f5f5f5; --cabinet-2: #e9ebec;
+  --line: #ced2d5; --ink: #202529; --muted: #5c646a;
+  --amber: #373e43; --amber-dim: #727a7f; --theme-rgb: 80, 90, 95;
+}
+:root[data-theme="fulfill"] {
+  --void: #0b0b0d; --cabinet: #141416; --cabinet-2: #222226;
+  --line: #43434a; --ink: #f7f7f7; --muted: #bebec4;
+  --amber: #f2f2f4; --amber-dim: #9c9ca3; --theme-rgb: 225, 225, 232;
+}
+
+/* Each stage has its own visual grammar. Static gradients avoid extra animation
+   and do not interfere with timing-sensitive markers. */
+:root[data-theme="jubeat"] .stage {
+  background: linear-gradient(110deg, rgba(3,10,24,.80), rgba(5,18,38,.25)),
+    url("theme-art-v1-jubeat.webp") center / cover no-repeat, #08172e;
+}
+:root[data-theme="ripples"] .stage {
+  background:
+    radial-gradient(circle at 86% 19%, transparent 0 52px, rgba(55,169,142,.16) 53px 56px, transparent 57px 82px, rgba(55,169,142,.10) 83px 85px, transparent 86px),
+    radial-gradient(circle at 12% 82%, transparent 0 75px, rgba(51,171,146,.10) 76px 79px, transparent 80px 104px, rgba(51,171,146,.08) 105px 108px, transparent 109px),
+    linear-gradient(150deg, #fbfffd 8%, #d9f4e9 100%);
+}
+:root[data-theme="knit"] .stage {
+  background:
+    repeating-linear-gradient(125deg, transparent 0 68px, rgba(174,137,14,.085) 69px 71px, transparent 72px 91px),
+    repeating-linear-gradient(55deg, transparent 0 91px, rgba(197,157,17,.10) 92px 94px, transparent 95px 130px),
+    linear-gradient(145deg, #fffdf0, #f4dc78);
+}
+:root[data-theme="copious"] .stage {
+  background:
+    radial-gradient(circle at 12% 24%, #e7f3ff 0 1px, transparent 2px),
+    radial-gradient(circle at 70% 35%, #d4e9ff 0 1px, transparent 2px),
+    radial-gradient(circle at 40% 68%, rgba(207,225,255,.8) 0 1px, transparent 2px),
+    radial-gradient(ellipse at 75% 20%, rgba(92,132,208,.24), transparent 55%),
+    linear-gradient(150deg, #101e43, #070c1f);
+  background-size: 137px 151px, 233px 197px, 181px 223px, auto, auto;
+}
+:root[data-theme="saucer"] .stage {
+  background: radial-gradient(ellipse at 80% 5%, #fff 0, transparent 56%),
+    linear-gradient(145deg, #fff, #e9ebed);
+}
+:root[data-theme="fulfill"] .stage {
+  background: radial-gradient(ellipse at 75% 12%, rgba(255,255,255,.09), transparent 48%),
+    linear-gradient(145deg, #18181b, #050506);
+}
+
+/* The old theme header used a cropped single asset for all versions. It is not
+   a reliable representation of the complete original interface. */
+:root:is([data-theme="jubeat"], [data-theme="ripples"], [data-theme="knit"], [data-theme="copious"], [data-theme="saucer"], [data-theme="fulfill"]) .now-playing::after { display: none; }
+:root:is([data-theme="jubeat"], [data-theme="ripples"], [data-theme="knit"], [data-theme="copious"], [data-theme="saucer"], [data-theme="fulfill"]) .brand-mark span:nth-child(1) { animation: none; }
+
+/* Light-era colors must cover fixed dark UI surfaces as well as the tokens. */
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .transport { background: var(--cabinet); }
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .song-item.active { background: var(--cabinet-2); }
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .load-row,
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .toast { background: var(--cabinet); box-shadow: 0 8px 28px rgba(25,35,35,.2); }
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .options,
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .library-filter-panel { box-shadow: 0 8px 30px rgba(25,35,35,.2); }
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .play-btn { color: #fff; }
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) #libraryFilterCount { color: #fff; }
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .density-hud { color: #c1cbd8; }
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .marker-picture.ph::after { color: #c1cbd8; }
+/* Version labels use full opacity on light surfaces for legibility. */
+:root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .song-item .sm .ver { opacity: 1; }

@@ -1,0 +1,108 @@
+/* Version-inspired palettes and motifs, adapted for the viewer. */
+:root[data-theme="prop"] {
+  --void:#fff2f8; --cabinet:#fffafd; --cabinet-2:#f9e6ef; --line:#e3c1d3;
+  --ink:#392333; --muted:#735569; --amber:#a62c69; --amber-dim:#af6b8e;
+  --theme-rgb:166,44,105; --ok:#187351;
+}
+:root[data-theme="qubell"] {
+  --void:#eaf5fb; --cabinet:#f8fcff; --cabinet-2:#e1f1fa; --line:#b6d1e1;
+  --ink:#17374a; --muted:#536f80; --amber:#1a6497; --amber-dim:#6597b5;
+  --theme-rgb:36,123,175; --ok:#177454;
+}
+:root[data-theme="clan"] {
+  --void:#101114; --cabinet:#191b20; --cabinet-2:#25272e; --line:#40434c;
+  --ink:#eff1f4; --muted:#a1a7b3; --amber:#76d9ed; --amber-dim:#508b99;
+  --theme-rgb:92,191,214;
+}
+:root[data-theme="jubeat2020"] {
+  --void:#f2fcf9; --cabinet:#fbfffd; --cabinet-2:#e1f8f1; --line:#b0dbd0;
+  --ink:#1c4143; --muted:#537476; --amber:#146e65; --amber-dim:#62a797;
+  --theme-rgb:39,162,139; --ok:#177454;
+}
+:root[data-theme="festo"] {
+  --void:#fff7d3; --cabinet:#fffcef; --cabinet-2:#fff0b1; --line:#dfca84;
+  --ink:#3a301b; --muted:#71613d; --amber:#825300; --amber-dim:#a2812c;
+  --theme-rgb:190,139,24; --ok:#177454;
+}
+:root[data-theme="ave"] {
+  --void:#101d20; --cabinet:#18282a; --cabinet-2:#243739; --line:#486164;
+  --ink:#eaf5f3; --muted:#aec6c2; --amber:#7ce3d7; --amber-dim:#4b9992;
+  --theme-rgb:76,211,194;
+}
+:root[data-theme="beyond"] {
+  --void:#211713; --cabinet:#2a1e18; --cabinet-2:#3c2a21; --line:#6a4b3a;
+  --ink:#fff0df; --muted:#c7ac97; --amber:#ffc888; --amber-dim:#aa774b;
+  --theme-rgb:225,151,79;
+}
+
+/* Remove the previous shared black veil and stock header texture. */
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="clan"],[data-theme="jubeat2020"],[data-theme="festo"],[data-theme="ave"],[data-theme="beyond"]) .now-playing::after { background: none; }
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="clan"],[data-theme="jubeat2020"],[data-theme="festo"],[data-theme="ave"],[data-theme="beyond"]) .brand-mark span:nth-child(1) { animation: none; }
+
+/* prop: light pink with small floating dots. */
+:root[data-theme="prop"] .stage {
+  background:
+    radial-gradient(circle at 10px 10px, rgba(210,67,129,.12) 0 3px, transparent 4px) 0 0 / 68px 68px,
+    radial-gradient(circle at 20px 20px, rgba(94,151,195,.12) 0 2px, transparent 3px) 0 0 / 105px 105px,
+    linear-gradient(135deg,#fffafd,#ffe6f2);
+}
+/* Qubell: ice-blue space with translucent extracted cubes. */
+:root[data-theme="qubell"] .stage {
+  background:
+    url("theme-art-v1-qubell.webp") right 8% center / min(42%, 480px) auto no-repeat,
+    radial-gradient(ellipse at 85% 48%, #c1e7fa 0, transparent 50%),
+    linear-gradient(135deg,#f7fcff,#d5edf9);
+}
+/* clan: the four towns are represented together, including in the header mark. */
+:root[data-theme="clan"] .stage {
+  background:
+    url("theme-art-v1-clan.webp") right 3% center / min(48%, 500px) auto no-repeat,
+    linear-gradient(145deg,#191b20,#0b0c0e);
+}
+:root[data-theme="clan"] .brand-mark span:nth-child(1) { background:#e55d68; box-shadow:none; }
+:root[data-theme="clan"] .brand-mark span:nth-child(2) { background:#7cbd61; }
+:root[data-theme="clan"] .brand-mark span:nth-child(3) { background:#55bfd3; }
+:root[data-theme="clan"] .brand-mark span:nth-child(4) { background:#a477bd; }
+:root[data-theme="clan"] .brand { border-bottom:3px solid transparent; border-image:linear-gradient(90deg,#e55d68 0 25%,#7cbd61 25% 50%,#55bfd3 50% 75%,#a477bd 75%) 1; }
+/* JAEPO 2020: pink and mint grid from the local prototype backdrop. */
+:root[data-theme="jubeat2020"] .stage {
+  background:
+    url("theme-art-v1-jubeat2020.webp") right center / auto 100% no-repeat,
+    linear-gradient(145deg,#fff8fb 0%,#f1fff9 65%,#c9f4e7 100%);
+}
+/* festo: yellow, cyan and pink triangles plus a botanical accent. */
+:root[data-theme="festo"] .stage {
+  background:
+    url("theme-art-v1-festo.webp") right 2% bottom 6% / min(25%, 250px) auto no-repeat,
+    linear-gradient(135deg,transparent 75%,rgba(0,154,164,.14) 75%) 0 0 / 90px 90px,
+    linear-gradient(315deg,transparent 75%,rgba(224,103,152,.15) 75%) 0 0 / 90px 90px,
+    linear-gradient(135deg,#fff9da,#ffe690);
+}
+/* Ave. and beyond use restrained texture; the note panel stays unchanged. */
+:root[data-theme="ave"] .stage {
+  background:
+    linear-gradient(110deg, transparent 0 25%, rgba(17,109,107,.48) 65%, rgba(22,141,132,.65) 100%),
+    repeating-linear-gradient(92deg,rgba(18,12,8,.15) 0 3px,transparent 3px 16px,rgba(14,10,8,.11) 19px 21px,transparent 24px 45px),
+    linear-gradient(100deg,#332019,#543227 50%,#30201a);
+}
+:root[data-theme="beyond"] .stage {
+  background:
+    radial-gradient(ellipse at 75% 28%,rgba(255,171,88,.22),transparent 50%),
+    repeating-linear-gradient(0deg,rgba(20,12,9,.5) 0 3px,transparent 3px 38px),
+    repeating-linear-gradient(90deg,rgba(20,12,9,.34) 0 3px,transparent 3px 85px),
+    linear-gradient(125deg,#48291f,#734433 55%,#3e251d);
+}
+
+/* Light themes must replace hard-coded dark chrome as well as the tokens. */
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .song-item.active { background:var(--cabinet-2); }
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .transport { background:var(--cabinet); }
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .load-row,
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .toast { background:var(--cabinet); }
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .cover-fallback { background:var(--cabinet-2); }
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .play-btn { color:#fff; }
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .options,
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .library-filter-panel { box-shadow:0 10px 28px rgba(39,46,55,.22); }
+/* The density graph and marker previews remain dark to preserve chart contrast. */
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .density-hud,
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .marker-picture.ph::after { color:#b8c4d8; }
+:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="jubeat2020"],[data-theme="festo"]) .song-item .sm .ver { opacity: 1; }

@@ -29,6 +29,7 @@ try {
     if ($event!==null) {
         $now=time();$ip=$_SERVER['REMOTE_ADDR']??'';
         if (!filter_var($ip,FILTER_VALIDATE_IP)) throw new RuntimeException('Client address unavailable');
+        if (!visitor_admit($db,$ip,$now)) {header('Retry-After: 60');reply(429,['error'=>'rate_limited']);}
         $song=null;$title=null;$chart=null;
         if ($event['event']==='song') {
             $catalog=getenv('VISITOR_STATS_CATALOG')?:dirname($root).'/data/library.json';
@@ -45,13 +46,8 @@ try {
             $cookie=$token.'.'.hash_hmac('sha256',$token,$secret);
             setcookie('jv_visitor',$cookie,['expires'=>$now+31536000,'path'=>'/','secure'=>true,'httponly'=>true,'samesite'=>'Lax']);
         } else $token=$parts[0];
-        $visitor=hash('sha256',$token);$bucket=intdiv($now,60);
+        $visitor=hash('sha256',$token);
         $db->exec('BEGIN IMMEDIATE');
-        $q=$db->prepare('INSERT INTO rate_limits VALUES(?,?,1) ON CONFLICT(ip) DO UPDATE SET hits=CASE WHEN bucket=excluded.bucket THEN hits+1 ELSE 1 END,bucket=excluded.bucket');
-        $q->execute([hash('sha256',$ip),$bucket]);
-        $q=$db->prepare('SELECT hits FROM rate_limits WHERE ip=?');$q->execute([hash('sha256',$ip)]);
-        if ((int)$q->fetchColumn()>120) {$db->exec('COMMIT');header('Retry-After: 60');reply(429,['error'=>'rate_limited']);}
-        $db->exec('DELETE FROM rate_limits WHERE bucket < '.($bucket-2));
         $q=$db->prepare('INSERT OR IGNORE INTO receipts VALUES(?,?)');$q->execute([$eventId,$now]);
         if ($q->rowCount()) {
             $q=$db->prepare('INSERT OR IGNORE INTO visitors(id) VALUES(?)');$q->execute([$visitor]);

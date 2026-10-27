@@ -49,6 +49,19 @@ function visitor_secret(string $root): string {
     if (!is_string($secret)||!preg_match('/^[a-f0-9]{64}$/D',$secret)) throw new RuntimeException('Invalid secret');
     return $secret;
 }
+function visitor_admit(PDO $db,string $ip,int $now): bool {
+    $bucket=intdiv($now,60);$key=hash('sha256',$ip);
+    // Reserve the quota before catalog reads; rejected song names must not bypass it.
+    $db->exec('BEGIN IMMEDIATE');
+    try {
+        $q=$db->prepare('INSERT INTO rate_limits VALUES(?,?,1) ON CONFLICT(ip) DO UPDATE SET hits=CASE WHEN bucket=excluded.bucket THEN hits+1 ELSE 1 END,bucket=excluded.bucket');
+        $q->execute([$key,$bucket]);
+        $q=$db->prepare('SELECT hits FROM rate_limits WHERE ip=?');$q->execute([$key]);
+        $allowed=(int)$q->fetchColumn()<=120;
+        $db->exec('DELETE FROM rate_limits WHERE bucket < '.($bucket-2));
+        $db->exec('COMMIT');return $allowed;
+    } catch (Throwable $error) {$db->exec('ROLLBACK');throw $error;}
+}
 function visitor_export(PDO $db,string $root,int $batches=4): int {
     private_file($root.'/export.lock');$lock=fopen($root.'/export.lock','c');
     if (!$lock) throw new RuntimeException('Export lock unavailable');

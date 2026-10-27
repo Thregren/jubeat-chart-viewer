@@ -414,14 +414,15 @@
     A.audioLoad.pending = true;
     A.audioLoad.pendingLabel = state.chartCache.has(key) ? "音频加载" : "谱面读取";
     A.updateLoadMeter();
+    let chartReady = false;
     try {
       let payload = chartCacheGet(key);
+      const cached = !!payload;
       if (!payload) {
         const res = await fetch(chartPath(song, chart), { signal: request.signal });
         if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
         payload = { chart: Runtime.validateChart(await Runtime.readJSON(res)), chartMeta: chart };
         if (!chartRequests.current(request) || state.song !== song) return;
-        chartCachePut(key, payload);
       }
       // 注意别叫 chart：上面已经有一个同名的难度元信息对象（`chart`），
       // 这里再声明一次会在 try 块内把它遮住，于是块内更早的
@@ -429,10 +430,10 @@
       if (!chartRequests.current(request) || state.song !== song) return;
       A.metrics = A.metrics || {}; A.metrics.chartMs = performance.now() - started;
       const chartJson = payload.chart;
+      const parsed = parseNotes(chartJson);
+      if (!cached) chartCachePut(key, payload);
       state.chartMeta = payload.chartMeta;
       state.chart = chartJson;
-
-      const parsed = parseNotes(chartJson);
       state.notes = parsed.notes;
       state.activeNotes = [];
       state.noteCursor = 0;
@@ -482,6 +483,7 @@
       const urlT = A.urlState().t;
       // 音源还没就绪时这一跳会被挂起，等可播了再落下去（深链接 / 截图脚本都靠它）
       if (src) A.seekWhenReady(urlT != null ? urlT : 0);
+      chartReady = true;
       A.requestPaint();     // 换谱面后立刻重画一帧（暂停时渲染循环是停着的）
     } catch (err) {
       if (chartRequests.active !== request || state.song !== song || request.signal.reason?.name === "AbortError") return;
@@ -490,7 +492,7 @@
       A.updateLoadMeter();
       toast(`谱面加载失败：${err.message}，请重新选择难度重试`, true);
     } finally {
-      if (chartRequests.active === request && state.song === song) els.btnShare.disabled = false;
+      if (chartRequests.active === request && state.song === song) els.btnShare.disabled = !chartReady;
       chartRequests.finish(request);
     }
   }
@@ -531,6 +533,10 @@
     els.playIcon.textContent = "▶";
     els.btnPlay.setAttribute("aria-label", "播放");
     state.notes = [];
+    state.chart = null;
+    state.chartMeta = null;
+    state.bpmEvents = [];
+    state.baseOffset = 0;
     state.noteCursor = 0;
     state.activeNotes = [];
     state._parsed = null;
@@ -544,6 +550,8 @@
     els.statHolds.textContent = "—";
     els.statTime.textContent = "—";
     resetCombo();
+    buildDensity();
+    A.requestPaint();
   }
 
   /** Rebuild note/pad visual state for a given chart time (seconds). */

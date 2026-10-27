@@ -27,14 +27,46 @@
   class AudioSession {
     constructor(timers = { setTimeout: (...args) => setTimeout(...args), clearTimeout: id => clearTimeout(id) }) {
       this.timers = timers; this.generation = 0; this.recovery = null;
-      this.decodeTail = Promise.resolve();
+      this.decodeTail = Promise.resolve(); this.activeDecode = null;
     }
     invalidate() { this.cancelRecovery(); return ++this.generation; }
     current(token) { return token === this.generation; }
-    decode(job) {
-      const result = this.decodeTail.then(job);
-      this.decodeTail = result.then(() => undefined, () => undefined);
-      return result;
+    get decodeBlocked() { return !!this.activeDecode?.cancelled; }
+    decode(job, { signal } = {}) {
+      // decodeAudioData itself cannot be cancelled. Keep that one decoder
+      // serialized, but release queued jobs (and their encoded audio) as soon
+      // as their selection is cancelled or times out.
+      let pendingJob = job;
+      job = null;
+      const task = { cancelled: false };
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (success, value) => {
+          if (settled) return;
+          settled = true;
+          pendingJob = null;
+          signal?.removeEventListener('abort', abort);
+          if (success) resolve(value); else reject(value);
+        };
+        const abort = () => {
+          task.cancelled = true;
+          finish(false, signal.reason || new DOMException('加载已取消', 'AbortError'));
+        };
+        if (signal?.aborted) { abort(); return; }
+        signal?.addEventListener('abort', abort, { once: true });
+        const work = this.decodeTail.then(() => {
+          if (settled) return;
+          const run = pendingJob;
+          pendingJob = null;
+          this.activeDecode = task;
+          return run();
+        });
+        const complete = (success, value) => {
+          if (this.activeDecode === task) this.activeDecode = null;
+          finish(success, value);
+        };
+        this.decodeTail = work.then(value => complete(true, value), error => complete(false, error));
+      });
     }
     cancelRecovery() {
       if (this.recovery) this.timers.clearTimeout(this.recovery.timer);

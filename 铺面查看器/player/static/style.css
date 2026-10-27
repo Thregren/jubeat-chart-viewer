@@ -1371,3 +1371,36 @@ input[type="range"] {
 .list-meta > button { flex:0 0 auto; white-space:nowrap; font-size:11px; min-height:30px; padding:4px 7px; border-radius:6px; }
 
 .library-filters > summary[aria-disabled="true"] { opacity:.45; cursor:default; }
+
+/* 浏览器主题：配色与装饰素材来自对应版本，默认主题保持现有外观。 */
+:root[data-theme] .stage {
+  background-color: var(--void);
+  background-image: radial-gradient(ellipse at 80% 30%, rgba(var(--theme-rgb), .20), transparent 52%),
+    linear-gradient(90deg, rgba(7, 9, 15, .94), rgba(7, 9, 15, .65)), var(--theme-art);
+  background-position: center, center, right 6% center;
+  background-repeat: no-repeat;
+  background-size: auto, auto, var(--theme-art-size);
+}
+/* Keep each version's motif visible above the playfield on narrow screens. */
+:root[data-theme] .now-playing { position: relative; isolation: isolate; }
+:root[data-theme] .now-playing::after {
+  content: ""; position: absolute; inset: 0 0 0 auto; width: min(42%, 260px);
+  background: var(--theme-art) right center / contain no-repeat;
+  opacity: .24; pointer-events: none; z-index: -1;
+}
+:root[data-theme] .brand-mark span:nth-child(1) { box-shadow: 0 0 12px rgba(var(--theme-rgb), .65); animation: theme-accent 4s ease-in-out infinite; }
+@keyframes theme-accent { 50% { box-shadow: 0 0 18px rgba(var(--theme-rgb), .85); } }
+@media (prefers-reduced-motion: reduce) { :root[data-theme] .brand-mark span:nth-child(1) { animation: none; } }
+:root[data-theme="jubeat"] { --amber:#7d9dff; --amber-dim:#4057ae; --theme-rgb:91,125,255; --cabinet:#0c1021; --cabinet-2:#151b30; --line:#273354; --theme-art:url("theme-art-v1-jubeat.webp"); --theme-art-size:cover; }
+:root[data-theme="ripples"] { --amber:#b6e863; --amber-dim:#668f26; --theme-rgb:141,205,63; --cabinet:#111a16; --cabinet-2:#17251b; --line:#324631; --theme-art:url("theme-art-v1-ripples.webp"); --theme-art-size:cover; }
+:root[data-theme="knit"] { --amber:#c9ed42; --amber-dim:#7b9c14; --theme-rgb:190,235,46; --cabinet:#171b13; --cabinet-2:#21291a; --line:#3e4c28; --theme-art:url("theme-art-v1-knit.webp"); --theme-art-size:48% auto; }
+:root[data-theme="copious"] { --amber:#ffca42; --amber-dim:#aa791c; --theme-rgb:247,144,54; --cabinet:#1a151c; --cabinet-2:#281d29; --line:#503446; --theme-art:url("theme-art-v1-copious.webp"); --theme-art-size:42% auto; }
+:root[data-theme="saucer"] { --amber:#ffb365; --amber-dim:#ae6d32; --theme-rgb:255,171,101; --cabinet:#1a1718; --cabinet-2:#292120; --line:#473730; --theme-art:url("theme-art-v1-saucer.webp"); --theme-art-size:cover; }
+:root[data-theme="fulfill"] { --amber:#f5bd71; --amber-dim:#a77a37; --theme-rgb:229,162,87; --cabinet:#1b181b; --cabinet-2:#2a232a; --line:#4c3b46; --theme-art:url("theme-art-v1-fulfill.webp"); --theme-art-size:55% auto; }
+:root[data-theme="prop"] { --amber:#ff6bb6; --amber-dim:#a73d7c; --theme-rgb:255,82,164; --cabinet:#1c1421; --cabinet-2:#2a1b2c; --line:#513149; --theme-art:url("theme-art-v1-prop.webp"); --theme-art-size:24% auto; }
+:root[data-theme="qubell"] { --amber:#83ceff; --amber-dim:#4186b9; --theme-rgb:102,186,240; --cabinet:#111a29; --cabinet-2:#19263b; --line:#304561; --theme-art:url("theme-art-v1-qubell.webp"); --theme-art-size:50% auto; }
+:root[data-theme="clan"] { --amber:#8de9d8; --amber-dim:#459c91; --theme-rgb:83,204,185; --cabinet:#101c25; --cabinet-2:#192a36; --line:#314a56; --theme-art:url("theme-art-v1-clan.webp"); --theme-art-size:50% auto; }
+:root[data-theme="jubeat2020"] { --amber:#85ead2; --amber-dim:#398c82; --theme-rgb:85,230,191; --cabinet:#151a24; --cabinet-2:#202933; --line:#3d5055; --theme-art:url("theme-art-v1-jubeat2020.webp"); --theme-art-size:cover; }
+:root[data-theme="festo"] { --amber:#c7e67d; --amber-dim:#77993e; --theme-rgb:168,209,89; --cabinet:#182016; --cabinet-2:#242e20; --line:#40523a; --theme-art:url("theme-art-v1-festo.webp"); --theme-art-size:38% auto; }
+:root[data-theme="ave"] { --amber:#74e6ef; --amber-dim:#348d99; --theme-rgb:67,210,225; --cabinet:#101e27; --cabinet-2:#192e37; --line:#304d55; --theme-art:url("theme-art-v1-ave.webp"); --theme-art-size:cover; }
+:root[data-theme="beyond"] { --amber:#ffc578; --amber-dim:#ae7b37; --theme-rgb:238,163,65; --cabinet:#201815; --cabinet-2:#30231c; --line:#503b2d; --theme-art:url("theme-art-v1-beyond.webp"); --theme-art-size:cover; }

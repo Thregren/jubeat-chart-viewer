@@ -78,6 +78,7 @@ jobs:
           trap 'kill "$fixture_server_pid" 2>/dev/null || true' EXIT
           python -c "import sys; sys.path.insert(0,'tools'); from smoke_test import wait_ready; sys.exit(0 if wait_ready(18764) else 1)"
           node tools/browser_regression.cjs http://127.0.0.1:18764/ "$RUNNER_TEMP/browser-evidence"
+          node tools/browser_themes.cjs http://127.0.0.1:18764/ "$RUNNER_TEMP/browser-evidence/themes"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -120,6 +120,9 @@ public final class ArchiveImport {
                             if (!(name.startsWith("data/") || name.startsWith("media/") || name.startsWith("songs/") || name.startsWith("markers/") || (entry.isDirectory() && (name.equals("data") || name.equals("media") || name.equals("songs") || name.equals("markers")))))
                                 throw new IOException("资源包含非曲库文件：" + name);
                             if (entry.isDirectory()) continue;
+                            // Resource imports cannot introduce HTML, JavaScript or other active files.
+                            if (!name.toLowerCase(Locale.ROOT).matches(".*\\.(json|ogg|png|jpe?g|webp|gif)"))
+                                throw new IOException("资源包含非曲库文件：" + name);
                             if (!unique.add(fileAt(root, name).getCanonicalPath())) throw new IOException("资源路径重复：" + name);
                             if (entry.getSize() > MAX_FILE) throw new IOException("单个资源过大");
                             mkdir(dest.getParentFile()); long size = 0;

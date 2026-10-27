@@ -18,6 +18,13 @@ public final class ArchiveImportTest {
         try { ArchiveImport.extract(new ByteArrayInputStream(zip("data/library.json","../escape")),root,null); throw new AssertionError(); }
         catch(IOException expected) { check(new String(Files.readAllBytes(old),"UTF-8").equals("old")); }
         try { ArchiveImport.extract(new ByteArrayInputStream(zip("static/app.js")),root,null); throw new AssertionError(); } catch(IOException expected) {}
+        for (String active : new String[]{"songs/evil.js","songs/evil.html","markers/evil.svg","data/evil.php"}) {
+            try { ArchiveImport.extract(new ByteArrayInputStream(zip("data/library.json",active)),root,null); throw new AssertionError("accepted active resource"); }
+            catch(IOException expected) {
+                check(new String(Files.readAllBytes(old),"UTF-8").equals("old"));
+                check(!new File(root,active).exists());
+            }
+        }
         for (String[] paths : new String[][] {
             {"data/library.json", "data//library.json"}, {"data//library.json", "data/library.json"},
             {"data/library.json", "data///library.json"}, {"media/audio", "media//audio"},
@@ -60,11 +67,11 @@ public final class ArchiveImportTest {
         catch(IOException expected) { check(new String(Files.readAllBytes(old),"UTF-8").equals("old")); }
         ByteArrayOutputStream oversize=new ByteArrayOutputStream();
         try(ZipOutputStream z=new ZipOutputStream(oversize)){
-            z.putNextEntry(new ZipEntry("media/huge"));byte[] block=new byte[1<<20];
+            z.putNextEntry(new ZipEntry("media/huge.ogg"));byte[] block=new byte[1<<20];
             for(int i=0;i<129;i++)z.write(block);z.closeEntry();
         }
         try { ArchiveImport.extract(new ByteArrayInputStream(oversize.toByteArray()),root,null); throw new AssertionError(); }
-        catch(IOException expected) { check(!new File(root,"media/huge").exists()); }
+        catch(IOException expected) { check(!new File(root,"media/huge.ogg").exists()); }
         check(ArchiveImport.extract(new ByteArrayInputStream(zip("data/library.json","media/a.ogg")),root,null)==2);
         check(new String(Files.readAllBytes(old),"UTF-8").equals("new"));
         File work = temp.resolve(".site-import").toFile(); File backup = new File(work,"backup/data/library.json"); backup.getParentFile().mkdirs();

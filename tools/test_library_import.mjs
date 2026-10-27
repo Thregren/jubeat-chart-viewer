@@ -39,3 +39,26 @@ test('interrupted replacement journal restores previous library',async()=>{
   assert.equal(await fs.readFile(path.join(target,'old'),'utf8'),'saved');await assert.rejects(fs.stat(path.join(target,'new')));
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+test('damaged recovery journals never remove paths outside the import stage',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'viewer-recover-path-'));try{
+  const target=path.join(root,'site'),backup=target+'.previous',outside=path.join(root,'keep');
+  await fs.mkdir(target);await fs.writeFile(path.join(target,'current'),'current');
+  await fs.mkdir(backup);await fs.writeFile(path.join(backup,'saved'),'backup');
+  await fs.mkdir(outside);await fs.writeFile(path.join(outside,'important'),'keep');
+  const stage=await fs.mkdtemp(path.join(root,'.library-import-'));
+  for(const record of [
+   {stage:stage+'/../keep',backup,status:'prepared'},
+   {stage:root,backup,status:'committed'},
+   {stage,backup,status:'unknown'},
+   {stage,backup:outside,status:'prepared'},
+   null,
+  ]){
+   await fs.writeFile(target+'.import.json',JSON.stringify(record));
+   await assert.rejects(I.recover(target));
+   assert.equal(await fs.readFile(path.join(target,'current'),'utf8'),'current');
+   assert.equal(await fs.readFile(path.join(backup,'saved'),'utf8'),'backup');
+   assert.equal(await fs.readFile(path.join(outside,'important'),'utf8'),'keep');
+   assert.ok((await fs.stat(target+'.import.json')).isFile());
+  }
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});

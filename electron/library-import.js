@@ -78,16 +78,22 @@ function extract(archive,root,onProgress=()=>{}) {
   });
 }
 async function recover(target) {
+  target=path.resolve(target);
   const parent=path.dirname(target),journal=target+'.import.json';
   if(!fs.existsSync(journal))return;
   const j=JSON.parse(await fsp.readFile(journal,'utf8'));
-  if(j.backup!==target+'.previous'||!j.stage?.startsWith(path.join(parent,'.library-import-')))throw Error('导入恢复记录无效');
+  // Validate every path before any removal; a prefix check also accepts ../ escapes.
+  const name=typeof j?.stage==='string'?path.basename(j.stage):'';
+  if(!j||Array.isArray(j)||j.backup!==target+'.previous'||!['prepared','committed'].includes(j.status)
+    ||typeof j.stage!=='string'||path.dirname(j.stage)!==parent||path.resolve(j.stage)!==j.stage
+    ||name.length!==22||!/^\.library-import-[A-Za-z0-9]{6}$/.test(name))throw Error('导入恢复记录无效');
   if(j.status!=='committed'&&fs.existsSync(j.backup)){
     await fsp.rm(target,{recursive:true,force:true});await fsp.rename(j.backup,target);
   }
   await fsp.rm(j.stage,{recursive:true,force:true});await fsp.rm(j.backup,{recursive:true,force:true});await fsp.rm(journal,{force:true});
 }
 async function install(archive,target,{beforeCommit=async()=>{},progress=()=>{}}={}) {
+  target=path.resolve(target);
   await fsp.mkdir(path.dirname(target),{recursive:true});await recover(target);
   const stage=await fsp.mkdtemp(path.join(path.dirname(target),'.library-import-'));
   const journal=target+'.import.json',backup=target+'.previous';

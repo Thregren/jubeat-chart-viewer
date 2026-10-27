@@ -8,13 +8,13 @@
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.6.42" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.42" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.42" />
+  <link rel="manifest" href="static/manifest.json?v=0.6.43" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.43" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.43" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.42" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.42" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.43" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.43" />
 </head>
 <body>
   <div id="app">
@@ -44,7 +44,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.42</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.43</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -240,7 +240,7 @@
           </div>
           </details>
           <details class="settings-group" name="viewer-settings" data-settings-group="marker">
-          <summary>Marker 与高亮</summary>
+          <summary>Marker 与外观</summary>
           <div class="settings-body">
           <div class="settings-fields">
           <label class="ctl ctl-wide setting-wide"><span class="setting-label">marker（按键动画）</span>
@@ -249,6 +249,7 @@
                           <option value="">无（仅面板灯）</option>
                         </select>
                         <span class="ctl-hint" id="markerHint" hidden>素材载入中…</span></span></label>
+          <label class="ctl"><span class="setting-label">界面主题</span><span class="setting-control"><select id="viewerTheme" aria-label="界面主题"><option value="default">默认</option><option value="jubeat">初代</option><option value="ripples">ripples</option><option value="knit">knit</option><option value="copious">copious</option><option value="saucer">saucer</option><option value="fulfill">saucer fulfill</option><option value="prop">prop</option><option value="qubell">Qubell</option><option value="clan">clan</option><option value="jubeat2020">jubeat 2020</option><option value="festo">festo</option><option value="ave">Ave</option><option value="beyond">beyond the Ave</option></select></span></label>
           <label class="ctl"><span class="setting-label">画质</span><span class="setting-control"><select id="renderQuality" aria-label="画质"><option value="auto">自动</option><option value="sharp">清晰</option><option value="eco">省电</option></select></span></label>
           </div><div class="settings-switches">
           <label class="ctl checkbox" title="接近和命中动画保持 1× 时长，拍点仍跟随歌曲速度；刷新后保留开关状态">
@@ -375,32 +376,32 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.42"></script>
-  <script src="static/song-links.js?v=0.6.42"></script>
-  <script src="static/core.js?v=0.6.42"></script>
-  <script src="static/runtime.js?v=0.6.42"></script>
-  <script src="static/services.js?v=0.6.42"></script>
+  <script src="static/sfx.js?v=0.6.43"></script>
+  <script src="static/song-links.js?v=0.6.43"></script>
+  <script src="static/core.js?v=0.6.43"></script>
+  <script src="static/runtime.js?v=0.6.43"></script>
+  <script src="static/services.js?v=0.6.43"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.42"></script>
+  <script src="static/record.js?v=0.6.43"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.6.42"></script>
-<script src="static/app-base.js?v=0.6.42"></script>
-  <script src="static/app-audio.js?v=0.6.42"></script>
-  <script src="static/first-marker.js?v=0.6.42"></script>
-  <script src="static/app-marker.js?v=0.6.42"></script>
-  <script src="static/app-density.js?v=0.6.42"></script>
-  <script src="static/rhythm-timeline.js?v=0.6.42"></script>
-  <script src="static/app-timeline.js?v=0.6.42"></script>
-  <script src="static/directory.js?v=0.6.42"></script>
-  <script src="static/list-images.js?v=0.6.42"></script>
-  <script src="static/visitor-queue.js?v=0.6.42"></script>
-  <script src="static/app-visitors.js?v=0.6.42"></script>
-  <script src="static/app-library.js?v=0.6.42"></script>
-  <script src="static/library-filters.js?v=0.6.42"></script>
-  <script src="static/marker-library.js?v=0.6.42"></script>
-  <script src="static/app-player.js?v=0.6.42"></script>
-  <script src="static/app-render.js?v=0.6.42"></script>
-  <script src="static/app-wiring.js?v=0.6.42"></script>
-  <script src="static/app.js?v=0.6.42"></script>
+  <script src="static/version-data.js?v=0.6.43"></script>
+<script src="static/app-base.js?v=0.6.43"></script>
+  <script src="static/app-audio.js?v=0.6.43"></script>
+  <script src="static/first-marker.js?v=0.6.43"></script>
+  <script src="static/app-marker.js?v=0.6.43"></script>
+  <script src="static/app-density.js?v=0.6.43"></script>
+  <script src="static/rhythm-timeline.js?v=0.6.43"></script>
+  <script src="static/app-timeline.js?v=0.6.43"></script>
+  <script src="static/directory.js?v=0.6.43"></script>
+  <script src="static/list-images.js?v=0.6.43"></script>
+  <script src="static/visitor-queue.js?v=0.6.43"></script>
+  <script src="static/app-visitors.js?v=0.6.43"></script>
+  <script src="static/app-library.js?v=0.6.43"></script>
+  <script src="static/library-filters.js?v=0.6.43"></script>
+  <script src="static/marker-library.js?v=0.6.43"></script>
+  <script src="static/app-player.js?v=0.6.43"></script>
+  <script src="static/app-render.js?v=0.6.43"></script>
+  <script src="static/app-wiring.js?v=0.6.43"></script>
+  <script src="static/app.js?v=0.6.43"></script>
 </body>
 </html>

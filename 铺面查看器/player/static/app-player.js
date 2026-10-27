@@ -132,14 +132,14 @@
   }
 
   function setLoadVisible(on) {
+    // 音源或谱面未就绪时禁用播放；同首歌切难度失败时保留的音源也不能独自起播。
+    const chartReady = !!state.chart && !!state._parsed;
+    els.btnPlay.disabled = on || !chartReady;
+    els.btnPlay.title = on ? "音源加载中…" : chartReady ? "播放/暂停 (Space)" : "请先选择有效谱面";
     if (audioLoad.visible === on) return;
     audioLoad.visible = on;
     els.loadRow.hidden = !on;
     els.btnPlay.classList.toggle("is-loading", on);
-    // 音源没就绪时播放按钮直接禁用：以前允许点，点完排队到数据到齐自动播，
-    // 但那时候谱面状态可能还没落好，听起来就是「提前响了、不对拍」。
-    els.btnPlay.disabled = on;
-    els.btnPlay.title = on ? "音源加载中…" : "播放/暂停 (Space)";
   }
 
   function renderLoadMeter() {
@@ -204,7 +204,8 @@
       renderLoadMeter();
       return;
     }
-    if (!audioLoad.visible || audioLoad.hideTimer) return;
+    if (!audioLoad.visible) { setLoadVisible(false); return; }
+    if (audioLoad.hideTimer) return;
     renderLoadMeter();
     audioLoad.hideTimer = setTimeout(() => {
       audioLoad.hideTimer = 0;
@@ -427,8 +428,10 @@
     backend.mode = "element";
     pendingRateSeek = null;
     resetFetchProgress();
-    if (FORCE_MEDIA || options.decode === false || A.mode?.preferNativeAudio || selectedRate() !== 1) {
+    if (FORCE_MEDIA || options.decode === false || A.mode?.preferNativeAudio || selectedRate() !== 1 || audioSession.decodeBlocked) {
       // ?media=1：故意的直出模式，进度交给 <audio> 自己报
+      // A cancelled decoder may still be stuck inside the browser. New songs
+      // can use native audio immediately instead of queueing another full file.
       loadElementSource(url);
       audioRequests.finish(request);
       return false;
@@ -469,7 +472,7 @@
       if (estimate > budget) { loadElementSource(url); return false; }
       const wantsPCM=()=>options.decode!==false&&!A.mode?.preferNativeAudio&&selectedRate()===1;
       if(!wantsPCM()) {audioLoad.decoding=false;loadElementSource(url);return true;}
-      const decode=audioSession.decode(()=>current()&&wantsPCM()?A.audioCtx.decodeAudioData(bytes):null);
+      const decode=audioSession.decode(()=>current()&&wantsPCM()?A.audioCtx.decodeAudioData(bytes):null, {signal: request.signal});
       const buf = await decode;
       if(!buf){if(current())loadElementSource(url);return false;}
       if(!wantsPCM()||buf.length*buf.numberOfChannels*4>budget){if(current())loadElementSource(url);return true;}
@@ -765,6 +768,10 @@
       toast("先从左侧选择一首曲目");
       return;
     }
+    if (!state.chart || !state._parsed) {
+      toast("谱面尚未就绪，请选择有效谱面后播放");
+      return;
+    }
     if (backend.mode === "webaudio" && selectedRate() !== 1) {
       applyPlaybackRate();
     }
@@ -811,6 +818,7 @@
       sfxReset();
     } catch (err) {
       // 自己 pause / 换歌打断的排队请求，不是错误，别弹提示
+      if (!audioSession.current(generation) || url !== backend.url) return;
       if (err && err.name === "AbortError") return;
       toast(`无法播放：${err.message}`, true);
     }

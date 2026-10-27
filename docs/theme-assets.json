@@ -1,0 +1,109 @@
+{
+  "note": "Selected visuals from each named local arcade version; visuals are adapted to the web layout, not claimed to reproduce original animation timing.",
+  "assets": [
+    {
+      "id": "jubeat",
+      "source_version": "01_jubeat_2008120500",
+      "source_resource": "BGD_MAIN_BG.png",
+      "source_sha256": "6beccc263f4f01397cdf4134e74f3aa668ff5656935c1331f0fc6e93622c353b",
+      "asset": "theme-art-v1-jubeat.webp",
+      "bytes": 166112
+    },
+    {
+      "id": "ripples",
+      "source_version": "02_ripples_unknown",
+      "source_resource": "BGD_SKY.png",
+      "source_sha256": "78fa80a216933e2da364d70de103e341e382f4cd2754e00480d995d205679d34",
+      "asset": "theme-art-v1-ripples.webp",
+      "bytes": 284
+    },
+    {
+      "id": "knit",
+      "source_version": "03_knit_2011011400",
+      "source_resource": "TIT_KNITLINE.png",
+      "source_sha256": "c1c71f08f4d9c86cce9e5b6abe5b7b3482489b8ea2d3448826dcd5ccab2c9748",
+      "asset": "theme-art-v1-knit.webp",
+      "bytes": 188
+    },
+    {
+      "id": "copious",
+      "source_version": "04_copious_APPEND_2012072301",
+      "source_resource": "TIT_ICON_01.png",
+      "source_sha256": "4c48d9ba17a4ce5e4c6e5b30f96c9c3ce98ede6cc891edb6dc3ade8863912aa4",
+      "asset": "theme-art-v1-copious.webp",
+      "bytes": 2196
+    },
+    {
+      "id": "saucer",
+      "source_version": "05_saucer_2014012802",
+      "source_resource": "BGD_SAUCER_BG_MM.png",
+      "source_sha256": "0d8a6b050e9074605c182987411896945b5c8fb4395a50965e39e7d55ecdb0ab",
+      "asset": "theme-art-v1-saucer.webp",
+      "bytes": 178706
+    },
+    {
+      "id": "fulfill",
+      "source_version": "06_saucer_fulfill_2014111800",
+      "source_resource": "TIT_LOGO_EFF_01.png",
+      "source_sha256": "d4670f81979e46a9926b4aaff0ceaacc5c72c06796f151d3e7fd661a87e36593",
+      "asset": "theme-art-v1-fulfill.webp",
+      "bytes": 10930
+    },
+    {
+      "id": "prop",
+      "source_version": "07_prop_2016031700",
+      "source_resource": "TIT_BG_PINK.png",
+      "source_sha256": "afb8dd81e345f83c3bc91f2132d975f02c4f3dcbf93ce53ec297c3638b553c53",
+      "asset": "theme-art-v1-prop.webp",
+      "bytes": 632
+    },
+    {
+      "id": "qubell",
+      "source_version": "08_Qubell_2017062001",
+      "source_resource": "BGD_LOOP_CUBE.png",
+      "source_sha256": "52e5f602348912541b4a87162aebf9d2c7253df052f617e6612321033ae09148",
+      "asset": "theme-art-v1-qubell.webp",
+      "bytes": 33666
+    },
+    {
+      "id": "clan",
+      "source_version": "09_clan_2018070901",
+      "source_resource": "TIT_CIRCLETOWN_01.png",
+      "source_sha256": "3a355314db64da7b30b90253edc8744887d5fcc3c417b023fea06e9457c703bc",
+      "asset": "theme-art-v1-clan.webp",
+      "bytes": 173662
+    },
+    {
+      "id": "jubeat2020",
+      "source_version": "10_T44_JAEPO_2020020180",
+      "source_resource": "bgd_base.png",
+      "source_sha256": "f85ba941cba95565ec30f8b73c1abcb13c50043ada241a7e761fb9101d79a51d",
+      "asset": "theme-art-v1-jubeat2020.webp",
+      "bytes": 104894
+    },
+    {
+      "id": "festo",
+      "source_version": "11_festo_2022052400",
+      "source_resource": "BGD_FLOWER_0.png",
+      "source_sha256": "b7264413d968d749b3001a096175341349270088f7c9cfcb5047f3389b7b23ed",
+      "asset": "theme-art-v1-festo.webp",
+      "bytes": 75894
+    },
+    {
+      "id": "ave",
+      "source_version": "12_Ave_2023080800",
+      "source_resource": "BGD_BASE_EFF.png",
+      "source_sha256": "51125db7ce4e340f964a4154656b49b70bdaf18e6bed8a94793e6c1e710ea142",
+      "asset": "theme-art-v1-ave.webp",
+      "bytes": 58138
+    },
+    {
+      "id": "beyond",
+      "source_version": "13_beyond_the_Ave_2025020500",
+      "source_resource": "BGD_BASE_EFF_APE.png",
+      "source_sha256": "43319db006802f57eb86bf56f45c3ac836cf21ef40383a5ed869bf56641ede3f",
+      "asset": "theme-art-v1-beyond.webp",
+      "bytes": 153252
+    }
+  ]
+}

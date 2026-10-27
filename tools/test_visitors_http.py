@@ -86,7 +86,18 @@ def main():
                 status,_,counts=request({'event':'song','song':'directory/song','chart':'ADV'},cookie);assert status==200 and counts['visitors']==after_failure['visitors'],(status,counts)
                 missing=versions/'missing.json';missing.write_text(json.dumps({'songs':[{'id':'directory/added','title':'New Version','charts':[{'code':'EXT'}]}]}))
                 assert request({'event':'song','song':'directory/added','chart':'EXT'},cookie)[0]==200
+                # Unknown chart names consume quota before filesystem catalog work.
+                # Corrupt the catalog after quota exhaustion: rejection must remain 429, not 503.
+                before_limit=request()[2]
+                for _ in range(121):
+                    status,headers,_=request({'event':'song','song':'directory/not-installed','chart':'EXT'},cookie)
+                    if status==429:break
+                    assert status==422,status
+                assert status==429 and headers['Retry-After']=='60'
+                assert request()[2]==before_limit
                 catalog.write_text(json.dumps({'songs':[],'versionIndexes':['../outside.json']}))
+                assert request({'event':'song','song':'directory/song','chart':'ADV'},cookie)[0]==429
+                with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE rate_limits SET bucket=0')
                 assert request({'event':'song','song':'directory/song','chart':'ADV'},cookie)[0]==503
                 # Upgrade an old counter database without resetting prior totals.
                 legacy=root/'legacy';legacy.mkdir()

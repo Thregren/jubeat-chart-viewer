@@ -9,8 +9,9 @@ const settle = () => new Promise(setImmediate);
 function player({online = true, initialContext = true, suspended = false} = {}) {
   let clock = 0, id = 0, position = 0, respond = () => ({ok: true, status: 200});
   const timeouts = new Map(), intervals = new Map(), requests = [], started = [];
+  let disconnects = 0;
   const parameter = () => ({value: 1, setValueAtTime() {}, exponentialRampToValueAtTime() {}});
-  const node = () => ({gain: parameter(), frequency: parameter(), connect() {return this;}, disconnect() {}, start() {}, stop() {}});
+  const node = () => ({gain: parameter(), frequency: parameter(), connect() {return this;}, disconnect() {disconnects++;}, start() {}, stop() {}});
   const ctx = {
     state: suspended ? 'suspended' : 'running', currentTime: 2, destination: node(), resumes: 0,
     resume() {this.resumes++; this.state = 'running'; return Promise.resolve();},
@@ -40,6 +41,7 @@ function player({online = true, initialContext = true, suspended = false} = {}) 
   if (initialContext) A.audioCtx = ctx;
   return {
     A, ctx, requests, started,
+    get timers() {return intervals.size;}, get disconnects() {return disconnects;},
     get contexts() {return contexts;}, get synths() {return synths;},
     online(value) {online = value;}, position(value) {position = value;},
     respond(fn) {respond = fn;},
@@ -103,7 +105,18 @@ test('a suspended clock cannot queue old notes that burst after resume', async (
 test('disabled effects do not allocate an AudioContext or fetch samples', async () => {
   const h = player({initialContext: false}); h.A.els.metroSound.value = '';
   h.A.setPlaying(true); await settle(); h.tick();
-  assert.equal(h.contexts, 0); assert.equal(h.requests.length, 0);
+  assert.equal(h.contexts, 0); assert.equal(h.requests.length, 0); assert.equal(h.timers, 0);
+});
+test('effect changes stop muted wakeups, clear queued sounds and restart at the current beat',async()=>{
+ const h=player();h.A.setPlaying(true);await settle();h.tick();
+ assert.equal(h.timers,1);assert.equal(h.started.length,1);
+ const before=h.disconnects;h.A.els.metroVolume.value='0';h.A.prepareSfx();
+ assert.equal(h.timers,0);assert.equal(h.disconnects,before+1);
+ h.position(10);h.A.state.notes.push({t:10.1});h.A.els.metroVolume.value='100';h.A.prepareSfx();await settle();h.tick();
+ assert.equal(h.timers,1);assert.equal(h.started.length,2);
+ h.A.els.metroSound.value='';h.A.prepareSfx();assert.equal(h.timers,0);
+ h.A.els.metroSound.value='billy';h.A.prepareSfx();assert.equal(h.timers,1);
+ h.A.setPlaying(false);assert.equal(h.timers,0);
 });
 
 test('missing optional samples back off, but explicit selection can retry immediately', async () => {

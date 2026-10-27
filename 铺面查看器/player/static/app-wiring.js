@@ -74,6 +74,23 @@
 
   function bindEvents() {
     window.JubeatSongLinks.install(A);
+    const theme = document.getElementById('viewerTheme');
+    if (theme) {
+      const applyTheme = value => {
+        const valid = [...theme.options].some(option => option.value === value);
+        const chosen = valid ? value : 'default';
+        theme.value = chosen;
+        if (chosen === 'default') delete document.documentElement.dataset.theme;
+        else document.documentElement.dataset.theme = chosen;
+      };
+      // Recording output stays independent of the viewer preference.
+      applyTheme(window.__recActive ? 'default' : store('jubeat.viewerTheme'));
+      theme.disabled = !!window.__recActive;
+      theme.addEventListener('change', () => {
+        applyTheme(theme.value);
+        if (!window.__recActive) store('jubeat.viewerTheme', theme.value);
+      });
+    }
     const quality = document.getElementById('renderQuality');
     if (quality) {
       quality.value = A.services.renderer.mode;

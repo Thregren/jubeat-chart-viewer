@@ -60,6 +60,7 @@
   // 长押和普通 note 用同一个颜色（用户定的），长押靠「头尾各多一格」来认。
   const TILE = { edge: "#8f6c05", face: "#ffd94a" };
   const PENDING_TILE = { edge: "#424957", face: "#89919e" };
+  let countedNotes = null, countedCounts = null, countedDuration = NaN;
 
   /**
    * 列距（含暗缝）。官方是「条子宽 / 768 × 5px」——条子越宽格子越大，见 MAX_REF_W。
@@ -89,16 +90,22 @@
    */
   function recomputeDensity(w, h) {
     const audio = state.duration || 0;
-    density.counts = [];
-    density.cols = 0;
-    density.max = 0;
-    density.dur = 0;
     // 几何先算出来：没谱面时长时播放头还要靠它定位（见 drawDensity）
     const pitch = densityPitch(w);
     density.pitch = pitch;
     density.plotH = densityPlotH(pitch);
     density.graphW = OFFICIAL_COLS * pitch;
     density.graphX = Math.round((w - density.graphW) / 2);
+    // The 115 time buckets depend on the chart and its duration, not the
+    // viewport. Drawer/resize changes only need fresh drawing geometry.
+    if (w && density.counts === countedCounts && countedNotes === state.notes && countedDuration === audio) return;
+    density.counts = [];
+    density.cols = 0;
+    density.max = 0;
+    density.dur = 0;
+    countedNotes = null;
+    countedCounts = null;
+    countedDuration = NaN;
     if (!audio || !state.notes.length || !w) return;
 
     // 官方时间轴（jujube SongDifficulty::get_time_bounds）：起点 0，终点 =
@@ -131,6 +138,9 @@
     density.cols = cols;
     density.counts = counts;
     density.max = Math.max(1, max);
+    countedNotes = state.notes;
+    countedCounts = counts;
+    countedDuration = audio;
   }
 
   function buildDensity() {
@@ -161,7 +171,7 @@
     density.base = density.base || document.createElement("canvas");
     density.base.width = cv.width;
     density.base.height = cv.height;
-    recomputeDensity(w, h);     // 柱数由宽度定死 → 换尺寸就得重算
+    recomputeDensity(w, h);     // 几何随宽度更新；相同谱面的分桶统计直接复用
     density.baseReady = false;
     drawDensity();
   }

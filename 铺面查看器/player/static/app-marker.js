@@ -93,6 +93,11 @@
     img._settled = false;
     img._promise = frameDownloads.run(async () => {
       if (markerCfg.images.get(url) !== img || !pinnedFrame(url)) {
+        // A queued frame skipped after selecting another design is cancelled,
+        // not a permanently failed resource. Remove it so selecting it again
+        // can create a fresh download instead of reusing an empty cached frame.
+        if (markerCfg.images.get(url) === img) markerCfg.images.delete(url);
+        for (const [key, view] of atlasViews) if (view._parent === img) atlasViews.delete(key);
         img._tries=FRAME_RETRIES;img._settled=true;img.dispatchEvent(new Event('error'));return;
       }
       const abort = new AbortController(); img._abort = abort;

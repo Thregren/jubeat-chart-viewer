@@ -102,6 +102,9 @@
 
   /** Preload both accents and unlock the effects clock independently of music. */
   function prepareSfx({ unlock = false, retry = false } = {}) {
+    // Settings changes also own the scheduler: muting must discard already
+    // queued sounds, and enabling effects must restart from the current beat.
+    sfxTimerSync(false);
     const kind = els.metroSound.value;
     if (!kind || metroGain(1) <= 0 || A.mode?.ownsFrame) return;
     try {
@@ -221,16 +224,23 @@
     sfxSched.idx = lo;
   }
 
-  // 打点音排程器只在「正在播放」时开着。
+  // 打点音排程器只在「正在播放且音效启用」时开着。
   // 以前是无条件 setInterval(sfxTick, 25)：暂停之后每秒还是白醒 40 次，
   // 手机上就是纯耗电（函数里虽然第一行就 return，定时器本身照样唤醒主线程）。
   let sfxTimer = 0;
-  function sfxTimerSync() {
-    if (state.playing && !sfxTimer) {
-      prepareSfx({ unlock: true });
-      sfxTimer = setInterval(sfxTick, 25);
+  let sfxConfiguration = '';
+  function sfxTimerSync(prepare = true) {
+    const configuration = `${els.metroSound.value}:${metroGain(1)}:${!!A.mode?.ownsFrame}`;
+    if (configuration !== sfxConfiguration) {
+      sfxConfiguration = configuration;
+      sfxReset();
     }
-    else if (!state.playing && sfxTimer) {
+    const enabled = state.playing && els.metroSound.value && metroGain(1) > 0 && !A.mode?.ownsFrame;
+    if (enabled && !sfxTimer) {
+      sfxTimer = setInterval(sfxTick, 25);
+      if (prepare) prepareSfx({ unlock: true });
+    }
+    else if (!enabled && sfxTimer) {
       clearInterval(sfxTimer);
       sfxTimer = 0;
     }

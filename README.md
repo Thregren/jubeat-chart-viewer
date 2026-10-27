@@ -8,7 +8,7 @@
 
 - **找谱和看谱**：搜索曲名、版本、作曲者；按版本、长押和难度筛选排序；曲目列表按需渲染。
 - **Marker 与提示**：官方逐帧动画、单列图选、首 Marker「这里／开始」提示、同押面板框与双色高亮。
-- **界面主题**：切换 13 套按各版本特色重新设计的配色与图案，包括星空、涟漪、城市、热带植物、木纹和砖墙；记住上次选择。
+- **界面主题**：切换 13 套按各版本特色重新设计的配色与图案，包括星空、涟漪、城市、热带植物、木纹和砖墙，4×4 面板和边框也会随主题变色；记住上次选择。
 - **节奏可视化**：音符顺序数字、断句和节奏分组配色、长押轨迹、总连击、物量条和可细分的横向节奏轴。
 - **反复练习**：0.25×–2× 保持音调变速、声画偏移、A–B 段落循环、循环播放和多种按键音效。
 - **试听和分享**：独立原试听循环；歌曲分享页打开后自动定位歌曲和难度。
@@ -26,17 +26,17 @@
 
 直接打开 **[ub.thregren.world](https://ub.thregren.world/)** 即可使用。iPhone、iPad 和 Android 可通过浏览器的「添加到主屏幕／安装应用」使用 PWA。
 
-**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.44 轻量程序；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供之前发布的客户端和独立完整曲库。
+**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.45 轻量程序；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供之前发布的客户端和独立完整曲库。
 
 | 平台 | 下载 |
 |---|---|
-| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.44/jubeatViewer-0.6.44-win-x64.zip) |
-| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.44/jubeatViewer-0.6.44-win-arm64.zip) |
-| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.44/jubeatViewer-0.6.44-mac-x64.zip) |
-| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.44/jubeatViewer-0.6.44-mac-arm64.zip) |
-| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.44/jubeatViewer-0.6.44-linux-x86_64.AppImage) |
-| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.44/jubeatViewer-0.6.44-linux-arm64.AppImage) |
-| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.44/jubeat-viewer-0.6.44-android-min.apk) |
+| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-win-x64.zip) |
+| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-win-arm64.zip) |
+| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-mac-x64.zip) |
+| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-mac-arm64.zip) |
+| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-linux-x86_64.AppImage) |
+| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-linux-arm64.AppImage) |
+| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeat-viewer-0.6.45-android-min.apk) |
 
 离线使用：
 
@@ -50,10 +50,10 @@ macOS 程序未做商业签名，首次打开可在 Finder 中右键「打开」
 
 ## 最近更新
 
-**v0.6.44**
+**v0.6.45**
 
 - 按各版本视觉特色重新设计 13 套主题，区分浅色和深色界面，补充气泡、星空、城市、热带植物、木纹和砖墙等元素。
-- 将「音乐魔方」主题移到列表末尾，并保留原有主题设置的兼容性；浅色主题同步调整控件和文字对比度。
+- 将「音乐魔方」主题移到列表末尾，并保留原有主题设置的兼容性；浅色主题同步调整控件和文字对比度；4×4 面板、间隙和外框随主题配色变化。
 - 更新桌面和手机截图，发布 Windows、macOS、Linux 和 Android 轻量客户端。
 
 **网页版 v0.6.43**

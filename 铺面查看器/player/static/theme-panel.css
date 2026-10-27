@@ -1,0 +1,27 @@
+/* Version-inspired playfield colors. The marker canvas stays transparent and
+   the white hit flash keeps its original rule, so timing feedback remains clear. */
+:root[data-theme="jubeat"]     { --board-top:#315e99; --board-base:#142e56; --board-line:#6b95c3; --board-well:#142b4b; --board-pad:#325a85; --board-edge:#81add0; --board-index:#d8eeff; }
+:root[data-theme="ripples"]    { --board-top:#a9ddcc; --board-base:#70b49f; --board-line:#d5f5eb; --board-well:#4e8e7c; --board-pad:#72b9a3; --board-edge:#cdf1e2; --board-index:#123f34; }
+:root[data-theme="knit"]       { --board-top:#f5d66f; --board-base:#b9912f; --board-line:#ffecad; --board-well:#8a6a27; --board-pad:#c8a54c; --board-edge:#f9e39a; --board-index:#3f300a; }
+:root[data-theme="copious"]    { --board-top:#4a6bab; --board-base:#1c2c63; --board-line:#8da6db; --board-well:#1b2a54; --board-pad:#38588c; --board-edge:#93addc; --board-index:#edf4ff; }
+:root[data-theme="saucer"]     { --board-top:#f1f3f2; --board-base:#aab1b2; --board-line:#fff; --board-well:#7b8588; --board-pad:#b7c0c0; --board-edge:#e9efed; --board-index:#293436; }
+:root[data-theme="fulfill"]   { --board-top:#55565b; --board-base:#1d1e22; --board-line:#a6a8ae; --board-well:#25262a; --board-pad:#4c4e55; --board-edge:#a0a2aa; --board-index:#f3f4f5; }
+:root[data-theme="prop"]       { --board-top:#efafd0; --board-base:#b25c88; --board-line:#ffe1ef; --board-well:#8e486b; --board-pad:#c77d9f; --board-edge:#f9c7dc; --board-index:#4c2038; }
+:root[data-theme="qubell"]     { --board-top:#b1d9ef; --board-base:#5d9bc0; --board-line:#ecfaff; --board-well:#376c91; --board-pad:#74acd0; --board-edge:#d9f2ff; --board-index:#163b55; }
+:root[data-theme="clan"]       { --board-top:#61676f; --board-base:#282d34; --board-line:#99a3ad; --board-well:#252b33; --board-pad:#52606b; --board-edge:#aabec5; --board-index:#eff8fa; }
+:root[data-theme="jubeat2020"] { --board-top:#9ce6d7; --board-base:#4ba590; --board-line:#f9d9ec; --board-well:#347f74; --board-pad:#65bca8; --board-edge:#d8fff2; --board-index:#103b36; }
+:root[data-theme="festo"]      { --board-top:#ffdb70; --board-base:#c3932f; --board-line:#fff0ad; --board-well:#927024; --board-pad:#d1aa4a; --board-edge:#ffe9a5; --board-index:#48300a; }
+:root[data-theme="ave"]        { --board-top:#68c5bf; --board-base:#2c746e; --board-line:#a6eee1; --board-well:#215b58; --board-pad:#438e87; --board-edge:#a1dcd2; --board-index:#ebfffa; }
+:root[data-theme="beyond"]     { --board-top:#bc815e; --board-base:#764a35; --board-line:#ebbd93; --board-well:#59392d; --board-pad:#9a6649; --board-edge:#dfab81; --board-index:#fff2e2; }
+
+:root[data-theme] .stage .panel-bezel {
+  --pad-idle: var(--board-pad);
+  --pad-edge: var(--board-edge);
+  background: linear-gradient(180deg, var(--board-top), var(--board-base));
+  border-color: var(--board-line);
+}
+:root[data-theme] .stage .panel-inner {
+  background: var(--board-well);
+  border-color: var(--board-line);
+}
+:root[data-theme] .stage .pad .idx { color: var(--board-index); opacity: .7; }

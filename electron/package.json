@@ -16,7 +16,7 @@
     "dist:with-site": "electron-builder --config electron-builder.config.js --mac"
   },
   "devDependencies": {
-    "electron": "44.6.0",
+    "electron": "44.9.3",
     "electron-builder": "26.15.3",
     "sprintf-js": "file:vendor/safe-sprintf"
   },

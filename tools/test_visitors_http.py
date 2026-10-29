@@ -21,8 +21,8 @@ def main():
                 for _ in range(100):
                     try:status,_,counts=request();break
                     except OSError:time.sleep(.05)
-                assert status==200 and counts=={'visitors':0,'views':0}
-                status,headers,counts=request({'event':'page'});assert status==200 and counts=={'visitors':1,'views':1},(status,counts)
+                assert status==200 and counts=={'visitors':0,'today_visitors':0,'views':0}
+                status,headers,counts=request({'event':'page'});assert status==200 and counts=={'visitors':1,'today_visitors':1,'views':1},(status,counts)
                 cookie=headers['Set-Cookie'].split(';')[0];assert all(k in headers['Set-Cookie'].lower() for k in ['secure','httponly','samesite=lax'])
                 assert request({'event':'page'},cookie)[2]==counts
                 assert request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)[0]==200
@@ -37,11 +37,22 @@ def main():
                 records=[json.loads(line) for line in logs[0].read_text().splitlines()];assert len(records)==3,records
                 song=next(x for x in records if x['event']=='song');assert song['ip']=='127.0.0.1' and song['song']=='version/song.mcz' and song['title']=='Test Song' and song['chart']=='EXT' and song['ua']=='Fixture UA\t1'
                 assert all('jv_visitor' not in json.dumps(x) for x in records)
-                assert request()[2]=={'visitors':2,'views':2}
+                assert request()[2]=={'visitors':2,'today_visitors':2,'views':2}
+                # Shanghai midnight boundary and daily unique identities; do not alter cumulative counts.
+                with sqlite3.connect(private/'visitors.sqlite') as db:
+                    cookie_id=hashlib.sha256(cookie.split('=',1)[1].split('.',1)[0].encode()).hexdigest()
+                    other_id=db.execute('SELECT id FROM visitors WHERE id != ?', (cookie_id,)).fetchone()[0]
+                    shanghai_today=((int(time.time())+8*3600)//86400)*86400-8*3600
+                    db.execute('UPDATE visitors SET last_seen=? WHERE id=?',(shanghai_today-1,cookie_id))
+                    db.execute('UPDATE visitors SET last_seen=? WHERE id=?',(shanghai_today,other_id))
+                assert request()[2]=={'visitors':2,'today_visitors':1,'views':2}
+                # A new event from a known browser restores that visitor to today without increasing history.
+                assert request({'event':'page'},cookie)[2]['visitors']==2 and request()[2]['today_visitors']==2
+                with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE visitors SET last_seen=?',(int(time.time()),))
                 # Concurrent distinct browsers never lose increments; service restarts preserve totals.
                 with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
                     results=list(pool.map(lambda _:request({'event':'page'}),range(12)))
-                assert all(x[0]==200 for x in results);assert request()[2]['visitors']==14
+                assert all(x[0]==200 for x in results);assert request()[2]['visitors']==14 and request()[2]['today_visitors']==14
                 process.terminate();process.wait(timeout=5)
                 process=subprocess.Popen([args.php,'-S',f'127.0.0.1:{port}','-t',str(root)],env=env,stdout=log,stderr=log)
                 for _ in range(100):
@@ -54,9 +65,11 @@ def main():
                 retry_cookie=headers['Set-Cookie'].split(';')[0]
                 status,headers,duplicate_counts=request(event);assert status==200 and retry_counts==duplicate_counts
                 assert headers['Set-Cookie'].split(';')[0]==retry_cookie
-                before=hashlib.sha256((private/'visitors.sqlite').read_bytes()).digest()
+                def database_snapshot():
+                    with sqlite3.connect(private/'visitors.sqlite') as db:return list(db.iterdump())
+                before=database_snapshot()
                 request();request()
-                assert hashlib.sha256((private/'visitors.sqlite').read_bytes()).digest()==before
+                assert database_snapshot()==before
                 # Replay after a crash between append and outbox acknowledgement; recover partial tails.
                 with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE events SET exported=0')
                 records_before=logs[0].read_bytes()
@@ -107,6 +120,14 @@ def main():
                 code='require $argv[1]; $db=visitor_db($argv[2]); echo json_encode($db->query("SELECT visitors,views FROM counters WHERE id=1")->fetch(PDO::FETCH_ASSOC));'
                 result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(legacy)],capture_output=True,text=True)
                 assert result.returncode==0 and json.loads(result.stdout)=={'visitors':77,'views':123},result.stderr
+                # A v2 database is migrated in place; existing last event timestamps seed today's count.
+                v2=root/'v2';v2.mkdir()
+                with sqlite3.connect(v2/'visitors.sqlite') as db:
+                    db.executescript('CREATE TABLE counters(id INTEGER PRIMARY KEY,visitors INTEGER,views INTEGER); INSERT INTO counters VALUES(1,2,3); CREATE TABLE visitors(id TEXT PRIMARY KEY,last_key TEXT,last_at INTEGER); PRAGMA user_version=2;')
+                    db.executemany('INSERT INTO visitors VALUES(?,NULL,?)',[('old',shanghai_today-1),('today',shanghai_today)])
+                code='require $argv[1]; $db=visitor_db($argv[2]); echo json_encode([visitor_today($db,(int)$argv[3]),(int)$db->query("SELECT visitors FROM counters")->fetchColumn()]);'
+                result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(v2),str(shanghai_today+100)],capture_output=True,text=True)
+                assert result.returncode==0 and json.loads(result.stdout)==[1,2],result.stderr
                 assert (private/'secret').stat().st_mode & 0o077==0 and logs[0].stat().st_mode & 0o077==0
                 print('Visitor HTTP checks passed: deduplication, signed cookies, whitelist, origin, bounds, log fields, concurrency, persistence and private permissions.')
             finally:

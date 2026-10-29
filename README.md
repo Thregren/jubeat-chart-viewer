@@ -13,6 +13,7 @@
 - **反复练习**：0.25×–2× 保持音调变速、声画偏移、A–B 段落循环、循环播放和多种按键音效。
 - **试听和分享**：独立原试听循环；歌曲分享页打开后自动定位歌曲和难度。
 - **手机与离线**：手机曲库抽屉（图选 Marker 后自动收起）、折叠设置、PWA 安装；桌面与 Android 客户端导入完整资源包后离线使用。
+- **关于与友链**：在侧栏「关于」查看项目 GitHub、Beyond ↑ JUBEAT ♪~ 友链，以及线上历史和今日访客数。
 
 | copious 星空主题 | festo 热带主题 |
 |---|---|
@@ -22,21 +23,25 @@
 |---|---|
 | ![手机曲库与紧凑筛选](docs/viewer-mobile.png) | ![单列 Marker 列表](docs/marker-list.png) |
 
+「关于」面板：
+
+![关于面板与访客统计](docs/viewer-about.png)
+
 ## 访问与下载
 
 直接打开 **[ub.thregren.world](https://ub.thregren.world/)** 即可使用。iPhone、iPad 和 Android 可通过浏览器的「添加到主屏幕／安装应用」使用 PWA。
 
-**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.45 轻量程序；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供之前发布的客户端和独立完整曲库。
+**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.46 轻量程序；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供之前发布的客户端和独立完整曲库。
 
 | 平台 | 下载 |
 |---|---|
-| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-win-x64.zip) |
-| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-win-arm64.zip) |
-| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-mac-x64.zip) |
-| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-mac-arm64.zip) |
-| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-linux-x86_64.AppImage) |
-| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeatViewer-0.6.45-linux-arm64.AppImage) |
-| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.45/jubeat-viewer-0.6.45-android-min.apk) |
+| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-win-x64.zip) |
+| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-win-arm64.zip) |
+| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-mac-x64.zip) |
+| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-mac-arm64.zip) |
+| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-linux-x86_64.AppImage) |
+| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-linux-arm64.AppImage) |
+| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeat-viewer-0.6.46-android-min.apk) |
 
 离线使用：
 
@@ -49,6 +54,12 @@ macOS 程序未做商业签名，首次打开可在 Finder 中右键「打开」
 更多安装方法见 [客户端与压缩曲库](docs/压缩曲库与客户端.md)，曲库范围和按版本安装见 [目录曲库说明](docs/目录曲库.md)。
 
 ## 最近更新
+
+**v0.6.46**
+
+- 侧栏新增「关于」入口，集中展示项目 GitHub 和友链 Beyond ↑ JUBEAT ♪~。
+- 将访客人数移入「关于」，分别显示历史访客和今日访客；按浏览器去重，今日以北京时间自然日计算。
+- 访客统计服务支持保留现有数据的数据库升级；离线环境不依赖该服务。
 
 **v0.6.45**
 
@@ -87,7 +98,7 @@ flowchart LR
 
 前端由曲库、音频、渲染和设置服务管理生命周期。正常播放优先使用 WebAudio；保音调变速和超预算音源使用原生媒体管线。Marker 跟随音频时钟绘制，辅助时间文字最多每秒更新十次，暂停时停止绘制。画质可选「自动／清晰／省电」，录制保留完整精度。
 
-主查看器可纯静态部署。可选的访客统计使用 PHP + SQLite；页面仅显示累计人数，IP、歌曲访问与 UA 明细保存在禁止公开访问的目录，详见 [统计部署说明](deploy/visitors/README.md)。
+主查看器可纯静态部署。可选的访客统计使用 PHP + SQLite；页面“关于”中显示历史及今日访客数，IP、歌曲访问与 UA 明细保存在禁止公开访问的目录，详见 [统计部署说明](deploy/visitors/README.md)。
 
 开发和维护入口：
 

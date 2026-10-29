@@ -25,7 +25,24 @@ function visitor_db(string $root): PDO {
                 PRAGMA user_version=2; COMMIT;');
         } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
     }
+    if ((int)$db->query('PRAGMA user_version')->fetchColumn() < 3) {
+        $db->exec('BEGIN IMMEDIATE');
+        try {
+            // Recheck after taking the lock: another request may have migrated first.
+            if ((int)$db->query('PRAGMA user_version')->fetchColumn() < 3) {
+                $db->exec('ALTER TABLE visitors ADD COLUMN last_seen INTEGER; UPDATE visitors SET last_seen=last_at;
+                    CREATE INDEX IF NOT EXISTS visitors_last_seen ON visitors(last_seen); PRAGMA user_version=3;');
+            }
+            $db->exec('COMMIT');
+        } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
+    }
     return $db;
+}
+function visitor_today(PDO $db, int $now): int {
+    $day=(new DateTimeImmutable('@'.$now))->setTimezone(new DateTimeZone('Asia/Shanghai'))->setTime(0,0);
+    $q=$db->prepare('SELECT COUNT(*) FROM visitors WHERE last_seen>=? AND last_seen<?');
+    $q->execute([$day->getTimestamp(),$day->modify('+1 day')->getTimestamp()]);
+    return (int)$q->fetchColumn();
 }
 function visitor_secret(string $root): string {
     foreach (['secret','secret.lock'] as $name) private_file($root.'/'.$name);

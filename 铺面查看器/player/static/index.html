@@ -8,16 +8,16 @@
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.6.45" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.45" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.45" />
+  <link rel="manifest" href="static/manifest.json?v=0.6.46" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.46" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.46" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.45" />
-  <link rel="stylesheet" href="static/theme-early.css?v=0.6.45" />
-  <link rel="stylesheet" href="static/theme-late.css?v=0.6.45" />
-  <link rel="stylesheet" href="static/theme-panel.css?v=0.6.45" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.45" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.46" />
+  <link rel="stylesheet" href="static/theme-early.css?v=0.6.46" />
+  <link rel="stylesheet" href="static/theme-late.css?v=0.6.46" />
+  <link rel="stylesheet" href="static/theme-panel.css?v=0.6.46" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.46" />
 </head>
 <body>
   <div id="app">
@@ -31,27 +31,24 @@
         <div class="brand-text">
           <h1>
             <span>谱面确认</span>
-            <a class="brand-gh" href="https://github.com/Thregren/jubeat-chart-viewer"
-               target="_blank" rel="noopener noreferrer"
-               title="开源仓库（GitHub）" aria-label="开源仓库 GitHub">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
-                         0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01
-                         1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
-                         0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0
-                         1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0
-                         3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01
-                         8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
-              </svg>
-            </a>
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.45</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.46</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
         </div>
+        <details class="brand-about">
+          <summary>关于</summary>
+          <div class="brand-about-panel">
+            <div class="brand-about-title">关于谱面确认</div>
+            <div class="visitor-count" id="visitorCount" hidden title="按浏览器去重；今日按北京时间统计。记录 IP、浏览器信息及访问谱面"><div>历史访客 <span id="visitorCountValue">—</span> 人</div><div>今日访客 <span id="visitorTodayValue">—</span> 人</div></div>
+            <a href="https://github.com/Thregren/jubeat-chart-viewer" target="_blank" rel="noopener noreferrer">项目 GitHub <span aria-hidden="true">↗</span></a>
+            <div class="brand-about-label">友链</div>
+            <a href="https://wiki.byd-ub.top/" target="_blank" rel="noopener noreferrer">Beyond ↑ JUBEAT ♪~ <span aria-hidden="true">↗</span></a>
+          </div>
+        </details>
       </header>
 
       <div class="search-block">
@@ -93,7 +90,6 @@
 
       <ul id="songList" class="song-list" aria-label="曲目列表"></ul>
       <ul id="markerList" class="marker-list" aria-label="Marker 图选列表" hidden></ul>
-      <div class="visitor-count" id="visitorCount" hidden title="按浏览器去重统计；记录 IP、浏览器信息及访问谱面">累计访客 <span id="visitorCountValue">—</span> 人</div>
     </aside>
 
     <main class="stage">
@@ -379,32 +375,32 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.45"></script>
-  <script src="static/song-links.js?v=0.6.45"></script>
-  <script src="static/core.js?v=0.6.45"></script>
-  <script src="static/runtime.js?v=0.6.45"></script>
-  <script src="static/services.js?v=0.6.45"></script>
+  <script src="static/sfx.js?v=0.6.46"></script>
+  <script src="static/song-links.js?v=0.6.46"></script>
+  <script src="static/core.js?v=0.6.46"></script>
+  <script src="static/runtime.js?v=0.6.46"></script>
+  <script src="static/services.js?v=0.6.46"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.45"></script>
+  <script src="static/record.js?v=0.6.46"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.6.45"></script>
-<script src="static/app-base.js?v=0.6.45"></script>
-  <script src="static/app-audio.js?v=0.6.45"></script>
-  <script src="static/first-marker.js?v=0.6.45"></script>
-  <script src="static/app-marker.js?v=0.6.45"></script>
-  <script src="static/app-density.js?v=0.6.45"></script>
-  <script src="static/rhythm-timeline.js?v=0.6.45"></script>
-  <script src="static/app-timeline.js?v=0.6.45"></script>
-  <script src="static/directory.js?v=0.6.45"></script>
-  <script src="static/list-images.js?v=0.6.45"></script>
-  <script src="static/visitor-queue.js?v=0.6.45"></script>
-  <script src="static/app-visitors.js?v=0.6.45"></script>
-  <script src="static/app-library.js?v=0.6.45"></script>
-  <script src="static/library-filters.js?v=0.6.45"></script>
-  <script src="static/marker-library.js?v=0.6.45"></script>
-  <script src="static/app-player.js?v=0.6.45"></script>
-  <script src="static/app-render.js?v=0.6.45"></script>
-  <script src="static/app-wiring.js?v=0.6.45"></script>
-  <script src="static/app.js?v=0.6.45"></script>
+  <script src="static/version-data.js?v=0.6.46"></script>
+<script src="static/app-base.js?v=0.6.46"></script>
+  <script src="static/app-audio.js?v=0.6.46"></script>
+  <script src="static/first-marker.js?v=0.6.46"></script>
+  <script src="static/app-marker.js?v=0.6.46"></script>
+  <script src="static/app-density.js?v=0.6.46"></script>
+  <script src="static/rhythm-timeline.js?v=0.6.46"></script>
+  <script src="static/app-timeline.js?v=0.6.46"></script>
+  <script src="static/directory.js?v=0.6.46"></script>
+  <script src="static/list-images.js?v=0.6.46"></script>
+  <script src="static/visitor-queue.js?v=0.6.46"></script>
+  <script src="static/app-visitors.js?v=0.6.46"></script>
+  <script src="static/app-library.js?v=0.6.46"></script>
+  <script src="static/library-filters.js?v=0.6.46"></script>
+  <script src="static/marker-library.js?v=0.6.46"></script>
+  <script src="static/app-player.js?v=0.6.46"></script>
+  <script src="static/app-render.js?v=0.6.46"></script>
+  <script src="static/app-wiring.js?v=0.6.46"></script>
+  <script src="static/app.js?v=0.6.46"></script>
 </body>
 </html>

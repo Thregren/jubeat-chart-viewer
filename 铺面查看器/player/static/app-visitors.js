@@ -3,7 +3,7 @@
   'use strict';
   const A=window.JubeatApp,badge=document.getElementById('visitorCount');
   if(!A||!badge||window.__recActive||location.protocol!=='https:'||['localhost','127.0.0.1','[::1]'].includes(location.hostname))return;
-  const value=document.getElementById('visitorCountValue');
+  const value=document.getElementById('visitorCountValue'),today=document.getElementById('visitorTodayValue');
   const queue=new window.JubeatVisitorQueue.EventQueue(async event=>{
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4000);
     try {
@@ -12,7 +12,9 @@
       if(!response.ok)return response.status===429||response.status>=500?'retry':'drop';
       const data=await response.json();
       if(!Number.isSafeInteger(data.visitors)||data.visitors<0)return 'retry';
-      value.textContent=data.visitors.toLocaleString('zh-CN');badge.hidden=false;return 'ok';
+      value.textContent=data.visitors.toLocaleString('zh-CN');
+      if(today)today.textContent=Number.isSafeInteger(data.today_visitors)&&data.today_visitors>=0?data.today_visitors.toLocaleString('zh-CN'):'—';
+      badge.hidden=false;return 'ok';
     } finally {clearTimeout(timer);}
   });
   A.services.register('visitors',queue);

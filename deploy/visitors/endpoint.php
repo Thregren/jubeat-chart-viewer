@@ -52,6 +52,7 @@ try {
         if ($q->rowCount()) {
             $q=$db->prepare('INSERT OR IGNORE INTO visitors(id) VALUES(?)');$q->execute([$visitor]);
             if ($q->rowCount()) $db->exec('UPDATE counters SET visitors=visitors+1 WHERE id=1');
+            $q=$db->prepare('UPDATE visitors SET last_seen=MAX(COALESCE(last_seen,0),?) WHERE id=?');$q->execute([$now,$visitor]);
             $key=hash('sha256',json_encode([$event['event'],$song,$chart]));
             $q=$db->prepare('SELECT last_key,last_at FROM visitors WHERE id=?');$q->execute([$visitor]);$previous=$q->fetch(PDO::FETCH_ASSOC);
             if ($previous['last_key']!==$key||$now-(int)$previous['last_at']>=10) {
@@ -68,7 +69,7 @@ try {
         try {visitor_export($db,$root);} catch (Throwable $error) {error_log('[visitor-stats] export pending: '.get_class($error));}
     }
     $counts=$db->query('SELECT visitors,views FROM counters WHERE id=1')->fetch(PDO::FETCH_ASSOC);
-    reply(200,['visitors'=>(int)$counts['visitors'],'views'=>(int)$counts['views']]);
+    reply(200,['visitors'=>(int)$counts['visitors'],'today_visitors'=>visitor_today($db,time()),'views'=>(int)$counts['views']]);
 } catch (Throwable $error) {
     if ($db instanceof PDO) {try {$db->exec('ROLLBACK');} catch (Throwable $ignored) {}}
     error_log('[visitor-stats] '.get_class($error));reply(503,['error'=>'statistics_unavailable']);

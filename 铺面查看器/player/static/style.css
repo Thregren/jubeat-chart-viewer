@@ -116,33 +116,34 @@ button, input, select {
   text-transform: uppercase;
 }
 
-/* 开源仓库入口：贴在标题右边，做小一号，别跟标题抢视觉重量 */
-.brand-gh {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--cabinet-2);
-  color: var(--muted);
-  transition: color 0.15s, border-color 0.15s;
+/* 关于和友链：收纳在侧栏标题右侧，不增加标题高度。 */
+.brand { position: relative; }
+.brand-mark { flex: 0 0 36px; }
+.brand-text { flex: 1 1 auto; min-width: 0; }
+.brand-about { flex: 0 0 auto; }
+.brand-about > summary {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 34px; padding: 0 10px; border: 1px solid var(--line);
+  border-radius: 8px; color: var(--muted); background: var(--cabinet-2);
+  cursor: pointer; font-size: 12px; list-style: none;
 }
-
-.brand-gh:hover,
-.brand-gh:focus-visible {
-  color: var(--ink);
-  border-color: var(--muted);
+.brand-about > summary::-webkit-details-marker { display: none; }
+.brand-about[open] > summary, .brand-about > summary:hover { color: var(--ink); border-color: var(--muted); }
+.brand-about > summary:focus-visible, .brand-about-panel a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.brand-about-panel {
+  position: absolute; z-index: 10; top: calc(100% - 8px); right: 12px;
+  width: min(220px, calc(100% - 24px)); padding: 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--cabinet);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .5);
 }
+.brand-about-title { padding: 3px 7px 7px; color: var(--ink); font-size: 12px; font-weight: 650; }
+.brand-about-label { padding: 9px 7px 3px; color: var(--muted); font-size: 11px; }
+.brand-about-panel a { display: flex; justify-content: space-between; gap: 12px; padding: 8px 7px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 12px; }
+.brand-about-panel a:hover { color: var(--amber); background: var(--cabinet-2); }
+.brand-about-panel a span { color: var(--muted); }
+@media (max-width: 380px) { .brand { gap: 8px; padding-left: 12px; padding-right: 12px; } }
 
-.brand-gh svg {
-  width: 13px;
-  height: 13px;
-  fill: currentColor;
-}
-
-/* 前端版本号：贴在 GitHub 图标右边，做成「标签」而不是标题的一部分 */
+/* 前端版本号：做成「标签」而不是标题的一部分 */
 .brand-ver {
   font-family: var(--mono);
   font-size: 9px;
@@ -1344,7 +1345,7 @@ input[type="range"] {
 .share-dialog:not([open]) { display:none; }
 
 /* Secondary information stays in the sidebar, outside the chart layout. */
-.visitor-count { flex: 0 0 auto; padding: 8px 16px max(8px, env(safe-area-inset-bottom)); color: var(--muted); font-size: 11px; line-height: 1.4; text-align: right; font-variant-numeric: tabular-nums; }
+.visitor-count { margin: 0 7px 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.4; font-variant-numeric: tabular-nums; }
 .visitor-count[hidden] { display: none; }
 
 /* Keep transport text changes local to the clock, independent of marker frames. */

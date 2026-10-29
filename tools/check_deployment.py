@@ -33,7 +33,7 @@ def inspect(base):
     for relative in ['.git/config','.env','.visitor-private/','.visitor-private/secret','.visitor-private/visitors.sqlite','%2evisitor-private/secret']:
         check('protected '+relative,request(relative,'HEAD')[0]==404)
     status,stats,body=request('api/visitors')
-    check('aggregate statistics only',status==200 and set(json.loads(body))=={'visitors','views'})
+    check('aggregate statistics only',status==200 and set(json.loads(body))=={'visitors','today_visitors','views'})
     check('statistics not cached','no-store' in stats.get('cache-control',''))
     return dict(ok=not failures,failures=failures)
 

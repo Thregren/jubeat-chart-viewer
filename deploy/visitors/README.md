@@ -1,16 +1,16 @@
 # 访客统计
 
-这是可选的服务器功能，复用 PHP 8.1+ / PHP-FPM 和 PDO SQLite。纯静态、离线及录制页面不依赖它。侧边栏底部仅显示累计访客数；接口不可用时隐藏，不影响播放。
+这是可选的服务器功能，复用 PHP 8.1+ / PHP-FPM 和 PDO SQLite。纯静态、离线及录制页面不依赖它。侧边栏“关于”中显示历史访客和今日访客；接口不可用时隐藏，不影响播放。
 
 部署前先配置拒绝规则，再启用前端：
 
 1. 在站点根目录建立 `.visitor-private/`，所有者为 PHP-FPM 用户（例如 `www:www`），目录权限 `0700`。
 2. 把 `endpoint.php`、`visitor-storage.php`、`visitor-catalog.php` 放到该目录，权限 `0600`，先用 `php -l` 校验。辅助文件要先于入口发布，更新时保留原有数据库、secret 和日志。该目录不入 Git，也不应放入备份下载或分发包。
 3. 在 nginx 的本站 `server {}` 中加入 `nginx.conf.example`，核对站点绝对路径、PHP-FPM socket 与安全响应头配置，然后 `nginx -t` 通过才 reload。
-4. 验证 `/api/visitors` 只返回 `visitors` / `views`，并验证 `/.visitor-private/`、其下日志、SQLite、secret、PHP 源文件、URL 编码路径均返回 404。
+4. 验证 `/api/visitors` 只返回 `visitors` / `today_visitors` / `views`，并验证 `/.visitor-private/`、其下日志、SQLite、secret、PHP 源文件、URL 编码路径均返回 404。
 5. 仅在上述验证通过后发布前端。请求体最多 2 KiB；写入只接受本站 Origin；每个 IP 每分钟最多 120 次写入。访客 cookie 为随机 ID + 服务端签名，HttpOnly、Secure、SameSite=Lax，有效一年。
 
-按有效浏览器 cookie 去重，清 cookie、换浏览器会计为新访客，不等于精确自然人数。统计从启用时开始，不推算或虚构历史人数。计数保存在 SQLite 中，重启、换前端不清零；新版本部署应保留 `.visitor-private/`。
+按有效浏览器 cookie 去重，清 cookie、换浏览器会计为新访客，不等于精确自然人数。今日按北京时间自然日计算，每个浏览器当天只计一次；升级时用已有最近访问时间初始化，缺少最近访问时间的旧身份在下次访问后才会计入今日。统计从启用时开始，不推算或虚构历史人数。计数保存在 SQLite 中，重启、换前端不清零；新版本部署应保留 `.visitor-private/`。
 
 每日 UTC 日志为 `visits-YYYY-MM-DD.log`，逐行 JSON，包含时间、事件、匿名访客标识、IP、歌曲 ID、曲名、难度、UA。IP 仅取 nginx 校正后的 `REMOTE_ADDR`；不能直接信任客户端传入的 CF-Connecting-IP / X-Forwarded-For。Cloudflare 部署需要先配置可信 Cloudflare 网段的 real_ip。首次访问记 `page`，成功加载谱面记 `song`，10 秒内连续重复事件去重；播放过程不循环发请求。
 

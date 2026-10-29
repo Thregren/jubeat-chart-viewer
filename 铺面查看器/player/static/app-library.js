@@ -393,6 +393,18 @@
   // 40 份够来回切歌不重读，同时把最早用过的挤出去。
   const chartCacheGet = key => catalog.get(key);
   const chartCachePut = (key, payload) => catalog.put(key, payload);
+  // Parsing a dense chart is pure work over the cached JSON. Reuse that work
+  // while the same cached object is resident, and let the WeakMap release it
+  // together with the catalog entry instead of adding a second visible cache.
+  const parsedChartCache = new WeakMap();
+  function parseCachedChart(chartJson) {
+    let parsed = parsedChartCache.get(chartJson);
+    if (!parsed) {
+      parsed = parseNotes(chartJson);
+      parsedChartCache.set(chartJson, parsed);
+    }
+    return parsed;
+  }
 
   async function loadChart(code) {
     A.mode?.chartChanging?.();
@@ -430,7 +442,7 @@
       if (!chartRequests.current(request) || state.song !== song) return;
       A.metrics = A.metrics || {}; A.metrics.chartMs = performance.now() - started;
       const chartJson = payload.chart;
-      const parsed = parseNotes(chartJson);
+      const parsed = parseCachedChart(chartJson);
       if (!cached) chartCachePut(key, payload);
       state.chartMeta = payload.chartMeta;
       state.chart = chartJson;

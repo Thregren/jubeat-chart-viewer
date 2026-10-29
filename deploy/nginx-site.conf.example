@@ -45,8 +45,11 @@ server {
     # —— 安全响应头（每个 location 都要再 include 一次，原因见文件开头）——
     include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
 
-    # cloudflare-realip.conf also allowlists Cloudflare plus loopback and then
-    # denies public direct-to-origin requests.
+    # cloudflare-realip.conf restores the visitor IP. cloudflare-edge-map.conf
+    # (included from http{}) preserves the socket address for direct-origin checks.
+    if ($jubeat_cloudflare_edge = 0) { set $jubeat_block_direct 1; }
+    if ($uri ~ ^/\.well-known/) { set $jubeat_block_direct 0; }
+    if ($jubeat_block_direct = 1) { return 444; }
 
     # —— 全站限流兜底 ——
     # limit_req  zone=jubeat_req burst=60 nodelay;

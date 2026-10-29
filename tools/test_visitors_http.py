@@ -21,23 +21,26 @@ def main():
                 for _ in range(100):
                     try:status,_,counts=request();break
                     except OSError:time.sleep(.05)
-                assert status==200 and counts=={'visitors':0,'today_visitors':0,'views':0}
-                status,headers,counts=request({'event':'page'});assert status==200 and counts=={'visitors':1,'today_visitors':1,'views':1},(status,counts)
+                assert status==200 and counts=={'visitors':0,'today_visitors':0,'views':0,'popular_songs':[]}
+                status,headers,counts=request({'event':'page'});assert status==200 and counts=={'visitors':1,'today_visitors':1,'views':1,'popular_songs':[]},(status,counts)
                 cookie=headers['Set-Cookie'].split(';')[0];assert all(k in headers['Set-Cookie'].lower() for k in ['secure','httponly','samesite=lax'])
                 assert request({'event':'page'},cookie)[2]==counts
                 assert request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)[0]==200
                 assert request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)[0]==200
+                status,_,funnel=request({'event':'library_ready','bucket':'lt500'},cookie);assert status==200 and funnel['visitors']==1
                 assert request({'event':'page'},cookie,origin='https://foreign.test')[0]==403
+                assert request({'event':'unknown'},cookie)[0]==400
                 assert request({'event':'song','song':'../../secret','chart':'EXT'},cookie)[0]==422
                 assert request({'event':'song','song':'version/song.mcz','chart':'NOPE'},cookie)[0]==422
                 assert request(raw='x'*2049)[0]==413
                 assert request(raw='not json')[0]==400
                 assert request({'event':'page'},'jv_visitor=forged')[2]['visitors']==2
                 logs=list(private.glob('visits-*.log'));assert len(logs)==1
-                records=[json.loads(line) for line in logs[0].read_text().splitlines()];assert len(records)==3,records
+                records=[json.loads(line) for line in logs[0].read_text().splitlines()];assert len(records)==4,records
                 song=next(x for x in records if x['event']=='song');assert song['ip']=='127.0.0.1' and song['song']=='version/song.mcz' and song['title']=='Test Song' and song['chart']=='EXT' and song['ua']=='Fixture UA\t1'
+                ready=next(x for x in records if x['event']=='library_ready');assert ready['bucket']=='lt500'
                 assert all('jv_visitor' not in json.dumps(x) for x in records)
-                assert request()[2]=={'visitors':2,'today_visitors':2,'views':2}
+                status,_,popular=request();assert status==200 and popular['popular_songs']==[{'song':'version/song.mcz','title':'Test Song','selections':1}]
                 # Shanghai midnight boundary and daily unique identities; do not alter cumulative counts.
                 with sqlite3.connect(private/'visitors.sqlite') as db:
                     cookie_id=hashlib.sha256(cookie.split('=',1)[1].split('.',1)[0].encode()).hexdigest()
@@ -45,7 +48,7 @@ def main():
                     shanghai_today=((int(time.time())+8*3600)//86400)*86400-8*3600
                     db.execute('UPDATE visitors SET last_seen=? WHERE id=?',(shanghai_today-1,cookie_id))
                     db.execute('UPDATE visitors SET last_seen=? WHERE id=?',(shanghai_today,other_id))
-                assert request()[2]=={'visitors':2,'today_visitors':1,'views':2}
+                status,_,day_counts=request();assert {k:day_counts[k] for k in ('visitors','today_visitors','views')}=={'visitors':2,'today_visitors':1,'views':2}
                 # A new event from a known browser restores that visitor to today without increasing history.
                 assert request({'event':'page'},cookie)[2]['visitors']==2 and request()[2]['today_visitors']==2
                 with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE visitors SET last_seen=?',(int(time.time()),))
@@ -107,7 +110,7 @@ def main():
                     if status==429:break
                     assert status==422,status
                 assert status==429 and headers['Retry-After']=='60'
-                assert request()[2]==before_limit
+                assert {k:request()[2][k] for k in ('visitors','today_visitors','views')}=={k:before_limit[k] for k in ('visitors','today_visitors','views')}
                 catalog.write_text(json.dumps({'songs':[],'versionIndexes':['../outside.json']}))
                 assert request({'event':'song','song':'directory/song','chart':'ADV'},cookie)[0]==429
                 with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE rate_limits SET bucket=0')
@@ -128,8 +131,14 @@ def main():
                 code='require $argv[1]; $db=visitor_db($argv[2]); echo json_encode([visitor_today($db,(int)$argv[3]),(int)$db->query("SELECT visitors FROM counters")->fetchColumn()]);'
                 result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(v2),str(shanghai_today+100)],capture_output=True,text=True)
                 assert result.returncode==0 and json.loads(result.stdout)==[1,2],result.stderr
+                backup_dir=pathlib.Path(tempfile.mkdtemp(prefix='jv-visitor-backup-'))
+                result=subprocess.run([args.php,str(maintenance),'--root',str(private),'--backup-dir',str(backup_dir),'--backup-keep','2'],capture_output=True,text=True)
+                assert result.returncode==0,result.stderr
+                backups=list(backup_dir.glob('jubeat-visitors-*.sqlite'));assert len(backups)==1 and (backups[0].with_suffix('.sqlite.secret')).is_file()
+                with sqlite3.connect(backups[0]) as db:assert db.execute('PRAGMA user_version').fetchone()[0]==4
+                shutil.rmtree(backup_dir)
                 assert (private/'secret').stat().st_mode & 0o077==0 and logs[0].stat().st_mode & 0o077==0
-                print('Visitor HTTP checks passed: deduplication, signed cookies, whitelist, origin, bounds, log fields, concurrency, persistence and private permissions.')
+                print('Visitor HTTP checks passed: deduplication, funnel, popular ranking, signed cookies, whitelist, origin, bounds, backup, concurrency, persistence and private permissions.')
             finally:
                 if process.poll() is None:process.terminate();process.wait(timeout=5)
 if __name__=='__main__':main()

@@ -45,11 +45,17 @@ server {
     # —— 安全响应头（每个 location 都要再 include 一次，原因见文件开头）——
     include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
 
+    # cloudflare-realip.conf also allowlists Cloudflare plus loopback and then
+    # denies public direct-to-origin requests.
+
     # —— 全站限流兜底 ——
     # limit_req  zone=jubeat_req burst=60 nodelay;
     # limit_conn jubeat_conn 32;
     # limit_req_status  429;
     # limit_conn_status 429;
+
+    # ACME HTTP validation must remain reachable without going through Cloudflare.
+    location ~ ^/\.well-known/ { allow all; try_files $uri =404; }
 
     # 目录本身不给看（默认会 403，暴露「这个目录存在」，统一成 404；子目录也要盖住）
     location ~ ^/(data|media|markers|static)(/.*)?/$ { return 404; }

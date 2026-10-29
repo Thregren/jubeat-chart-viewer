@@ -55,6 +55,9 @@ run "前端 JS 语法（node --check）" check_js
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
 run "前端、平台与录制纯逻辑单测" node --test tools/test_*.mjs
 run "分享页面、封面及路径安全" "$PY" tools/test_share_pages.py
+run "Cloudflare 实访 IP 网段同步与校验" "$PY" -m unittest tools/test_cloudflare_realip.py
+run "离线 IP 地区库读取边界" "$PY" -m unittest tools/test_ip2region.py
+run "访客聚合报告与匿名地区统计" "$PY" -m unittest tools/test_visitor_report.py
 
 run "开放目录曲库、WAV Range 与缺失素材" "$PY" tools/test_directory_library.py
 run "母库转码与精简目录曲库" "$PY" tools/test_compress_directory.py
@@ -86,7 +89,7 @@ run "Range + 路径穿越（python3 tools/test_range.py）" "$PY" tools/test_ran
 check_py() {
   cache=$(mktemp -d)
   PYTHONPYCACHEPREFIX="$cache" "$PY" -m py_compile \
-    铺面查看器/player/*.py tools/*.py || return 1
+    铺面查看器/player/*.py deploy/visitors/*.py tools/*.py || return 1
   rm -rf "$cache"
   echo "语法 OK：$(ls 铺面查看器/player/*.py tools/*.py | wc -l | tr -d ' ') 个文件"
 }

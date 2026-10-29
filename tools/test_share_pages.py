@@ -12,7 +12,7 @@ class SharePages(unittest.TestCase):
             song={'id':'音乐魔方/a&b','title':'<歌>" & </title><script>alert(1)</script>','artist':'甲 & 乙','assets':{'cover':'songs/cover.png'}}
             (root/'data/library.json').write_text(json.dumps({'songs':[song]}))
             out=root/'out';result=build_share_pages(root,out,version='0.6.36');self.assertEqual(result['songs'],1)
-            text=(out/result['pages'][0]['page']).read_text();self.assertIn('property="og:image"',text);self.assertIn('&lt;script&gt;',text);self.assertNotIn('<script>alert',text);self.assertIn('name="jubeat-share-song"',text);self.assertNotIn('<base',text);self.assertNotIn('<style',text);self.assertIn('https://ub.thregren.world/static/app.js',text);self.assertIn('id="panel"',text);self.assertNotIn('share-entry.js',text)
+            text=(out/result['pages'][0]['page']).read_text();self.assertIn('property="og:image"',text);self.assertIn('property="og:image:alt"',text);self.assertIn('name="twitter:card" content="summary_large_image"',text);self.assertIn('property="og:locale" content="zh_CN"',text);self.assertIn('&lt;script&gt;',text);self.assertNotIn('<script>alert',text);self.assertIn('name="jubeat-share-song"',text);self.assertNotIn('<base',text);self.assertNotIn('<style',text);self.assertIn('https://ub.thregren.world/static/app.js',text);self.assertIn('id="panel"',text);self.assertNotIn('share-entry.js',text)
             image=out/result['pages'][0]['image'];self.assertLess(image.stat().st_size,200000)
             with Image.open(image)as pic:self.assertEqual(pic.size,(300,300))
             self.assertEqual(song_key(song['id']),result['pages'][0]['page'].split('/')[-1].split('.')[0])

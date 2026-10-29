@@ -334,6 +334,7 @@
       audioLoad.buffering = false;
       flushPendingSeek();
       refresh();
+      A.visitors?.event('audio_ready');
     });
     el.addEventListener("canplaythrough", () => {
       audioLoad.buffering = false;
@@ -367,6 +368,7 @@
         audioLoad.pending = false;
         toast("音源加载失败，请重新选择曲目重试", true);
       }
+      A.visitors?.event('audio_error',{code:'media_error_'+(el.error?.code||0)});
       audioLoad.buffering = false;
       refresh();
     });
@@ -480,6 +482,7 @@
       A.metrics = A.metrics || {}; A.metrics.audioReadyMs = performance.now() - started;
       A.metrics.audioPCMBytes = buf.length * buf.numberOfChannels * 4;
       backend.buf = buf;
+      A.visitors?.event('audio_ready',{bucketMs:A.metrics.audioReadyMs});
       // 解码是异步的：如果这会儿已经开播（走的是 <audio>），就别中途换后端，
       // 否则时钟会在半路换源。下一首（或重新加载）自然就用上 buffer 了。
       if (state.playing || !els.audio.paused) {
@@ -784,6 +787,7 @@
         els.btnPlay.setAttribute("aria-label", "暂停");
         sfxReset();
       } catch (err) {
+        A.visitors?.event('play_error',{code:'buffer_play'});
         toast(`无法播放：${err.message}`, true);
       }
       return;
@@ -820,6 +824,7 @@
       // 自己 pause / 换歌打断的排队请求，不是错误，别弹提示
       if (!audioSession.current(generation) || url !== backend.url) return;
       if (err && err.name === "AbortError") return;
+      A.visitors?.event('play_error',{code:'element_play'});
       toast(`无法播放：${err.message}`, true);
     }
   }

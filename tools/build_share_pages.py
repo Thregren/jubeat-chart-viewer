@@ -126,9 +126,10 @@ def build_share_pages(library, out, base_url='https://ub.thregren.world/', versi
         metadata = '''
 <meta name="jubeat-share-root" content="{base}"><meta name="jubeat-share-song" content="{id}">
 <meta name="description" content="{description}"><meta property="og:type" content="website"><meta property="og:site_name" content="jubeat 谱面确认">
-<meta property="og:title" content="{title} · 谱面确认"><meta property="og:description" content="{description}"><meta property="og:url" content="{url}">
-<meta property="og:image" content="{image}"><meta property="og:image:secure_url" content="{image}"><meta property="og:image:type" content="{image_type}">{size}
-<meta name="twitter:card" content="summary"><meta name="twitter:title" content="{title} · 谱面确认"><meta name="twitter:image" content="{image}">
+<meta property="og:locale" content="zh_CN"><meta property="og:title" content="{title} · 谱面确认"><meta property="og:description" content="{description}"><meta property="og:url" content="{url}">
+<meta property="og:image" content="{image}"><meta property="og:image:secure_url" content="{image}"><meta property="og:image:type" content="{image_type}"><meta property="og:image:alt" content="{title} 专辑封面">{size}
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title} · 谱面确认"><meta name="twitter:description" content="{description}"><meta name="twitter:image" content="{image}">
+<meta itemprop="name" content="{title} · 谱面确认"><meta itemprop="description" content="{description}"><meta itemprop="image" content="{image}">
 <link rel="canonical" href="{url}">
 '''.format(base=e(base_url), title=e(title), description=e(description), id=e(identity), url=e(page_url), image=e(image_url), image_type=e(image_type), size=size)
         content = re.sub(r'<title>.*?</title>', lambda _: '<title>' + e(title) + ' · 谱面确认</title>', viewer, count=1, flags=re.S)

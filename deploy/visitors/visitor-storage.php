@@ -36,6 +36,47 @@ function visitor_db(string $root): PDO {
             $db->exec('COMMIT');
         } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
     }
+    if ((int)$db->query('PRAGMA user_version')->fetchColumn() < 4) {
+        $db->exec('BEGIN IMMEDIATE');
+        try {
+            // Recheck after taking the lock. This projection serves the public
+            // seven-day ranking without exposing private event payloads.
+            if ((int)$db->query('PRAGMA user_version')->fetchColumn() < 4) {
+                $db->exec('CREATE TABLE IF NOT EXISTS song_events(
+                        event_id TEXT PRIMARY KEY,
+                        at INTEGER NOT NULL,
+                        song TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        chart TEXT NOT NULL,
+                        bot INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE INDEX IF NOT EXISTS song_events_recent ON song_events(at);
+                    CREATE TABLE IF NOT EXISTS visitor_rate_limits(
+                        visitor TEXT PRIMARY KEY,
+                        bucket INTEGER NOT NULL,
+                        hits INTEGER NOT NULL
+                    );');
+                $insert=$db->prepare('INSERT OR IGNORE INTO song_events(event_id,at,song,title,chart,bot) VALUES(?,?,?,?,?,?)');
+                $hasEvents=(int)$db->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events'")->fetchColumn();
+                if ($hasEvents) {
+                    $rows=$db->query('SELECT id,at,payload FROM events ORDER BY at,rowid');
+                    $count=0;
+                    foreach ($rows as $row) {
+                        if (++$count>2000000) throw new RuntimeException('Event backfill budget exceeded');
+                        $entry=json_decode($row['payload'],true,32);
+                        if (!is_array($entry)||($entry['event']??null)!=='song'
+                            ||!is_string($entry['song']??null)||!is_string($entry['title']??null)
+                            ||!is_string($entry['chart']??null)) continue;
+                        $ua=strtolower((string)($entry['ua']??''));
+                        $bot=preg_match('/headlesschrome|bot\\b|spider|crawler|playwright|puppeteer|jubeatdeploymentcheck|jubeatstatsqa|statsqa|python-requests|python-urllib|curl\\//', $ua) ? 1 : 0;
+                        $insert->execute([$row['id'],$row['at'],$entry['song'],$entry['title'],$entry['chart'],$bot]);
+                    }
+                }
+                $db->exec('PRAGMA user_version=4');
+            }
+            $db->exec('COMMIT');
+        } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
+    }
     return $db;
 }
 function visitor_today(PDO $db, int $now): int {
@@ -78,6 +119,66 @@ function visitor_admit(PDO $db,string $ip,int $now): bool {
         $db->exec('DELETE FROM rate_limits WHERE bucket < '.($bucket-2));
         $db->exec('COMMIT');return $allowed;
     } catch (Throwable $error) {$db->exec('ROLLBACK');throw $error;}
+}
+function visitor_admit_cookie(PDO $db,string $visitor,int $now): bool {
+    $bucket=intdiv($now,3600);
+    $q=$db->prepare('INSERT INTO visitor_rate_limits VALUES(?,?,1) ON CONFLICT(visitor) DO UPDATE SET hits=CASE WHEN bucket=excluded.bucket THEN hits+1 ELSE 1 END,bucket=excluded.bucket');
+    $q->execute([$visitor,$bucket]);
+    $q=$db->prepare('SELECT hits FROM visitor_rate_limits WHERE visitor=?');$q->execute([$visitor]);
+    $allowed=(int)$q->fetchColumn()<=300;
+    $db->exec('DELETE FROM visitor_rate_limits WHERE bucket < '.($bucket-2));
+    return $allowed;
+}
+function visitor_popular(PDO $db,int $now): array {
+    $q=$db->prepare('SELECT song,title,COUNT(*) selections,MAX(at) last_at FROM song_events
+        WHERE at>=? AND bot=0 GROUP BY song,title
+        ORDER BY selections DESC,last_at DESC,song ASC LIMIT 10');
+    $q->execute([$now-7*86400]);
+    $rows=[];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $rows[]=[
+            'song'=>(string)$row['song'],
+            'title'=>(string)$row['title'],
+            'selections'=>(int)$row['selections'],
+        ];
+    }
+    return $rows;
+}
+function visitor_backup(PDO $db,string $root,string $directory,int $keep): array {
+    if ($keep<1||$keep>90) throw new RuntimeException('Invalid backup retention');
+    if (!is_dir($directory)&&!mkdir($directory,0700,true)) throw new RuntimeException('Backup directory unavailable');
+    private_file($directory);
+    $directory=realpath($directory);
+    $site=realpath(dirname($root));
+    if (!$directory||!$site) throw new RuntimeException('Backup path unavailable');
+    if ($directory===$site||str_starts_with($directory.DIRECTORY_SEPARATOR,$site.DIRECTORY_SEPARATOR)) {
+        throw new RuntimeException('Backup directory must be outside the website');
+    }
+    chmod($directory,0700);
+    $stamp=gmdate('Ymd\THis\Z');
+    $suffix=bin2hex(random_bytes(4));
+    $base='jubeat-visitors-'.$stamp.'-'.$suffix;
+    $target=$directory.'/'.$base.'.sqlite';
+    $temporary=$directory.'/.'.$base.'.tmp';
+    try {
+        $db->exec('VACUUM INTO '.$db->quote($temporary));
+        if (!is_file($temporary)||!rename($temporary,$target)) throw new RuntimeException('Database backup failed');
+        chmod($target,0600);
+        if (!copy($root.'/secret',$target.'.secret')) throw new RuntimeException('Secret backup failed');
+        chmod($target.'.secret',0600);
+    } finally {
+        if (is_file($temporary)) unlink($temporary);
+    }
+    $backups=glob($directory.'/jubeat-visitors-*.sqlite')?:[];
+    usort($backups,fn(string $a,string $b):int=>strcmp($b,$a));
+    $removed=0;
+    foreach (array_slice($backups,$keep) as $old) {
+        $check=realpath($old);
+        if (!$check||!str_starts_with($check,$directory.DIRECTORY_SEPARATOR)) continue;
+        if (unlink($check)) $removed++;
+        if (is_file($check.'.secret')&&unlink($check.'.secret')) $removed++;
+    }
+    return ['file'=>basename($target),'bytes'=>(int)filesize($target),'kept'=>min(count($backups),$keep),'removed'=>$removed];
 }
 function visitor_export(PDO $db,string $root,int $batches=4): int {
     private_file($root.'/export.lock');$lock=fopen($root.'/export.lock','c');

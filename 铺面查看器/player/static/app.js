@@ -35,6 +35,7 @@
     buildGlowPairOptions();
     buildPanel();
     bindEvents();
+    A.visitors?.event('app_ready');
     lockZoom();            // 手机上锁死页面缩放
     if (isIOSFamily()) {
       // iOS / iPadOS 的「静音拨片」一开，WebAudio 和 <audio> 都直接哑掉，而页面拿不到

@@ -138,6 +138,7 @@ button, input, select {
 }
 .brand-about-title { padding: 3px 7px 7px; color: var(--ink); font-size: 12px; font-weight: 650; }
 .brand-about-label { padding: 9px 7px 3px; color: var(--muted); font-size: 11px; }
+.brand-privacy { margin: 2px 7px 8px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .brand-about-panel a { display: flex; justify-content: space-between; gap: 12px; padding: 8px 7px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 12px; }
 .brand-about-panel a:hover { color: var(--amber); background: var(--cabinet-2); }
 .brand-about-panel a span { color: var(--muted); }
@@ -1281,6 +1282,18 @@ input[type="range"] {
 }
 .marker-library-toggle:hover, .marker-library-toggle[aria-pressed="true"] { color: var(--amber); border-color: var(--amber); }
 
+.hot-songs-toggle {
+  min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--void); color: var(--muted); font-size: 12px; cursor: pointer;
+}
+.hot-songs-toggle:hover, .hot-songs-toggle[aria-pressed="true"] { color: var(--amber); border-color: var(--amber); }
+.hot-songs-toggle:disabled { opacity:.45; cursor:progress; }
+.hot-songs-toggle[hidden] { display: none; }
+.song-item .hot-rank {
+  display: inline-block; min-width: 2.2em; margin-right: 5px; color: var(--amber);
+  font: 700 11px var(--mono); font-variant-numeric: tabular-nums;
+}
+
 .song-list[hidden], .marker-list[hidden] { display: none; }
 .marker-list {
   display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px;
@@ -1340,6 +1353,7 @@ input[type="range"] {
 .share-dialog p { font-size:13px; color:var(--muted); }
 .share-dialog textarea { width:100%; min-width:0; margin-bottom:12px; background:var(--void); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:8px; }
 .share-dialog button { float:right; padding:6px 16px; cursor:pointer; }
+.share-dialog .share-copy { margin-right:8px; }
 
 .share-dialog[open] { position:fixed; inset:0; margin:auto; z-index:100; }
 .share-dialog:not([open]) { display:none; }

@@ -259,6 +259,7 @@
     const on = !!v;
     if (state.playing === on) return;
     state.playing = on;
+    if (on) A.visitors?.event('play_start');
     sfxTimerSync();
     if (on) A.requestPaint();
   }

@@ -109,6 +109,7 @@
       catalog.clear();
       A.metrics = A.metrics || {}; A.metrics.libraryMs = performance.now() - started;
       invalidateSongCaches();
+      rebuildPopularSongs();
       {
         const selectedVersion = els.versionFilter.value;
         els.versionFilter.replaceChildren(new Option("全部版本", ""));
@@ -122,10 +123,13 @@
         els.versionFilter.value = data.versions.includes(selectedVersion) ? selectedVersion : "";
       }
       renderList();
+      A.visitors?.event('library_ready',{bucketMs:A.metrics.libraryMs});
       return data;
     } catch (err) {
       if (libraryRequests.active !== request || request.signal.reason?.name === "AbortError") return;
       els.listCount.textContent = "加载失败";
+      const code = err?.name === "TypeError" ? "network" : /^(\d{3})\b/.test(err?.message || "") ? "http" : "invalid_data";
+      A.visitors?.event('library_error',{code});
       toast(`曲库加载失败：${err.message}，请检查网络后刷新页面`, true);
       return null;
     } finally { libraryRequests.finish(request); }
@@ -147,6 +151,9 @@
   // 注意缓存里的数组是共享的：调用方只读，绝不能就地排序 / 改内容。
   let filterCache = { key: null, list: [] };
   let sortCache = { key: null, list: [] };
+  let popularRaw = [];
+  let popularSongs = [];
+  let popularMode = false;
   /** 曲库变了（重新读取 / 换库）就得把这两级缓存作废 */
   function invalidateSongCaches() {
     filterCache = { key: null, list: [] };
@@ -154,6 +161,7 @@
   }
 
   function visibleSongs() {
+    if (popularMode) return popularSongs;
     const q = els.search.value.trim().toLowerCase();
     // 归一化后的关键词：`SCU` 也能命中 `S-C-U`（见 app-base 的 normalizeSearch）。
     // 归一化后为空（关键词全是符号）就退回原来的字面匹配。
@@ -183,6 +191,62 @@
       sortCache = { key: skey, list: sortSongs(filterCache.list.slice(), mode) };
     }
     return sortCache.list;
+  }
+
+  function syncPopularButton() {
+    if (!els.btnPopular) return;
+    els.btnPopular.hidden = !popularRaw.length;
+    els.btnPopular.disabled = !popularSongs.length;
+    els.btnPopular.setAttribute('aria-pressed', popularMode ? 'true' : 'false');
+    els.btnPopular.textContent = popularMode ? '返回全部' : '7日热门歌曲';
+  }
+
+  function prefetchPopularCovers() {
+    if (typeof Image !== 'function' || !popularSongs.length) return;
+    const songs = popularSongs.filter(song => song.cover);
+    let cursor = 0;
+    const next = () => {
+      if (cursor >= songs.length) return;
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = image.onerror = () => next();
+      image.src = thumbUrl(songs[cursor++]);
+    };
+    for (let i = 0; i < Math.min(4, songs.length); i++) next();
+  }
+
+  function rebuildPopularSongs() {
+    const byId = new Map(state.songs.map(song => [song.id, song]));
+    popularSongs = popularRaw.map(row => byId.get(row.song)).filter(Boolean);
+    if (!popularSongs.length) popularMode = false;
+    syncPopularButton();
+    prefetchPopularCovers();
+  }
+
+  function setPopularSongs(rows) {
+    const seen = new Set();
+    popularRaw = (Array.isArray(rows) ? rows : []).filter(row => {
+      if (!row || typeof row.song !== 'string' || !row.song || seen.has(row.song)) return false;
+      seen.add(row.song);
+      return true;
+    }).slice(0, 10);
+    rebuildPopularSongs();
+    if (popularMode) renderList();
+  }
+
+  function leavePopularMode(render = false) {
+    if (!popularMode) return;
+    popularMode = false;
+    syncPopularButton();
+    if (render) renderList();
+  }
+
+  function togglePopularMode() {
+    if (!popularSongs.length) return;
+    if (!popularMode && A.markerLibrary?.active) A.markerLibrary.setActive(false);
+    popularMode = !popularMode;
+    syncPopularButton();
+    renderList();
   }
 
   /** 排序：曲名 / 推出版本（旧→新）/ 各难度等级、note 数（高→低） */
@@ -253,7 +317,11 @@
       const button=songButtonById.get(song.id);button.tabIndex=index===focusIndex?0:-1;button.dataset.listIndex=String(index);
       row.setAttribute('aria-posinset',String(index+1));row.setAttribute('aria-setsize',String(virtualSongs.length));
       if(row!==cursor)ul.insertBefore(row,cursor);else cursor=cursor.nextSibling;
-      const img = row.querySelector('img'); if (img) coverLoads.get(img)?.start();
+      const img = row.querySelector('img');
+      if (img) {
+        img.setAttribute('fetchpriority', index < first + OVERSCAN + 4 ? 'high' : 'low');
+        coverLoads.get(img)?.start();
+      }
       previous=index+1;
     }
     if(previous<virtualSongs.length)ul.appendChild(spacer((virtualSongs.length-previous)*ROW_HEIGHT));
@@ -267,7 +335,7 @@
     cancelAnimationFrame(listRaf);listRaf=0;for(const row of virtualRows.values())disposeCover(row);songButtonById.clear();virtualRows.clear();
     activeSongRowId=state.song?.id||'';virtualSongs=visibleSongs();focusIndex=0;
     ul.classList.add('virtual');ul.replaceChildren();ul.scrollTop=0;
-    els.listCount.textContent=`${virtualSongs.length} / ${state.songs.length} 首`;
+    els.listCount.textContent=popularMode ? `近 7 日热门 · ${virtualSongs.length} 首` : `${virtualSongs.length} / ${state.songs.length} 首`;
     if(!virtualSongs.length){const li=document.createElement('li');li.className='empty-list';li.textContent=state.songs.length?'没有匹配的曲目，换个关键词试试。':'曲库里没有曲目：请将版本包解压到含 data/library.json 的目录。';ul.appendChild(li);}
     else { ul.appendChild(spacer(virtualSongs.length * ROW_HEIGHT)); ul.scrollTop = Number.isFinite(scrollTop) ? scrollTop : 0; paintListWindow(); }
     A.metrics=A.metrics||{};A.metrics.listMs=performance.now()-started;
@@ -284,6 +352,12 @@
     paintListWindow();songButtonById.get(virtualSongs[focusIndex].id)?.focus({preventScroll:true});
   });
   if(window.ResizeObserver)new ResizeObserver(scheduleList).observe(els.songList);
+  els.btnPopular?.addEventListener("click", togglePopularMode);
+  els.btnMarkerLibrary?.addEventListener("click", () => leavePopularMode(false));
+  els.search.addEventListener("input", () => leavePopularMode(false));
+  for (const control of [els.versionFilter, els.holdFilter, els.sortSelect]) {
+    control.addEventListener("change", () => leavePopularMode(false));
+  }
 
   /** 把一首歌搭成一行（纯 DOM，不拼 HTML） */
   function buildSongRow(s) {
@@ -299,9 +373,14 @@
       const im = el("img");
       im.alt = "";
       im.decoding = "async";
+      im.width = 38;
+      im.height = 38;
+      im.setAttribute("fetchpriority", "low");
       cv.appendChild(im);
     }
     const sm = el("span", "sm");
+    const rank = popularMode ? popularSongs.findIndex(item => item.id === s.id) : -1;
+    if (rank >= 0) sm.append(el("span", "hot-rank", `#${rank + 1}`));
     sm.append(el("span", "ver"), el("span", "ar"));
     const tx = el("span", "tx");
     tx.append(el("span", "st"), sm, el("span", "lvset"));
@@ -496,12 +575,15 @@
       // 音源还没就绪时这一跳会被挂起，等可播了再落下去（深链接 / 截图脚本都靠它）
       if (src) A.seekWhenReady(urlT != null ? urlT : 0);
       chartReady = true;
+      A.visitors?.event('chart_ready',{bucketMs:A.metrics.chartMs});
       A.requestPaint();     // 换谱面后立刻重画一帧（暂停时渲染循环是停着的）
     } catch (err) {
       if (chartRequests.active !== request || state.song !== song || request.signal.reason?.name === "AbortError") return;
       console.error(err);
       A.audioLoad.pending = false;
       A.updateLoadMeter();
+      const code = err?.name === "TypeError" ? "network" : /^(\d{3})\b/.test(err?.message || "") ? "http" : "invalid_chart";
+      A.visitors?.event('chart_error',{code});
       toast(`谱面加载失败：${err.message}，请重新选择难度重试`, true);
     } finally {
       if (chartRequests.active === request && state.song === song) els.btnShare.disabled = !chartReady;
@@ -606,10 +688,12 @@
     setSidebarOpen,
     sidebarJustOpened,
     loadLibrary,
+    setPopularSongs,
     hasHold,
     renderList,
     selectSong,
     loadChart,
     rebuildVisualState,
   });
+  if (Array.isArray(A.popularSongs)) setPopularSongs(A.popularSongs);
 })();

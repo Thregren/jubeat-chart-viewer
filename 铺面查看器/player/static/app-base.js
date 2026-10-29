@@ -53,6 +53,7 @@
     search: $("#search"),
     versionFilter: $("#versionFilter"),
     listCount: $("#listCount"),
+    btnPopular: $("#btnPopular"),
     songList: $("#songList"),
     cover: $("#cover"),
     npVersion: $("#npVersion"),

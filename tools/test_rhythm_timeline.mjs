@@ -46,6 +46,15 @@ test('different viewport widths and zoom preserve the same current beat',()=>{
  }
 });
 
+test('fast frames reuse geometry buffers while matching the public frame result',()=>{
+ const p=Core.parseNotes(chart),m=Timeline.create(p.notes,p.timeEvents);
+ const first=m.frameFast(1.25,400,4,4),notes=first.notes,lines=first.lines;
+ const second=m.frameFast(1.5,400,4,4),snapshot=JSON.stringify(second),expected=m.frame(1.5,400,4,4);
+ assert.equal(first,second);assert.equal(second.notes,notes);assert.equal(second.lines,lines);
+ const line=second.lines[0];m.frameFast(1.75,400,4,4);assert.equal(second.lines[0],line);
+ assert.deepEqual(JSON.parse(snapshot),JSON.parse(JSON.stringify(expected)));
+});
+
 test('calibrated grid moves only beat lines, preserving note pixels, holds and audio/chart clocks',()=>{
  const p=Core.parseNotes(chart),before=JSON.stringify(p),plain=Timeline.create(p.notes,p.timeEvents);
  const m=Timeline.create(p.notes,p.timeEvents,{version:1,origin_chart_seconds:.375});

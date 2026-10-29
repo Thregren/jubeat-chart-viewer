@@ -65,6 +65,7 @@ app.whenReady().then(async()=>{try{
  await js('JubeatApp.seekTo=originalTimelineSeek;__player.play();void 0');await until('JubeatApp.state.playing');
  const start=await js("+timelineCanvas.getAttribute('aria-valuenow')");await wait(300);
  check('timeline follows live playback',await js("+timelineCanvas.getAttribute('aria-valuenow')")>start);
+ check('live timeline uses incremental scrolling',await js("JubeatApp.timelineStats().patch>0"));
  win.webContents.sendInputEvent({type:'mouseDown',x:sx,y:sy,button:'left',clickCount:1});await frame();
  check('dragging during playback pauses for preview',await js('JubeatApp.state.scrubbing && !JubeatApp.state.playing'));
  win.webContents.sendInputEvent({type:'mouseMove',x:sx+25,y:sy,movementX:25,movementY:0});await frame();

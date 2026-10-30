@@ -54,6 +54,7 @@ run "前端 JS 语法（node --check）" check_js
 
 # ── 2. 前端纯逻辑单测 ─────────────────────────────────────────
 run "前端、平台与录制纯逻辑单测" node --test tools/test_*.mjs
+run "发布入口保留与分享页同步" "$PY" tools/test_finalize_frontend.py
 run "分享页面、封面及路径安全" "$PY" tools/test_share_pages.py
 run "Cloudflare 实访 IP 网段同步与校验" "$PY" -m unittest tools/test_cloudflare_realip.py
 run "离线 IP 地区库读取边界" "$PY" -m unittest tools/test_ip2region.py

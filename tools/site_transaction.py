@@ -55,6 +55,8 @@ class SiteTransaction:
             self.lock.close()
             raise
     def publish(self):
+        from finalize_frontend import finalize
+        finalize(self.stage, self.target)
         old = {p.relative_to(self.target).as_posix(): p for p in self.target.rglob("*") if p.is_file()} if self.target.exists() else {}
         new = {p.relative_to(self.stage).as_posix(): p for p in self.stage.rglob("*") if p.is_file()}
         changed = [rel for rel, p in new.items() if rel not in old or not os.path.samefile(p, old[rel])]

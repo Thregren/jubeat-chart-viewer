@@ -63,7 +63,6 @@
   function setActive(on) {
     if (on === active) return;
     A.cancelLibrarySearch?.();
-    A.libraryFilters?.close();
     if (on) {
       saved = {query: els.search.value, placeholder: els.search.placeholder, title: els.search.title,
         top: els.songList.scrollTop, disabled: filters.map(el => el.disabled)};

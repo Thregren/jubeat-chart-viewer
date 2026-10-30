@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.47" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.47" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.47&ui=filters-20261030" />
   <link rel="stylesheet" href="static/theme-early.css?v=0.6.47" />
   <link rel="stylesheet" href="static/theme-late.css?v=0.6.47" />
   <link rel="stylesheet" href="static/theme-panel.css?v=0.6.47" />
@@ -56,31 +56,6 @@
         <div class="library-search-row">
           <input id="search" type="search" placeholder="搜索曲名 / 机台 / 作曲…" autocomplete="off"
                  aria-label="搜索曲目" title="忽略符号匹配：输入 SCU 也能搜到 S-C-U" />
-          <details class="library-filters" id="libraryFilters">
-            <summary aria-label="筛选与排序">筛选<span id="libraryFilterCount" hidden></span></summary>
-            <div class="library-filter-panel">
-              <label>版本<select id="versionFilter" aria-label="机台版本">
-            <option value="">全部版本</option>
-          </select></label>
-              <label>谱面<select id="holdFilter" aria-label="长押筛选">
-            <option value="">全部谱面</option>
-            <option value="hold">只要长押</option>
-            <option value="nohold">只要非长押</option>
-          </select></label>
-              <label class="library-sort">排序<select id="sortSelect" aria-label="排序方式">
-            <option value="title">曲名</option>
-            <option value="version">推出版本（旧→新）</option>
-            <option value="bsc-lv">BSC 难度（高→低）</option>
-            <option value="adv-lv">ADV 难度（高→低）</option>
-            <option value="ext-lv">EXT 难度（高→低）</option>
-            <option value="bsc-notes">BSC note 数（多→少）</option>
-            <option value="adv-notes">ADV note 数（多→少）</option>
-            <option value="ext-notes">EXT note 数（多→少）</option>
-          </select></label>
-              <button id="resetLibraryFilters" class="ghost-btn" type="button">重置筛选</button>
-              <button id="closeLibraryFilters" class="ghost-btn" type="button">完成</button>
-            </div>
-          </details>
         </div>
       </div>
       <div class="list-meta">
@@ -89,6 +64,28 @@
                 aria-controls="songList" title="显示近 7 日加载次数最高的 10 首歌曲" hidden>7日热门歌曲</button>
         <button id="btnMarkerLibrary" class="marker-library-toggle" type="button"
                 aria-pressed="false" aria-controls="songList markerList">图选 Marker</button>
+      </div>
+
+      <div class="library-filter-row" id="libraryFilters" role="group" aria-label="筛选与排序">
+        <label>版本<select id="versionFilter" aria-label="机台版本">
+          <option value="">全部版本</option>
+        </select></label>
+        <label>谱面<select id="holdFilter" aria-label="长押筛选">
+          <option value="">全部谱面</option>
+          <option value="hold">只要长押</option>
+          <option value="nohold">只要非长押</option>
+        </select></label>
+        <label class="library-sort">排序<select id="sortSelect" aria-label="排序方式">
+          <option value="title">曲名</option>
+          <option value="version">推出版本（旧→新）</option>
+          <option value="bsc-lv">BSC 难度（高→低）</option>
+          <option value="adv-lv">ADV 难度（高→低）</option>
+          <option value="ext-lv">EXT 难度（高→低）</option>
+          <option value="bsc-notes">BSC note 数（多→少）</option>
+          <option value="adv-notes">ADV note 数（多→少）</option>
+          <option value="ext-notes">EXT note 数（多→少）</option>
+        </select></label>
+        <button id="resetLibraryFilters" class="ghost-btn" type="button">重置筛选</button>
       </div>
 
       <ul id="songList" class="song-list" aria-label="曲目列表"></ul>
@@ -399,8 +396,8 @@
   <script src="static/visitor-queue.js?v=0.6.47"></script>
   <script src="static/app-visitors.js?v=0.6.47"></script>
   <script src="static/app-library.js?v=0.6.47"></script>
-  <script src="static/library-filters.js?v=0.6.47"></script>
-  <script src="static/marker-library.js?v=0.6.47"></script>
+  <script src="static/library-filters.js?v=0.6.47&ui=filters-20261030"></script>
+  <script src="static/marker-library.js?v=0.6.47&ui=filters-20261030"></script>
   <script src="static/app-player.js?v=0.6.47"></script>
   <script src="static/app-render.js?v=0.6.47"></script>
   <script src="static/app-wiring.js?v=0.6.47"></script>

@@ -178,6 +178,7 @@ button, input, select {
 
 .search-block input,
 .search-block select,
+.library-filter-row select,
 .ctl select,
 .ctl input[type="number"] {
   width: 100%;
@@ -190,6 +191,7 @@ button, input, select {
 
 .search-block input:focus-visible,
 .search-block select:focus-visible,
+.library-filter-row select:focus-visible,
 .ctl select:focus-visible,
 .ctl input:focus-visible,
 button:focus-visible,
@@ -1366,26 +1368,17 @@ input[type="range"] {
 .time-block { display: inline-flex; align-items: baseline; contain: layout style; font-variant-numeric: tabular-nums; }
 #timeNow, #timeTotal { display: inline-block; min-width: 8ch; text-align: right; }
 
-/* Compact library tools: one search row and one list toolbar on every screen. */
-.search-block { position: relative; padding: 10px 12px 4px; flex: 0 0 auto; }
-.library-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
-.library-search-row > input { min-width: 0; height: 40px; font-size: 13px; }
-.library-filters > summary { display:flex; align-items:center; justify-content:center; gap:5px; height:40px; padding:0 10px; border:1px solid var(--line); border-radius:8px; color:var(--muted); background:var(--void); cursor:pointer; list-style:none; font-size:12px; }
-.library-filters > summary::-webkit-details-marker { display:none; }
-.library-filters[open] > summary, .library-filters.has-filters > summary { color:var(--amber); border-color:var(--amber-dim); }
-.library-filters > summary:focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
-#libraryFilterCount { min-width:16px; text-align:center; border-radius:4px; background:var(--amber); color:var(--void); font-size:10px; }
-#libraryFilterCount[hidden] { display:none; }
-.library-filter-panel { position:absolute; z-index:5; top:calc(100% + 3px); left:12px; right:12px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--cabinet); box-shadow:0 10px 28px rgba(0,0,0,.5); max-height:55vh; overflow:auto; }
-.library-filter-panel > label { min-width:0; display:grid; gap:4px; font-size:11px; color:var(--muted); }
-.library-filter-panel select { min-width:0; height:38px; font-size:12px; }
-.library-sort { grid-column:1 / -1; }
-.library-filter-panel .ghost-btn { min-height:34px; }
+/* Library filters stay visible below the search and list tools. */
+.search-block { padding: 10px 12px 4px; flex: 0 0 auto; }
+.library-search-row { display: grid; grid-template-columns: minmax(0, 1fr); }
+.library-search-row > input { min-width: 0; width:100%; height:40px; font-size:13px; }
+.library-filter-row { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto; align-items:end; gap:6px; padding:2px 12px 10px; flex:0 0 auto; }
+.library-filter-row > label { min-width:0; display:grid; gap:4px; font-size:11px; color:var(--muted); }
+.library-filter-row select { width:100%; min-width:0; height:36px; padding:0 5px; font-size:12px; }
+.library-filter-row .ghost-btn { height:36px; min-height:36px; padding:0 6px; font-size:11px; white-space:nowrap; }
 .list-meta { gap:6px; min-height:38px; flex:0 0 auto; padding:3px 12px 6px; }
 .list-meta > #listCount { flex:1; min-width:0; white-space:nowrap; font-size:10px; }
 .list-meta > button { flex:0 0 auto; white-space:nowrap; font-size:11px; min-height:30px; padding:4px 7px; border-radius:6px; }
-
-.library-filters > summary[aria-disabled="true"] { opacity:.45; cursor:default; }
 
 /* 浏览器主题：配色与装饰素材来自对应版本，默认主题保持现有外观。 */
 :root[data-theme] .stage {

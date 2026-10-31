@@ -251,6 +251,7 @@
     collapsed: "jubeat.collapsed",
     sort: "jubeat.sort",
     holdFilter: "jubeat.holdFilter",
+    timelineFlatten: "jubeat.timelineFlatten",
   };
 
   // 按稼働日开始日的版本顺序（jubeat 2008-07 → 音乐魔方 2025-12）

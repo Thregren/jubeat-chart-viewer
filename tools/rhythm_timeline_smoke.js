@@ -37,17 +37,23 @@ app.whenReady().then(async()=>{try{
  await js("JubeatApp.setCollapsed(true);__player.seekTo(JubeatApp.state.notes[20].t);btnTimeline.click();void 0");await frame();
  check('wide layout keeps density visible below timeline',await js("!timelineWrap.hidden && getComputedStyle(densityWrap).visibility==='visible' && timelineWrap.getBoundingClientRect().bottom<=densityWrap.getBoundingClientRect().top"));
  check('quarter-note grid is the initial selection',await js("timelineDivision.value==='1'"));
+ check('flattened marker row is off by default',await js("!timelineFlatten.checked && !timelineWrap.classList.contains('timeline-flattened')"));
+ const tallTimeline=await js("timelineWrap.getBoundingClientRect().height");
+ await js("timelineFlatten.click();void 0");await frame();
+ const flattenedStats=await js('JubeatApp.timelineStats()');
+ check('flattened row shows every visible marker in a single extra row',flattenedStats.merged>0 && await js("timelineFlatten.checked && timelineWrap.classList.contains('timeline-flattened') && timelineWrap.getBoundingClientRect().height>0"));
+ check('desktop flattened timeline adds its row without covering density',await js(`timelineWrap.getBoundingClientRect().height>${tallTimeline} && getComputedStyle(densityWrap).visibility==='visible' && timelineWrap.getBoundingClientRect().bottom<=densityWrap.getBoundingClientRect().top`));
  await js("timelineDivision.value='3';timelineDivision.dispatchEvent(new Event('change'));void 0");await frame();
- await screenshot('desktop.png');
+ await screenshot('desktop-flattened.png');
  for(const width of [320,390,600]){
   win.setSize(width,844);await frame();await js('btnTimeline.click();void 0');await frame();
   const before=await js("({panel:panel.getBoundingClientRect().height,overview:chartOverview.getBoundingClientRect().height})");
   await js('btnTimeline.click();void 0');await frame();
   const after=await js("({panel:panel.getBoundingClientRect().height,overview:chartOverview.getBoundingClientRect().height,density:getComputedStyle(densityWrap).visibility,rect:timelineWrap.getBoundingClientRect().toJSON(),slot:chartOverview.getBoundingClientRect().toJSON(),overflow:document.documentElement.scrollWidth>innerWidth})");
-  check(`${width}px overlay preserves panel and overview height`,Math.abs(before.panel-after.panel)<1&&Math.abs(before.overview-after.overview)<1&&after.density==='hidden'&&Math.abs(after.rect.top-after.slot.top)<1&&!after.overflow);
+  check(`${width}px flattened overlay preserves panel and overview height`,Math.abs(before.panel-after.panel)<1&&Math.abs(before.overview-after.overview)<1&&after.density==='hidden'&&Math.abs(after.rect.top-after.slot.top)<1&&!after.overflow);
  }
  win.setSize(390,844);await frame();
- await screenshot('mobile.png');
+ await screenshot('mobile-flattened.png');
  await js('window.savedTimelineMode=JubeatApp.mode;JubeatApp.mode={ownsFrame:true};JubeatApp.drawTimeline(JubeatApp.currentMediaTime());void 0');
  check('another frame owner keeps its own overview',await js("timelineWrap.hidden && getComputedStyle(densityWrap).visibility==='visible'"));
  await js('JubeatApp.mode=savedTimelineMode;JubeatApp.drawTimeline(JubeatApp.currentMediaTime());void 0');
@@ -65,7 +71,15 @@ app.whenReady().then(async()=>{try{
  await js('JubeatApp.seekTo=originalTimelineSeek;__player.play();void 0');await until('JubeatApp.state.playing');
  const start=await js("+timelineCanvas.getAttribute('aria-valuenow')");await wait(300);
  check('timeline follows live playback',await js("+timelineCanvas.getAttribute('aria-valuenow')")>start);
- check('live timeline uses incremental scrolling',await js("JubeatApp.timelineStats().patch>0"));
+ const liveStats=await js('JubeatApp.timelineStats()');
+ check('live timeline redraws vector frames without resampling',liveStats.full>1&&liveStats.patch===0);
+ await js('__player.pause();void 0');await frame();
+ await js('window.__pausedTimelineSec=JubeatApp.currentMediaTime();JubeatApp.drawTimeline(window.__pausedTimelineSec);void 0');
+ const pausedHash=await js(`(()=>{const c=timelineCanvas,x=c.getContext('2d'),d=x.getImageData(0,0,c.width,c.height).data;let h=2166136261;for(let i=0;i<d.length;i+=97)h=Math.imul(h^d[i],16777619);return h>>>0;})()`);
+ await js('for(let i=0;i<4;i++)JubeatApp.drawTimeline(window.__pausedTimelineSec);void 0');
+ const pausedAgain=await js(`(()=>{const c=timelineCanvas,x=c.getContext('2d'),d=x.getImageData(0,0,c.width,c.height).data;let h=2166136261;for(let i=0;i<d.length;i+=97)h=Math.imul(h^d[i],16777619);return h>>>0;})()`);
+ check('paused timeline is pixel-stable and leaves no trails',pausedHash===pausedAgain);
+ await js('__player.play();void 0');await until('JubeatApp.state.playing');
  win.webContents.sendInputEvent({type:'mouseDown',x:sx,y:sy,button:'left',clickCount:1});await frame();
  check('dragging during playback pauses for preview',await js('JubeatApp.state.scrubbing && !JubeatApp.state.playing'));
  win.webContents.sendInputEvent({type:'mouseMove',x:sx+25,y:sy,movementX:25,movementY:0});await frame();

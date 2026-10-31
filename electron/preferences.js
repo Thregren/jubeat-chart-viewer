@@ -5,7 +5,7 @@ const KEYS = new Set([
   'markerNormalSpeed','marker','metroSound','metroVolume','showCombo','firstMarker','showNumbers',
   'numScale','numAlpha','numGlowAlpha','numCorner','numColorMode','numColor','showChordGlow',
   'chordGlowStyle','phraseMult','phraseFloor','phraseMax','chordGlowPair','settingsVersion',
-  'collapsed','sort','holdFilter','autoPreview',
+  'collapsed','sort','holdFilter','autoPreview','timelineFlatten',
 ].map(key => 'jubeat.' + key));
 const MAX_VALUE = 4096;
 function allowed(key, value = null) {

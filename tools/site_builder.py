@@ -354,8 +354,11 @@ def build_se(out: Path, force: bool, stats: Stats) -> list[str]:
 
 def asset_alias(out: Path, rel: str, flat: bool = False) -> str:
     src = out / rel
+    digest_hash = hashlib.sha256()
     with src.open("rb") as handle:
-        digest = hashlib.file_digest(handle, "sha256").hexdigest()[:20]
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest_hash.update(chunk)
+    digest = digest_hash.hexdigest()[:20]
     dest = (src.with_name(src.name + "." + digest + src.suffix) if flat
             else out / src.relative_to(out).parts[0] / src.relative_to(out).parts[1] / "_hashed" / (digest + src.suffix))
     if not dest.exists():

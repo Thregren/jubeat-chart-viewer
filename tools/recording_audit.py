@@ -1,4 +1,6 @@
 """Reusable chapter, frame timeline and active-play freeze verification."""
+from __future__ import annotations
+
 import json, math, re, shutil, subprocess, unicodedata, urllib.parse, urllib.request
 from pathlib import Path
 FFMPEG = shutil.which("ffmpeg") or "ffmpeg"

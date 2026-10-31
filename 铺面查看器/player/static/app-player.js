@@ -30,6 +30,7 @@
   const transport = A.services.register('audio', new window.JubeatServices.AudioTransport(window.JubeatRuntime));
   const backend = transport.backend;
   const FORCE_MEDIA = new URLSearchParams(location.search).get("media") === "1";
+  const NATIVE_FALLBACK = !!A.mediaCompatibility?.nativeFallback;
 
   // 输出总线：音乐和打点音都接到这里 → 同一条输出、同一个延迟；
   // 顺带挂一个分析器，`?debug=1` 时能直接看到「到底有没有声音送到输出」。
@@ -430,7 +431,7 @@
     backend.mode = "element";
     pendingRateSeek = null;
     resetFetchProgress();
-    if (FORCE_MEDIA || options.decode === false || A.mode?.preferNativeAudio || selectedRate() !== 1 || audioSession.decodeBlocked) {
+    if (FORCE_MEDIA || NATIVE_FALLBACK || options.decode === false || A.mode?.preferNativeAudio || selectedRate() !== 1 || audioSession.decodeBlocked) {
       // ?media=1：故意的直出模式，进度交给 <audio> 自己报
       // A cancelled decoder may still be stuck inside the browser. New songs
       // can use native audio immediately instead of queueing another full file.

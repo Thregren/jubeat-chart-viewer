@@ -44,7 +44,7 @@ test('preview lives at transport right, hides without source, loops until toggle
  globalThis.window={addEventListener(){}};
  try{
   let pausedMain=0;
-  const control=D.install({resourcePath:value=>value,pause(){pausedMain++;},toast(){throw Error('unexpected error');}});
+  const control=D.install({resourcePath:value=>value,mediaUrl:value=>value,pause(){pausedMain++;},toast(){throw Error('unexpected error');}});
   const [button,audio]=transport.children;
   assert.equal(button.id,'btnPreview');assert.equal(audio.loop,true);assert.equal(button.hidden,true);
   control.show({...song,assets:{}});assert.equal(button.hidden,true);

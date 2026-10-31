@@ -25,14 +25,14 @@ test('default browser recovery timers preserve the global receiver',()=>{
  `,context);
 });
 function timers(){const pending=new Map();let id=0;return{pending,setTimeout(fn){pending.set(++id,fn);return id},clearTimeout(id){pending.delete(id)},run(){const jobs=[...pending.values()];pending.clear();jobs.forEach(fn=>fn())}};}
-function player(){
+function player({nativeFallback=false}={}){
  const time=timers(),plays=[],sessions=[],toasts=[];let fetches=0;
  const element=()=>({classList:{toggle(){}},style:{},setAttribute(){}});
  const events=new Map();
  const audio={readyState:0,duration:NaN,paused:true,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},removeAttribute(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(name,fn){if(!events.has(name))events.set(name,new Set());events.get(name).add(fn)},removeEventListener(name,fn){events.get(name)?.delete(fn)},emit(name){for(const fn of [...(events.get(name)||[])])fn()}};
  const els={audio,rate:{value:'1'},offset:{value:'0'}};for(const k of ['loadRow','btnPlay','loadLabel','loadPct','loadFill','loadBar','statTime','timeTotal','playIcon','timeNow'])els[k]=element();
  const ctx={state:'running',currentTime:0,resume(){return Promise.resolve()},decodeAudioData(){return Promise.resolve({length:4096,numberOfChannels:2,duration:60})},createGain(){return{connect(){}}},createAnalyser(){return{connect(){}}},createBufferSource(){return{playbackRate:{value:1},connect(){},stop(){},disconnect(){},start(_,off){plays.push({url:A.backend.url,off})}}}};
- const A={services:new Services.Services(),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(){},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
+ const A={services:new Services.Services(),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(){},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
  const Runtime={...R,AudioSession:class extends R.AudioSession{constructor(){super(time);sessions.push(this)}}};
  const window={JubeatApp:A,JubeatServices:{...Services,audioHeader:()=>({duration:60,sampleRate:48000,channels:2})},JubeatRuntime:Runtime,addEventListener(){}};
  vm.runInNewContext(source,{window,URL,Blob,URLSearchParams,location:{search:''},performance,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{fetches++;return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}})}});
@@ -73,6 +73,12 @@ test('hung player decode times out to media playback and ignores its eventual ol
  releaseDecode({length:4096,numberOfChannels:2,duration:60});await turn();
  assert.equal(h.sessions[0].decodeBlocked,false);assert.equal(h.A.backend.buf,null);
  assert.equal(h.A.metrics.audioPCMBytes,0);h.A.cancelAudioLoad();
+});
+test('iOS 15 CAF compatibility streams through native media without attempting Ogg decode',async()=>{
+ const h=player({nativeFallback:true});h.ctx.decodeAudioData=async()=>{throw Error('must not decode');};
+ await h.A.prepareBuffer('song.caf');
+ assert.equal(h.fetches(),0);assert.equal(h.A.backend.mode,'element');
+ assert.equal(h.audio.dataset.src,'song.caf');assert.equal(h.audio.preload,'metadata');
 });
 test('actual player releases PCM ownership including oversized native fallback',async()=>{
  for(const oversized of [false,true]){

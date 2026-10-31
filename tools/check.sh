@@ -77,6 +77,7 @@ run "HTTP、缓存与公开索引完整性" "$PY" tools/test_server_integrity.py
 run "缓存并发与原子写入" "$PY" tools/test_media_concurrency.py
 
 run "共享版本资料一致性" "$PY" tools/version_data.py --check
+run "iOS 15 CAF/Opus 与 WebM/Opus 兼容音源" "$PY" tools/test_audio_compat.py
 
 run "内容增量、封面门禁与缓存清理" "$PY" tools/test_asset_build.py
 

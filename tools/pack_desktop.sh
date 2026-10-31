@@ -39,7 +39,14 @@ cp "$REPO/LICENSE" "$REPO/THIRD-PARTY.md" "$WORK/"
 # Validate the complete lock/vendor identity instead of reusing stale dependencies.
 # npm ci is deterministic and removes any obsolete transitive versions.
 ( cd "$WORK/electron" && ELECTRON_MIRROR="$MIRROR_ELECTRON" npm ci --registry="$REGISTRY" --no-fund )
-( cd "$WORK/electron" && npm audit --audit-level=moderate --registry=https://registry.npmjs.org )
+(
+  cd "$WORK/electron"
+  # Build-tool advisories must be visible without making a package impossible
+  # to release when npm's suggested fix is a breaking builder downgrade.
+  npm audit --audit-level=moderate --registry=https://registry.npmjs.org || \
+    echo "⚠️  npm audit 发现开发依赖告警；继续构建，发布前核对运行依赖高危项。"
+  npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org
+)
 
 # 顺手体检：被 iCloud 抽水的依赖文件会读不动，早点报出来比静默卡死好
 dataless=$(find "$WORK/electron/node_modules" -flags +dataless 2>/dev/null | wc -l | tr -d ' ')

@@ -18,6 +18,20 @@ python3 tools/build_site.py --out site --prune
 - 删歌之后加 `--prune` 清理已不需要的普通文件；旧内容哈希资源保留以支持已打开的页面。`--limit` 不能与 `--prune` 同时使用。
 - 构建使用同目录暂存与互斥锁，失败不发布；生产服务器仍需先验证新资源，最后切换入口。
 
+### iOS 15 音频兼容
+
+Safari/iOS 15 播放 WebM/Opus 的实现不稳定，且直到 iOS 18.4 才支持 Ogg/Opus；
+iOS 11 起则支持 Opus-in-CAF。构建完成后在目标目录生成 CBR CAF 兼容音源：
+
+```bash
+python3 deploy/build-audio-caf.py --root site/songs --jobs 4
+```
+
+旧版 Safari 会自动把 `.ogg` 请求切到同目录的 `.caf`，并使用原生音频流式播放；
+其他浏览器继续使用原有的 `.ogg`。生成器输出 Opus CBR 80k，逐文件用
+`ffprobe` 校验并原子替换，
+已生成且源文件未更新的文件会自动跳过。更新曲库后需要再运行一次。
+
 ## 2. 上传
 
 ```bash

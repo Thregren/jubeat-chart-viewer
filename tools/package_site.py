@@ -27,7 +27,16 @@ def equal_files(a: Path, b: Path) -> bool:
     if a.samefile(b): return True
     if a.stat().st_size != b.stat().st_size: return False
     with a.open("rb") as x, b.open("rb") as y:
-        return hashlib.file_digest(x, "sha256").digest() == hashlib.file_digest(y, "sha256").digest()
+        return equal_streams(x, y)
+
+def equal_streams(x, y) -> bool:
+    """Compare files in bounded chunks so packaging supports Python 3.9."""
+    while True:
+        left, right = x.read(1024 * 1024), y.read(1024 * 1024)
+        if left != right:
+            return False
+        if not left:
+            return True
 
 def portable_files(root: Path) -> tuple[set[str], dict[str, bytes]]:
     """Keep canonical fallbacks and all nonhashed platform/extension resources.

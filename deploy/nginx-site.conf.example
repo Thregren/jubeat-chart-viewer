@@ -112,6 +112,26 @@ server {
 
     # —— 音源：nginx 自动处理 Range/断点续传 ——
     # 2.6 GB 音源是这个站最大的敞口：源站公网可直连时，务必加限流 + 防盗链
+    # Safari/iOS 15 只支持 WebM 容器中的 Opus；显式声明为音频而不是通用视频。
+    location ~* "^/media/audio/.*\.webm$" {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+        types { audio/webm webm; }
+        add_header Cache-Control "public, max-age=0, must-revalidate";
+        try_files $uri =404;
+        valid_referers none blocked server_names *.thregren.world;
+        if ($invalid_referer) { return 403; }
+    }
+
+    # iOS 11 起支持 Opus-in-CAF；这是旧版 Safari 最稳定的降级格式。
+    location ~* "^/media/audio/.*\.caf$" {
+        include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+        types { audio/x-caf caf; }
+        add_header Cache-Control "public, max-age=0, must-revalidate";
+        try_files $uri =404;
+        valid_referers none blocked server_names *.thregren.world;
+        if ($invalid_referer) { return 403; }
+    }
+
     location /media/audio/ {
         include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
         add_header Cache-Control "no-cache";

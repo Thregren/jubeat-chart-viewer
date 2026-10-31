@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""发版助手：校验六份桌面包 → 生成 sha256 清单 → （可选）推 GitHub Release。
+"""发版助手：校验六份桌面包和 Android APK → 生成 sha256 清单 → （可选）推 GitHub Release。
 
     python3 tools/release.py 0.6.2              # 校验 + 写清单 + 打印命令，不碰远端
     python3 tools/release.py 0.6.2 --run        # 校验完顺手发 Release（带重试）
@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -38,8 +39,8 @@ from version import read_version  # noqa: E402
 
 PASS, FAIL, WARN = "\033[32m✓\033[0m", "\033[31m✗\033[0m", "\033[33m!\033[0m"
 
-# 轻量包应该长这样：Windows/macOS 是 zip，Linux 是 AppImage
-ARTIFACTS = [
+# 轻量桌面包应该长这样：Windows/macOS 是 zip，Linux 是 AppImage
+DESKTOP_ARTIFACTS = [
     ("win-x64", "zip"),
     ("win-arm64", "zip"),
     ("mac-x64", "zip"),
@@ -47,11 +48,16 @@ ARTIFACTS = [
     ("linux-x86_64", "AppImage"),
     ("linux-arm64", "AppImage"),
 ]
+ANDROID_DIST = REPO / "android" / "out" / "dist"
 MAX_LIGHT_MB = 400          # 带曲库的包会到 2.7 GB，这里拦住
 
 
 def artifact_path(tag_version: str, plat: str, ext: str, dist: Path) -> Path:
     return dist / f"jubeatViewer-{tag_version}-{plat}.{ext}"
+
+
+def android_artifact_path(version: str) -> Path:
+    return ANDROID_DIST / f"jubeat-viewer-{version}-android-min.apk"
 
 
 def sha256_of(path: Path) -> str:
@@ -122,11 +128,82 @@ def inspect(path: Path) -> str:
     return ""
 
 
+def android_tool(name: str) -> Path | None:
+    """Locate an Android build tool without baking this Mac's path into releases."""
+    sdk = Path.home() / "Library" / "Android" / "sdk"
+    for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        override = os.environ.get(key)
+        if override:
+            sdk = Path(override)
+            break
+    else:
+        shared = Path("/Users/Shared/android-sdk")
+        if shared.is_dir():
+            sdk = shared
+    preferred = sdk / "build-tools" / "35.0.0" / name
+    if preferred.is_file():
+        return preferred
+    versions = sorted((sdk / "build-tools").glob("*/" + name), reverse=True)
+    return versions[0] if versions else None
+
+
+def inspect_android(path: Path, version: str) -> str:
+    """Validate the APK is signed, versioned, and contains only lightweight assets."""
+    if not path.is_file():
+        return "APK 不存在"
+    mb = path.stat().st_size / 1024 / 1024
+    if mb < 1:
+        return f"只有 {mb:.1f} MB，像是打包没完成"
+    if mb > MAX_LIGHT_MB:
+        return f"有 {mb:.0f} MB，超过 {MAX_LIGHT_MB} MB，不像轻量包"
+
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(path) as zf:
+            names = set(zf.namelist())
+    except Exception as exc:
+        return f"打不开：{exc}"
+    for want in ("AndroidManifest.xml", "classes.dex", "assets/www/index.html"):
+        if want not in names:
+            return f"APK 里没有 {want}"
+    if not any(name.startswith("assets/www/static/") for name in names):
+        return "APK 里没有 assets/www/static（前端资源）"
+
+    aapt2 = android_tool("aapt2")
+    apksigner = android_tool("apksigner")
+    if aapt2 is None:
+        return "找不到 aapt2，无法核对 APK 版本"
+    if apksigner is None:
+        return "找不到 apksigner，无法核对 APK 签名"
+
+    badging = subprocess.run(
+        [str(aapt2), "dump", "badging", str(path)],
+        capture_output=True,
+        text=True,
+    )
+    if badging.returncode != 0:
+        return f"aapt2 读不出 APK 清单：{badging.stderr.strip() or badging.stdout.strip()}"
+    first = badging.stdout.splitlines()[0] if badging.stdout else ""
+    expected = f"versionName='{version}'"
+    if "package: name='world.thregren.jubeatviewer'" not in first or expected not in first:
+        return f"APK 包名或版本不符：{first or '（空清单）'}"
+
+    signing = subprocess.run(
+        [str(apksigner), "verify", str(path)],
+        capture_output=True,
+        text=True,
+    )
+    if signing.returncode != 0:
+        return f"APK 签名校验失败：{signing.stderr.strip() or signing.stdout.strip()}"
+    return ""
+
+
 def collect(version: str, dist: Path) -> tuple[list[tuple[Path, str, int]], list[str]]:
     """返回 ([(路径, sha256, 大小)], [问题…])。"""
     rows: list[tuple[Path, str, int]] = []
     problems: list[str] = []
-    for plat, ext in ARTIFACTS:
+    for plat, ext in DESKTOP_ARTIFACTS:
         path = artifact_path(version, plat, ext, dist)
         if not path.is_file():
             problems.append(f"缺产物：{path.name}（先跑 sh tools/pack_desktop.sh）")
@@ -147,6 +224,16 @@ def collect(version: str, dist: Path) -> tuple[list[tuple[Path, str, int]], list
             problems.append(f"{path.name}：{bad}")
             continue
         rows.append((path, sha256_of(path), size))
+
+    apk = android_artifact_path(version)
+    if not apk.is_file():
+        problems.append(f"缺产物：{apk.name}（先跑 sh android/build.sh）")
+    else:
+        bad = inspect_android(apk, version)
+        if bad:
+            problems.append(f"{apk.name}：{bad}")
+        else:
+            rows.append((apk, sha256_of(apk), apk.stat().st_size))
     return rows, problems
 
 

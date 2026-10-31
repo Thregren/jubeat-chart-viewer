@@ -25,7 +25,7 @@ function player(enabled = true) {
   const document = {createElement: () => new Element(), querySelector: () => transport};
   const module = {exports: {}}; vm.runInNewContext(source, {module, window, document});
   let control, fullPlays = 0;
-  const A = {resourcePath: value => value,els: {autoPreview: {checked: enabled}}, pause() {control?.stopPreview();}, play() {fullPlays++;}, toast: message => errors.push(message)};
+  const A = {resourcePath: value => value, mediaUrl: value => value, els: {autoPreview: {checked: enabled}}, pause() {control?.stopPreview();}, play() {fullPlays++;}, toast: message => errors.push(message)};
   control = module.exports.install(A);
   const [button, audio] = transport.children;
   return {A, control, button, audio, window, windowEvents, errors, get fullPlays() {return fullPlays;}};

@@ -330,6 +330,32 @@
   // 分享页位于 /share/，资源仍从站点根目录读取；不依赖 CSP 禁止的 <base>。
   let shareBase = document.baseURI;
   let resourcePrefix = "";
+  // Safari/iOS 15 对 WebM/Opus 的实现并不稳定，Ogg/Opus 则到 iOS 18.4 才支持。
+  // iOS 11 起支持 Opus-in-CAF；旧版 WebKit 统一走 CAF，其他浏览器只在需要时回落。
+  function canPlayMedia(type) {
+    try {
+      const probe = document.createElement?.("audio");
+      return !!probe?.canPlayType?.(type);
+    } catch (_) {
+      return false;
+    }
+  }
+  const oggOpus = canPlayMedia('audio/ogg; codecs="opus"');
+  const webmOpus = canPlayMedia('audio/webm; codecs="opus"');
+  const userAgent = globalThis.navigator?.userAgent || "";
+  const iosVersion = /\bOS (\d+)[._](\d+)/i.exec(userAgent);
+  const legacyIOS = !!iosVersion && (
+    Number(iosVersion[1]) < 18
+    || (Number(iosVersion[1]) === 18 && Number(iosVersion[2]) < 4)
+  );
+  const nativeFallback = !!legacyIOS || !oggOpus;
+  const mediaCompatibility = {
+    oggOpus,
+    webmOpus,
+    legacyIOS,
+    nativeFallback,
+    nativeExtension: nativeFallback ? ".caf" : ".ogg",
+  };
   const shareRoot = document.querySelector('meta[name="jubeat-share-root"]');
   if (shareRoot) {
     try {
@@ -361,6 +387,18 @@
     return String(id || "").replace(/\.mcz$/i, "");
   }
 
+  /** 旧版 WebKit 切到 CBR Opus-in-CAF；WAV/MP3 等原生格式保持原样。 */
+  function compatibleMediaPath(path) {
+    const value = String(path || "");
+    return mediaCompatibility.nativeFallback
+      ? value.replace(/\.ogg(?=$|[?#])/i, ".caf")
+      : value;
+  }
+
+  function mediaUrl(path) {
+    return resourcePath(encPath(compatibleMediaPath(path)));
+  }
+
   function chartPath(song, chart) {
     if (song.assets && song.assets[`chart:${chart.code}`]) return resourcePath(encPath(song.assets[`chart:${chart.code}`]));
     return `${PATHS.charts}${encPath(stemOf(song.id))}/${encodeURIComponent(chart.code)}.json`;
@@ -368,8 +406,8 @@
 
   function audioUrl(song) {
     if (song.assets && !song.assets.audio) return "";
-    if (song.assets && song.assets.audio) return resourcePath(encPath(song.assets.audio));
-    return `${PATHS.audio}${encPath(stemOf(song.id))}.ogg`;
+    if (song.assets && song.assets.audio) return mediaUrl(song.assets.audio);
+    return mediaUrl(`media/audio/${stemOf(song.id)}.ogg`);
   }
 
   function coverUrl(song) {
@@ -529,7 +567,10 @@
     PATHS,
     resourcePath,
     shareBase,
+    mediaCompatibility,
     encPath,
+    compatibleMediaPath,
+    mediaUrl,
     chartPath,
     audioUrl,
     coverUrl,

@@ -59,7 +59,6 @@
     const audio = document.createElement('audio');
     audio.id = 'previewAudio'; audio.preload = 'none'; audio.loop = true;
     document.querySelector('.transport-top').append(button, audio);
-    const path = value => value.split('/').map(encodeURIComponent).join('/');
     let previewGeneration = 0, loading = false, automatic = false, currentSong = null;
     function stopPreview() {
       previewGeneration++; loading = false; automatic = false; audio.pause();
@@ -103,7 +102,7 @@
       currentSong = song; audio.preload = 'none';
       const preview = song.assets?.preview;
       button.hidden = !preview;
-      if (preview) audio.src = A.resourcePath(path(preview));
+      if (preview) audio.src = A.mediaUrl(preview);
       playAutoPreview(song);
     }
     audio.addEventListener('error', () => {

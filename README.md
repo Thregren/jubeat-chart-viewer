@@ -31,7 +31,7 @@
 
 直接打开 **[ub.thregren.world](https://ub.thregren.world/)** 即可使用。iPhone、iPad 和 Android 可通过浏览器的「添加到主屏幕／安装应用」使用 PWA。
 
-**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.50 轻量程序；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供之前发布的客户端和独立完整曲库。
+**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.50 轻量程序、网站部署分卷和校验文件；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供客户端和独立完整曲库。
 
 | 平台 | 下载 |
 |---|---|
@@ -45,7 +45,7 @@
 
 离线使用：
 
-1. 下载适合平台的轻量程序，以及网盘中的 `jubeat-library-0.6.50.zip`。该独立曲库包包含 **2469 个歌曲／谱面版本条目、7373 张谱面**，并带有歌曲背景故事资料，可导入新版客户端。
+1. 下载适合平台的轻量程序，以及网盘中的 `jubeat-library-0.6.50.zip`。该独立曲库包包含 **2469 个歌曲／谱面版本条目、7373 张谱面**，并带有歌曲背景故事资料，可导入新版客户端。GitHub Release 中的 `web-0.6.50.partNNN.zip` 是网站部署用的独立分卷，不能拼接成完整曲库，也不能直接导入客户端。
 2. 桌面端将整个曲库 ZIP 拖进窗口，或从文件菜单导入；Android 安装 APK 后选择「导入资源包」，导入同一个 ZIP。
 3. 校验并导入后即可离线看谱和播放。程序与曲库可分别更新；导入期间需要容纳旧库和新库。
 

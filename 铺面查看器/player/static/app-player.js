@@ -276,13 +276,16 @@
     return rate;
   }
 
-  /** 变速重建保音调媒体管线，清掉旧速率的伸缩缓冲，再按原位置续播。 */
+  /**
+   * WebAudio 不能保音调变速，所以一首歌第一次变速时只交接一次到媒体后端。
+   * 交接后（包括切回 1x）都留在媒体后端，后续倍率直接改 playbackRate；
+   * 不再反复 load()/重设 currentTime，避免旧源的异步事件把位置覆盖掉。
+   */
   function applyPlaybackRate() {
     const rate = selectedRate();
-    const changing = backend.mode === 'webaudio' ? rate !== 1 && backend.buf : rate !== backend.rate;
-    if (changing && backend.url) {
+    if (backend.mode === 'webaudio' && rate !== 1 && backend.buf && backend.url) {
       const off = (Number(els.offset.value) || 0) / 1000;
-      const pos = pendingRateSeek ?? (pendingSeek == null ? rawAudioTime() : pendingSeek - off + (state.baseOffset || 0));
+      const pos = rawAudioTime();
       const wasPlaying = state.playing || !els.audio.paused
         || (pendingPlaybackResume && audioSession.current(pendingPlaybackResume.generation));
       pause();
@@ -294,6 +297,14 @@
       backend.buf = null;
       if (A.metrics) A.metrics.audioPCMBytes = 0;
       if (wasPlaying) resumeAfterSeek();
+    } else if (backend.mode === "element") {
+      // The source may still be loading after the first handoff. Keep its
+      // pending position untouched; loadedmetadata will apply the final rate.
+      preservePitch();
+      els.audio.playbackRate = rate;
+      backend.rate = rate;
+      // Do not extrapolate the next media time with the previous rate.
+      resetMediaClock();
     }
     sfxReset();
     A.requestPaint();
@@ -628,7 +639,9 @@
   function resetMediaClock() {
     audioClock.base = els.audio.currentTime || 0;
     audioClock.at = performance.now();
-    audioClock.fresh = 0;
+    // Force one raw sample before extrapolating again. Using 0 here fails
+    // during the first 150ms of a page's lifetime.
+    audioClock.fresh = -Infinity;
   }
 
   function rawAudioTime() {

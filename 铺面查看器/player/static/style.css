@@ -1408,6 +1408,18 @@ input[type="range"] {
   .story-copy { font-size:12px; line-height:1.66; }
 }
 
+/* Touch targets must win over the compact desktop and phone widths. */
+@media (pointer: coarse) {
+  .np-actions {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .np-actions > .song-share-btn { flex: 0 0 auto; width: 96px; height: 44px; border-radius: 8px; color: var(--ink); font-size: 12px; font-weight: 600; }
+  .stage .np-main { padding-right: 0; }
+}
+
 /* Secondary information stays in the sidebar, outside the chart layout. */
 .visitor-count { margin: 0 7px 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.4; font-variant-numeric: tabular-nums; }
 .visitor-count[hidden] { display: none; }

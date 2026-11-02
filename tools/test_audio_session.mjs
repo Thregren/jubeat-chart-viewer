@@ -125,17 +125,28 @@ test('native rate and oversized metadata skip full fetch, while encoded duration
  }
 });
 
-test('slow playback returns to 1x at the current audio position, with a fresh settled clock',async()=>{
+test('rapid rate changes hand off once and then only update the media element',async()=>{
  const h=player();h.A.bindLoadEvents();
- h.audio.load=function(){this.readyState=0;this.currentTime=0;};
+ let loads=0,currentTime=12;const writes=[];
+ h.audio.load=function(){loads++;this.readyState=0;};
+ Object.defineProperty(h.audio,'currentTime',{configurable:true,get:()=>currentTime,set:value=>{writes.push(value);currentTime=value;}});
  Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf:{duration:60},anchorPos:12});h.A.state.playing=true;
- const settle=async()=>{h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');h.audio.emit('canplay');await turn();};
- h.A.els.rate.value='.5';h.A.applyPlaybackRate();assert.equal(h.A.audioNow(),12);await settle();
- assert.equal(h.audio.currentTime,12);assert.equal(h.A.state.playing,true);assert.equal(h.audio.playbackRate,.5);
- h.audio.currentTime=18.25;h.A.els.rate.value='1';h.A.applyPlaybackRate();
- assert.equal(h.A.state.playing,false);assert.equal(h.A.audioNow(),18.25);await settle();
- assert.equal(h.audio.currentTime,18.25);assert.equal(h.audio.playbackRate,1);assert.equal(h.A.state.playing,true);
- assert.equal(h.A.backend.buf,null);assert.equal(h.A.rawMediaTime(),18.25);
+ for(const rate of ['1.25','1.5','.75','2','1']){
+  h.A.els.rate.value=rate;h.A.applyPlaybackRate();
+  assert.equal(h.A.backend.mode,'element');
+  assert.equal(h.A.audioNow(),12);
+ }
+ assert.equal(loads,1);assert.deepEqual(writes,[0]);assert.equal(h.A.state.playing,false);
+ h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');
+ assert.deepEqual(writes,[0,12]);assert.equal(h.audio.playbackRate,1);
+ h.audio.emit('canplay');await turn();await turn();
+ assert.equal(h.A.state.playing,true);assert.equal(h.audio.paused,false);
+ for(const rate of ['1.25','.5','2']){
+  h.A.els.rate.value=rate;h.A.applyPlaybackRate();
+  assert.equal(h.audio.playbackRate,Number(rate));assert.equal(h.A.backend.mode,'element');
+ }
+ assert.equal(loads,1);assert.deepEqual(writes,[0,12]);assert.equal(h.A.state.playing,true);
+ assert.equal(h.A.audioNow(),12);
 });
 
 test('rate handoff ignores stale media readiness until the replacement has metadata',async()=>{
@@ -157,11 +168,12 @@ test('rate handoff ignores stale media readiness until the replacement has metad
  assert.equal(h.audio.paused,false);assert.equal(h.A.state.playing,true);assert.equal(h.audio.playbackRate,.5);
 });
 
-test('rate handoffs preserve intros and rapid changes, while pause and seek override pending resume',async()=>{
+test('the first rate handoff preserves intros, while pause and seek override pending resume',async()=>{
  for(const action of ['resume','pause','seek']) {
   const h=player();h.A.bindLoadEvents();h.audio.load=function(){this.readyState=0;this.currentTime=0;};
   Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf:{duration:60},anchorPos:2.25});h.A.state.baseOffset=7;h.A.els.offset.value='125';h.A.state.playing=true;
-  for(const rate of ['.5','.75','1']){h.A.els.rate.value=rate;h.A.applyPlaybackRate();assert.equal(h.A.audioNow(),2.25);}
+  h.A.els.rate.value='.75';h.A.applyPlaybackRate();assert.equal(h.A.audioNow(),2.25);
+  h.A.els.rate.value='1';h.A.applyPlaybackRate();assert.equal(h.A.audioNow(),2.25);
   if(action==='pause')h.A.pause();if(action==='seek')h.A.seekTo(4);
   h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');h.audio.emit('canplay');await turn();
   assert.equal(h.audio.currentTime,action==='seek'?10.875:2.25);

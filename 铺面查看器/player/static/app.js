@@ -94,6 +94,11 @@
         if (handBack) requestPaint();
       },
       loadLibrary,
+      backend,
+      audioNow: A.audioNow,
+      rawMediaTime: A.rawMediaTime,
+      currentMediaTime: A.currentMediaTime,
+      renderMediaTime: A.renderMediaTime,
       // 音效调试 / 自测用：可以用 OfflineAudioContext 直接渲染这几个合成音
       sfx: SFX,
       // 每个音效当前用的是真素材还是合成音（sample / synth / loading）

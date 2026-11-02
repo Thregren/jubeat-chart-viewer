@@ -43,6 +43,7 @@
     numColor: "#ffffff",                  // 序号颜色也钉死，成片不受录制机历史设置影响
     numGlowAlpha: "70",                   // 与播放器最新版默认光晕透明度一致
     numCorner: "1",                       // 序号放右下角
+    longHoldCountdown: "0",               // 录制成片不改变原有画面
     showChordGlow: "1",
     chordGlowStyle: "frame",              // 同押高亮样式：加粗面板框
     chordGlowPair: "4",                   // 高亮配色：天蓝 / 玫红（GLOW_PAIRS[4]）

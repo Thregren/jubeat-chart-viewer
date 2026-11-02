@@ -7,7 +7,7 @@ import java.util.Set;
 public final class PreferenceRules {
     private static final Set<String> KEYS = new HashSet<String>(Arrays.asList(
         "renderQuality", "markerNormalSpeed", "marker", "metroSound", "metroVolume", "showCombo", "firstMarker", "showNumbers",
-        "numScale", "numAlpha", "numGlowAlpha", "numCorner", "numColorMode", "numColor", "showChordGlow",
+        "numScale", "numAlpha", "numGlowAlpha", "numCorner", "longHoldCountdown", "numColorMode", "numColor", "showChordGlow",
         "chordGlowStyle", "phraseMult", "phraseFloor", "phraseMax", "chordGlowPair", "settingsVersion",
         "autoPreview", "collapsed", "sort", "holdFilter", "timelineFlatten"));
     private PreferenceRules() {}

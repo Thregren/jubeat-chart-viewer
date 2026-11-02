@@ -8,16 +8,16 @@
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.6.49" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.49" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.49" />
+  <link rel="manifest" href="static/manifest.json?v=0.6.50" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.6.50" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.6.50" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.6.49&ui=filters-20261030" />
-  <link rel="stylesheet" href="static/theme-early.css?v=0.6.49" />
-  <link rel="stylesheet" href="static/theme-late.css?v=0.6.49" />
-  <link rel="stylesheet" href="static/theme-panel.css?v=0.6.49" />
-  <link rel="stylesheet" href="static/record.css?v=0.6.49" />
+  <link rel="stylesheet" href="static/style.css?v=0.6.50&ui=filters-20261030" />
+  <link rel="stylesheet" href="static/theme-early.css?v=0.6.50" />
+  <link rel="stylesheet" href="static/theme-late.css?v=0.6.50" />
+  <link rel="stylesheet" href="static/theme-panel.css?v=0.6.50" />
+  <link rel="stylesheet" href="static/record.css?v=0.6.50" />
 </head>
 <body>
   <div id="app">
@@ -34,7 +34,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.49</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.6.50</span>
           </h1>
           <p>Jubeat Viewer</p>
           <p class="brand-credit">由 Thregren 开发</p>
@@ -43,9 +43,9 @@
           <summary>关于</summary>
           <div class="brand-about-panel">
             <div class="brand-about-title">关于谱面确认</div>
-            <div class="visitor-count" id="visitorCount" hidden title="按浏览器去重；今日按北京时间统计。记录 IP、浏览器信息及访问谱面"><div>历史访客 <span id="visitorCountValue">—</span> 人</div><div>今日访客 <span id="visitorTodayValue">—</span> 人</div></div>
-            <p class="brand-privacy">匿名统计仅用于了解访问和谱面加载情况；原始 IP 与浏览器明细最长保留 90 天。</p>
+            <div class="visitor-count" id="visitorCount" hidden title="10 秒内重复选择只计一次；今日按北京时间统计。记录 IP、浏览器信息及加载的谱面"><div>历史谱面加载 <span id="chartLoadValue">—</span> 次</div><div>今日谱面加载 <span id="todayChartLoadValue">—</span> 次</div></div>
             <a href="https://github.com/Thregren/jubeat-chart-viewer" target="_blank" rel="noopener noreferrer">项目 GitHub <span aria-hidden="true">↗</span></a>
+            <a href="https://github.com/Thregren/jubeat-song-backgrounds" target="_blank" rel="noopener noreferrer">背景资料 GitHub <span aria-hidden="true">↗</span></a>
             <div class="brand-about-label">友链</div>
             <a href="https://wiki.byd-ub.top/" target="_blank" rel="noopener noreferrer">Beyond ↑ JUBEAT ♪~ <span aria-hidden="true">↗</span></a>
           </div>
@@ -61,7 +61,7 @@
       <div class="list-meta">
         <span id="listCount">加载中…</span>
         <button id="btnPopular" class="hot-songs-toggle" type="button" aria-pressed="false"
-                aria-controls="songList" title="显示近 7 日加载次数最高的 10 首歌曲" hidden>7日热门歌曲</button>
+                aria-controls="songList" title="显示近 7 日加载次数最高的 30 首歌曲" hidden>7日热门歌曲</button>
         <button id="btnMarkerLibrary" class="marker-library-toggle" type="button"
                 aria-pressed="false" aria-controls="songList markerList">图选 Marker</button>
       </div>
@@ -105,7 +105,10 @@
           <div class="cover-fallback" id="coverFallback">JUBEAT</div>
         </div>
         <div class="np-main">
-          <button id="btnShare" class="song-share-btn" type="button" aria-label="分享歌曲" title="分享歌曲，从头开始" disabled>分享</button>
+          <div class="np-actions" aria-label="歌曲操作">
+            <button id="btnShare" class="song-share-btn" type="button" aria-label="分享歌曲" title="分享歌曲，从头开始" disabled>分享</button>
+            <button id="btnBackgroundStory" class="song-share-btn" type="button" aria-label="查看歌曲背景故事" aria-expanded="false" aria-haspopup="dialog" hidden>背景故事</button>
+          </div>
           <div class="np-kicker" id="npVersion">选择一首曲目</div>
           <h2 id="npTitle">未加载谱面</h2>
           <div class="np-artist" id="npArtist">—</div>
@@ -286,6 +289,10 @@
                         <input id="numCorner" type="checkbox" checked />
                         序号放右下角
                       </label>
+          <label class="ctl checkbox">
+                        <input id="longHoldCountdown" type="checkbox" />
+                        长押结束倒计时
+                      </label>
           </div><p class="settings-subtitle">断句规则</p><div class="settings-fields">
           <label class="ctl"><span class="setting-label">序号断句</span>
           <span class="setting-control"><select id="phraseMult" aria-label="音符序号的断句灵敏度"
@@ -379,32 +386,34 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.6.49"></script>
-  <script src="static/song-links.js?v=0.6.49"></script>
-  <script src="static/core.js?v=0.6.49"></script>
-  <script src="static/runtime.js?v=0.6.49"></script>
-  <script src="static/services.js?v=0.6.49"></script>
+  <script src="static/sfx.js?v=0.6.50"></script>
+  <script src="static/song-links.js?v=0.6.50"></script>
+  <script src="static/background-stories-data.js?v=0.6.50"></script>
+  <script src="static/background-stories.js?v=0.6.50"></script>
+  <script src="static/core.js?v=0.6.50"></script>
+  <script src="static/runtime.js?v=0.6.50"></script>
+  <script src="static/services.js?v=0.6.50"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.6.49"></script>
+  <script src="static/record.js?v=0.6.50"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.6.49"></script>
-<script src="static/app-base.js?v=0.6.49"></script>
-  <script src="static/app-audio.js?v=0.6.49"></script>
-  <script src="static/first-marker.js?v=0.6.49"></script>
-  <script src="static/app-marker.js?v=0.6.49"></script>
-  <script src="static/app-density.js?v=0.6.49"></script>
-  <script src="static/rhythm-timeline.js?v=0.6.49"></script>
-  <script src="static/app-timeline.js?v=0.6.49"></script>
-  <script src="static/directory.js?v=0.6.49"></script>
-  <script src="static/list-images.js?v=0.6.49"></script>
-  <script src="static/visitor-queue.js?v=0.6.49"></script>
-  <script src="static/app-visitors.js?v=0.6.49"></script>
-  <script src="static/app-library.js?v=0.6.49"></script>
-  <script src="static/library-filters.js?v=0.6.49&ui=filters-20261030"></script>
-  <script src="static/marker-library.js?v=0.6.49&ui=filters-20261030"></script>
-  <script src="static/app-player.js?v=0.6.49"></script>
-  <script src="static/app-render.js?v=0.6.49"></script>
-  <script src="static/app-wiring.js?v=0.6.49"></script>
-  <script src="static/app.js?v=0.6.49"></script>
+  <script src="static/version-data.js?v=0.6.50"></script>
+<script src="static/app-base.js?v=0.6.50"></script>
+  <script src="static/app-audio.js?v=0.6.50"></script>
+  <script src="static/first-marker.js?v=0.6.50"></script>
+  <script src="static/app-marker.js?v=0.6.50&ui=hold-countdown-20261102"></script>
+  <script src="static/app-density.js?v=0.6.50"></script>
+  <script src="static/rhythm-timeline.js?v=0.6.50"></script>
+  <script src="static/app-timeline.js?v=0.6.50"></script>
+  <script src="static/directory.js?v=0.6.50"></script>
+  <script src="static/list-images.js?v=0.6.50"></script>
+  <script src="static/visitor-queue.js?v=0.6.50"></script>
+  <script src="static/app-visitors.js?v=0.6.50&ui=chart-loads-20261102"></script>
+  <script src="static/app-library.js?v=0.6.50&ui=chart-loads-20261102"></script>
+  <script src="static/library-filters.js?v=0.6.50&ui=filters-20261030"></script>
+  <script src="static/marker-library.js?v=0.6.50&ui=filters-20261030"></script>
+  <script src="static/app-player.js?v=0.6.50"></script>
+  <script src="static/app-render.js?v=0.6.50"></script>
+  <script src="static/app-wiring.js?v=0.6.50&ui=background-stories-20261101"></script>
+  <script src="static/app.js?v=0.6.50"></script>
 </body>
 </html>

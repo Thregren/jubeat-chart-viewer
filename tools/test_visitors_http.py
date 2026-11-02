@@ -7,13 +7,16 @@ def main():
     with tempfile.TemporaryDirectory(prefix='jv-visitors-') as tmp:
         root=pathlib.Path(tmp);private=root/'private';private.mkdir();endpoint=root/'index.php';shutil.copy2(ROOT/'deploy/visitors/endpoint.php',endpoint)
         for helper in ['visitor-storage.php','visitor-catalog.php']:shutil.copy2(ROOT/'deploy/visitors'/helper,root/helper)
-        catalog=root/'library.json';catalog.write_text(json.dumps({'songs':[{'id':'version/song.mcz','title':'Test Song','charts':[{'code':'EXT'}]}]}))
+        catalog=root/'library.json';catalog.write_text(json.dumps({'songs':[
+            {'id':'version/song.mcz','title':'Test Song','charts':[{'code':'EXT'}]},
+            {'id':'version/retry.mcz','title':'Retry Song','charts':[{'code':'EXT'}]}
+        ]}))
         with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
         env=os.environ|{'VISITOR_STATS_ROOT':str(private),'VISITOR_STATS_ORIGIN':'https://viewer.test','VISITOR_STATS_CATALOG':str(catalog)}
         with (root/'php.log').open('wb') as log:
             process=subprocess.Popen([args.php,'-S',f'127.0.0.1:{port}','-t',str(root)],env=env,stdout=log,stderr=log)
-            def request(event=None,cookie=None,origin='https://viewer.test',raw=None):
-                c=http.client.HTTPConnection('127.0.0.1',port,timeout=8);headers={'User-Agent':'Fixture UA\t1','Origin':origin};body=None
+            def request(event=None,cookie=None,origin='https://viewer.test',raw=None,ua='Fixture UA\t1'):
+                c=http.client.HTTPConnection('127.0.0.1',port,timeout=8);headers={'User-Agent':ua,'Origin':origin};body=None
                 if event is not None or raw is not None:body=raw if raw is not None else json.dumps(event);headers['Content-Type']='application/json'
                 if cookie:headers['Cookie']=cookie
                 c.request('POST' if body is not None else 'GET','/index.php',body=body,headers=headers);r=c.getresponse();data=r.read();out=(r.status,dict(r.getheaders()),json.loads(data));c.close();return out
@@ -21,12 +24,26 @@ def main():
                 for _ in range(100):
                     try:status,_,counts=request();break
                     except OSError:time.sleep(.05)
-                assert status==200 and counts=={'visitors':0,'today_visitors':0,'views':0,'popular_songs':[]}
-                status,headers,counts=request({'event':'page'});assert status==200 and counts=={'visitors':1,'today_visitors':1,'views':1,'popular_songs':[]},(status,counts)
+                assert status==200 and counts=={'visitors':0,'today_visitors':0,'views':0,'chart_loads':0,'today_chart_loads':0,'popular_songs':[]}
+                status,headers,counts=request({'event':'page'});assert status==200 and counts=={'visitors':1,'today_visitors':1,'views':1,'chart_loads':0,'today_chart_loads':0,'popular_songs':[]},(status,counts)
                 cookie=headers['Set-Cookie'].split(';')[0];assert all(k in headers['Set-Cookie'].lower() for k in ['secure','httponly','samesite=lax'])
                 assert request({'event':'page'},cookie)[2]==counts
-                assert request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)[0]==200
-                assert request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)[0]==200
+                status,_,loaded=request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)
+                assert status==200 and (loaded['chart_loads'],loaded['today_chart_loads'])==(1,1)
+                # Repeated selections from one browser within the deduplication
+                # window are one chart load, matching the ranking projection.
+                assert request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)[2]['chart_loads']==1
+                retry={'event':'song','song':'version/retry.mcz','chart':'EXT','id':'chart-load-retry-0001'}
+                assert request(retry,cookie)[2]['chart_loads']==2
+                assert request(retry,cookie)[2]['chart_loads']==2
+                # A plain duplicate within 10 seconds does not reach the log or
+                # projection, while the stable-ID retry above is not discarded.
+                with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE visitors SET last_at=0')
+                assert request({'event':'song','song':'version/retry.mcz','chart':'EXT'},ua='Googlebot/2.1')[2]['chart_loads']==2
+                with sqlite3.connect(private/'visitors.sqlite') as db:db.execute("UPDATE counters SET chart_load_day='2000-01-01'")
+                reset=request()[2];assert reset['chart_loads']==2 and reset['today_chart_loads']==0
+                with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE visitors SET last_at=0')
+                assert request({'event':'song','song':'version/retry.mcz','chart':'EXT'})[2]['today_chart_loads']==1
                 status,_,funnel=request({'event':'library_ready','bucket':'lt500'},cookie);assert status==200 and funnel['visitors']==1
                 assert request({'event':'page'},cookie,origin='https://foreign.test')[0]==403
                 assert request({'event':'unknown'},cookie)[0]==400
@@ -36,11 +53,19 @@ def main():
                 assert request(raw='not json')[0]==400
                 assert request({'event':'page'},'jv_visitor=forged')[2]['visitors']==2
                 logs=list(private.glob('visits-*.log'));assert len(logs)==1
-                records=[json.loads(line) for line in logs[0].read_text().splitlines()];assert len(records)==4,records
+                records=[json.loads(line) for line in logs[0].read_text().splitlines()];assert len(records)==7,records
                 song=next(x for x in records if x['event']=='song');assert song['ip']=='127.0.0.1' and song['song']=='version/song.mcz' and song['title']=='Test Song' and song['chart']=='EXT' and song['ua']=='Fixture UA\t1'
                 ready=next(x for x in records if x['event']=='library_ready');assert ready['bucket']=='lt500'
                 assert all('jv_visitor' not in json.dumps(x) for x in records)
-                status,_,popular=request();assert status==200 and popular['popular_songs']==[{'song':'version/song.mcz','title':'Test Song','selections':1}]
+                status,_,popular=request();assert status==200 and popular['popular_songs']==[
+                    {'song':'version/retry.mcz','title':'Retry Song','selections':2},
+                    {'song':'version/song.mcz','title':'Test Song','selections':1}
+                ]
+                # The public ranking is bounded at 30 entries.
+                with sqlite3.connect(private/'visitors.sqlite') as db:
+                    db.executemany('INSERT INTO song_events(event_id,at,song,title,chart,bot) VALUES(?,?,?,?,?,0)',
+                        [(f'hot-{index:02d}',int(time.time())-index,f'hot/song-{index:02d}',f'Hot {index:02d}','EXT') for index in range(35)])
+                assert len(request()[2]['popular_songs'])==30
                 # Shanghai midnight boundary and daily unique identities; do not alter cumulative counts.
                 with sqlite3.connect(private/'visitors.sqlite') as db:
                     cookie_id=hashlib.sha256(cookie.split('=',1)[1].split('.',1)[0].encode()).hexdigest()
@@ -131,11 +156,31 @@ def main():
                 code='require $argv[1]; $db=visitor_db($argv[2]); echo json_encode([visitor_today($db,(int)$argv[3]),(int)$db->query("SELECT visitors FROM counters")->fetchColumn()]);'
                 result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(v2),str(shanghai_today+100)],capture_output=True,text=True)
                 assert result.returncode==0 and json.loads(result.stdout)==[1,2],result.stderr
+                # v4 databases retain the retained chart-load history and seed
+                # today's chart-load counter in Shanghai time.
+                v4=root/'v4';v4.mkdir()
+                with sqlite3.connect(v4/'visitors.sqlite') as db:
+                    db.executescript('''
+                        CREATE TABLE counters(id INTEGER PRIMARY KEY,visitors INTEGER,views INTEGER);
+                        INSERT INTO counters VALUES(1,7,9);
+                        CREATE TABLE song_events(event_id TEXT PRIMARY KEY,at INTEGER NOT NULL,song TEXT NOT NULL,
+                            title TEXT NOT NULL,chart TEXT NOT NULL,bot INTEGER NOT NULL DEFAULT 0);
+                        PRAGMA user_version=4;
+                    ''')
+                    db.executemany('INSERT INTO song_events VALUES(?,?,?,?,?,?)',[
+                        ('v4-old','1','version/old.mcz','Old Song','EXT',0),
+                        ('v4-today-a',shanghai_today,'version/a.mcz','Today A','EXT',0),
+                        ('v4-today-b',shanghai_today+1,'version/b.mcz','Today B','EXT',0),
+                        ('v4-bot',shanghai_today+2,'version/bot.mcz','Bot Song','EXT',1),
+                    ])
+                code='require $argv[1]; $db=visitor_db($argv[2]); echo json_encode(visitor_chart_loads($db,time()));'
+                result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(v4)],capture_output=True,text=True)
+                assert result.returncode==0 and json.loads(result.stdout)=={'chart_loads':3,'today_chart_loads':2},result.stderr
                 backup_dir=pathlib.Path(tempfile.mkdtemp(prefix='jv-visitor-backup-'))
                 result=subprocess.run([args.php,str(maintenance),'--root',str(private),'--backup-dir',str(backup_dir),'--backup-keep','2'],capture_output=True,text=True)
                 assert result.returncode==0,result.stderr
                 backups=list(backup_dir.glob('jubeat-visitors-*.sqlite'));assert len(backups)==1 and (backups[0].with_suffix('.sqlite.secret')).is_file()
-                with sqlite3.connect(backups[0]) as db:assert db.execute('PRAGMA user_version').fetchone()[0]==4
+                with sqlite3.connect(backups[0]) as db:assert db.execute('PRAGMA user_version').fetchone()[0]==5
                 shutil.rmtree(backup_dir)
                 assert (private/'secret').stat().st_mode & 0o077==0 and logs[0].stat().st_mode & 0o077==0
                 print('Visitor HTTP checks passed: deduplication, funnel, popular ranking, signed cookies, whitelist, origin, bounds, backup, concurrency, persistence and private permissions.')

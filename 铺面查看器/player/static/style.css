@@ -138,7 +138,6 @@ button, input, select {
 }
 .brand-about-title { padding: 3px 7px 7px; color: var(--ink); font-size: 12px; font-weight: 650; }
 .brand-about-label { padding: 9px 7px 3px; color: var(--muted); font-size: 11px; }
-.brand-privacy { margin: 2px 7px 8px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .brand-about-panel a { display: flex; justify-content: space-between; gap: 12px; padding: 8px 7px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 12px; }
 .brand-about-panel a:hover { color: var(--amber); background: var(--cabinet-2); }
 .brand-about-panel a span { color: var(--muted); }
@@ -1344,11 +1343,12 @@ input[type="range"] {
 
 .settings-switches .checkbox[hidden] { display: none; }
 
-/* Share sits within the existing heading; no extra mobile transport row. */
+/* Song actions sit within the existing heading; no extra mobile transport row. */
 .np-main { position: relative; }
-.stage .np-main h2, .stage .np-kicker { padding-right: 36px; }
+.stage .np-main { padding-right: 66px; }
 .stage .np-kicker { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.song-share-btn { position:absolute; top:0; right:0; width:30px; height:28px; padding:0; border:1px solid var(--line); border-radius:7px; background:var(--cabinet); color:var(--muted); font:11px var(--font); cursor:pointer; }
+.np-actions { position:absolute; top:0; right:0; z-index:2; display:grid; gap:4px; }
+.song-share-btn { width:58px; height:26px; padding:0; border:1px solid var(--line); border-radius:7px; background:var(--cabinet); color:var(--muted); font:10px var(--font); cursor:pointer; }
 .song-share-btn:disabled { opacity:.4; cursor:default; }
 .song-share-btn:hover:not(:disabled), .song-share-btn:focus-visible { color:var(--amber); border-color:var(--amber); }
 .share-dialog { max-width:min(90vw,480px); padding:20px; border:1px solid var(--line); border-radius:14px; background:var(--cabinet); color:var(--ink); }
@@ -1361,6 +1361,52 @@ input[type="range"] {
 
 .share-dialog[open] { position:fixed; inset:0; margin:auto; z-index:100; }
 .share-dialog:not([open]) { display:none; }
+
+.story-dialog {
+  width:min(92vw,720px);
+  max-height:min(82vh,760px);
+  max-height:min(82dvh,760px);
+  padding:0;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--cabinet);
+  color:var(--ink);
+  box-shadow:0 24px 80px rgba(0,0,0,.55);
+}
+.story-dialog::backdrop { background:rgba(0,0,0,.72); backdrop-filter:blur(3px); }
+.story-dialog[open] { position:fixed; inset:0; z-index:110; margin:auto; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+.story-dialog:not([open]) { display:none; }
+.story-dialog-head { min-width:0; display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:18px 20px 14px; border-bottom:1px solid var(--line); background:var(--cabinet-2); }
+.story-dialog-title { min-width:0; }
+.story-dialog-title h2 { margin:0; font-size:20px; line-height:1.25; overflow-wrap:anywhere; }
+.story-dialog-title p { max-width:100%; margin:4px 0 0; overflow:hidden; color:var(--muted); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.story-close { flex:0 0 auto; min-height:32px; padding:0 13px; border:1px solid var(--line); border-radius:8px; background:var(--cabinet); color:var(--muted); font:12px var(--font); cursor:pointer; }
+.story-close:hover, .story-close:focus-visible { color:var(--amber); border-color:var(--amber); }
+.story-dialog-body { min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain; padding:18px 20px 24px; }
+.story-document, .story-section { min-width:0; max-width:100%; }
+.story-document + .story-document { margin-top:24px; padding-top:22px; border-top:1px solid var(--line); }
+.story-document h3 { margin:0 0 12px; font-size:17px; }
+.story-version { display:inline-block; margin-bottom:10px; padding:3px 8px; border:1px solid var(--line); border-radius:999px; color:var(--amber); font-size:10px; }
+.story-facts { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:7px 14px; margin:0 0 18px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:rgba(0,0,0,.14); }
+.story-facts dt { color:var(--muted); font-size:12px; }
+.story-facts dd { margin:0; font-size:12px; line-height:1.55; overflow-wrap:anywhere; }
+.story-section + .story-section { margin-top:16px; }
+.story-section h4 { margin:0 0 6px; color:var(--amber); font-size:13px; }
+.story-copy { min-width:0; max-width:100%; margin:0; color:var(--ink); font-size:13px; line-height:1.72; overflow-wrap:anywhere; white-space:pre-wrap; }
+
+@media (max-width:560px) {
+  .np-actions { gap:3px; }
+  .song-share-btn { width:56px; height:24px; border-radius:6px; font-size:9px; }
+  .story-dialog { width:calc(100vw - 20px); max-height:calc(100vh - 20px); max-height:calc(100dvh - 20px); border-radius:12px; }
+  .story-dialog-head { padding:14px 14px 11px; }
+  .story-dialog-title h2 { font-size:17px; }
+  .story-close { min-height:30px; padding:0 10px; }
+  .story-dialog-body { padding:14px 14px max(20px,env(safe-area-inset-bottom)); }
+  .story-facts { grid-template-columns:1fr; gap:3px; padding:10px 12px; }
+  .story-facts dd + dt { margin-top:5px; }
+  .story-copy { font-size:12px; line-height:1.66; }
+}
 
 /* Secondary information stays in the sidebar, outside the chart layout. */
 .visitor-count { margin: 0 7px 6px; padding: 0 0 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.4; font-variant-numeric: tabular-nums; }

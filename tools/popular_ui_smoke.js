@@ -42,7 +42,7 @@ app.whenReady().then(async () => {
     check("fixture 启动", !!(await until(win, "!!(window.JubeatApp?.state?.songs?.length) && window.__player?.state?.songs?.length > 10")));
     const prepared = await win.webContents.executeJavaScript(`(() => {
       const A=window.JubeatApp;
-      const rows=A.state.songs.slice(0,10).map((song,index)=>({song:song.id,title:song.title,selections:20-index}));
+      const rows=A.state.songs.slice(0,30).map((song,index)=>({song:song.id,title:song.title,selections:40-index}));
       A.setPopularSongs(rows);
       A.setSidebarOpen(true);
       const popular=document.getElementById('btnPopular'),marker=document.getElementById('btnMarkerLibrary');
@@ -66,7 +66,7 @@ app.whenReady().then(async () => {
         label:document.getElementById('btnPopular').textContent,
         first:document.querySelector('.song-row .song-item')?.dataset.songId}:null;
     })()`);
-    check("近 7 日热门只显示前十", ranked && ranked.count.includes("10 首") && ranked.marks[0] === "#1");
+    check("近 7 日热门只显示前三十", ranked && ranked.count.includes("30 首") && ranked.marks[0] === "#1");
     check("热门按钮可切回完整列表", ranked && ranked.label === "返回全部");
     check("热门项直接指向对应歌曲", ranked && ranked.first === prepared.rows[0].song);
     await new Promise(resolve => setTimeout(resolve, 300));

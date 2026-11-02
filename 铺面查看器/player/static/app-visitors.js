@@ -3,7 +3,7 @@
   'use strict';
   const A=window.JubeatApp,badge=document.getElementById('visitorCount');
   if(!A||!badge||window.__recActive||location.protocol!=='https:'||['localhost','127.0.0.1','[::1]'].includes(location.hostname))return;
-  const value=document.getElementById('visitorCountValue'),today=document.getElementById('visitorTodayValue');
+  const value=document.getElementById('chartLoadValue'),today=document.getElementById('todayChartLoadValue');
   let currentSong=null,currentChart=null;
   const sentOnce=new Set();
   const bucket=ms=>{
@@ -19,10 +19,15 @@
       if(!response.ok)return response.status===429||response.status>=500?'retry':'drop';
       const data=await response.json();
       if(!Number.isSafeInteger(data.visitors)||data.visitors<0)return 'retry';
-      value.textContent=data.visitors.toLocaleString('zh-CN');
-      if(today)today.textContent=Number.isSafeInteger(data.today_visitors)&&data.today_visitors>=0?data.today_visitors.toLocaleString('zh-CN'):'—';
+      if(value)value.textContent=Number.isSafeInteger(data.chart_loads)&&data.chart_loads>=0?data.chart_loads.toLocaleString('zh-CN'):'—';
+      if(today)today.textContent=Number.isSafeInteger(data.today_chart_loads)&&data.today_chart_loads>=0?data.today_chart_loads.toLocaleString('zh-CN'):'—';
       if(Array.isArray(data.popular_songs)) {
-        A.popularSongs=data.popular_songs.slice(0,10);
+        const seen=new Set();
+        A.popularSongs=data.popular_songs.filter(row=>{
+          if(!row||typeof row.song!=='string'||!row.song||seen.has(row.song))return false;
+          seen.add(row.song);
+          return true;
+        }).slice(0,30);
         A.setPopularSongs?.(A.popularSongs);
       }
       badge.hidden=false;return 'ok';

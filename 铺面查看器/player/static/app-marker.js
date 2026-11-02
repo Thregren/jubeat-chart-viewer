@@ -28,6 +28,9 @@
 
   const canvas = els.markerCanvas;
   const ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
+  // Canvas 的通用 monospace 在 Windows 上常落到 Courier New（衬线体）。
+  // 序号和倒计时需要明确的跨平台无衬线回退。
+  const CANVAS_SANS_FONT = '"Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Avenir Next", sans-serif';
   let canvasW = 0;
   let canvasH = 0;
 
@@ -852,6 +855,61 @@
     }
   }
 
+  /** 长押还要按住多少秒。松开那一刻立即消失，不显示 -0.0。 */
+  function holdCountdownText(note, chartT) {
+    return Math.max(0, note.endT - chartT).toFixed(1);
+  }
+
+  /**
+   * 倒计时贴在「顺序数字没有占用的那个位置」：
+   * 序号在右下角 → 倒计时居中；序号居中 → 倒计时在右下角。
+   * 字号按文本长度收进格内，且比顺序数字小一档，给按住中的 marker 留出画面。
+   */
+  function holdCountdownLayout(rect, text) {
+    const atCorner = !numCfg.corner;
+    const pad = Math.max(3, rect.w * 0.07);
+    const base = rect.w * (atCorner ? 0.20 : 0.36);
+    const fit = (rect.w * 0.84) / Math.max(1, text.length * 0.60);
+    const size = Math.max(7, Math.min(base, fit));
+    return {
+      x: atCorner ? rect.x + rect.w - pad : rect.x + rect.w / 2,
+      y: atCorner ? rect.y + rect.h - pad : rect.y + rect.h / 2,
+      size,
+      align: atCorner ? "right" : "center",
+      baseline: atCorner ? "bottom" : "middle",
+    };
+  }
+
+  /** 长押辅助倒计时独立于 marker 设计：选「无（仅面板灯）」时仍然显示。 */
+  function drawHoldCountdowns(chartT) {
+    if (!ctx || !els.longHoldCountdown?.checked || !state.padRects || state.padRects.length < 16) return;
+    const maxHold = (state._parsed && state._parsed.maxHold) || 0;
+    for (const note of notesInWindow(chartT - maxHold - 0.01, chartT + 0.01, chartHolds())) {
+      if (!(note.t <= chartT && chartT < note.endT)) continue;
+      const rect = state.padRects[note.index];
+      if (!rect) continue;
+      const text = holdCountdownText(note, chartT);
+      const layout = holdCountdownLayout(rect, text);
+      const inset = Math.max(1, rect.w * 0.02);
+      ctx.save();
+      roundRectPath(ctx,
+        rect.x + inset, rect.y + inset,
+        rect.w - inset * 2, rect.h - inset * 2,
+        Math.max(4, rect.w * 0.12));
+      ctx.clip();
+      ctx.font = `700 ${layout.size}px ${CANVAS_SANS_FONT}`;
+      ctx.textAlign = layout.align;
+      ctx.textBaseline = layout.baseline;
+      ctx.lineJoin = "round";
+      ctx.lineWidth = Math.max(2, layout.size * 0.18);
+      ctx.strokeStyle = "rgba(16,18,24,0.88)";
+      ctx.fillStyle = "#ffe08a";
+      ctx.strokeText(text, layout.x, layout.y);
+      ctx.fillText(text, layout.x, layout.y);
+      ctx.restore();
+    }
+  }
+
   /** 把一张官方帧贴图铺满一个格子。
    *  官方贴图是 160×160 的整幅画（整格铺满、没有额外内边距），所以直接等比铺到
    *  pad 矩形上；再裁成和 pad 一样的圆角，免得方角盖住格子本身的圆角。 */
@@ -974,7 +1032,7 @@
     const y = corner ? rect.y + rect.h - pad : cy;
     ctx.save();
     ctx.globalAlpha = numCfg.alpha;   // 「序号透明度」：整层（光晕 + 数字）一起淡
-    ctx.font = `700 ${size}px "SF Mono", Menlo, monospace`;
+    ctx.font = `700 ${size}px ${CANVAS_SANS_FONT}`;
     ctx.textAlign = corner ? "right" : "center";
     ctx.textBaseline = corner ? "bottom" : "middle";
 
@@ -1120,9 +1178,15 @@
     drawHoldArrows(chartT);
 
     const design = markerCfg.design;
-    if (!design || !state.notes.length) return;
+    if (!design || !state.notes.length) {
+      drawHoldCountdowns(chartT);
+      return;
+    }
     const tier = tierOf(design, 4);            // PERFECT 档；缺档自动回落最高可用档
-    if (!tier) return;
+    if (!tier) {
+      drawHoldCountdowns(chartT);
+      return;
+    }
     const maFrames = Math.max(1, Number(design.ma) || 0);
     const hFrames = Math.max(1, Number(design.h && design.h[tier]) || 0);
 
@@ -1181,6 +1245,7 @@
       if (number) number[2] = markerOpacity(image);
     }
 
+    drawHoldCountdowns(chartT);
     for (const [n, rect, opacity] of numbers) drawOrderNumber(n, rect, opacity);
   }
 
@@ -1294,7 +1359,7 @@
   // 其实是「图片解码好了没」的判定），既没用又容易在下一次改动里被误用。
   Object.assign(A, {
     ctx,
-    markerPrimitives: {frameImage,frameUrl,ready,drawFrameImage,drawPanelFrames,drawComboOverlay,drawHoldArrow,holdCells,drawOrderNumber,preloadUrls},
+    markerPrimitives: {frameImage,frameUrl,ready,drawFrameImage,drawPanelFrames,drawComboOverlay,drawHoldArrow,holdCells,drawOrderNumber,drawHoldCountdowns,holdCountdownText,holdCountdownLayout,preloadUrls},
     loadMarkers,
     markerPreviewSources(design) {
       const sources = [];

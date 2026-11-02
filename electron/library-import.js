@@ -56,7 +56,7 @@ function extract(archive,root,onProgress=()=>{}) {
         if(++entries>MAX_FILES)throw Error('曲库文件过多');
         const directory=entry.fileName.endsWith('/'),name=directory?entry.fileName.slice(0,-1):entry.fileName;
         safeName(name);
-        if(!TOPS.has(name.split('/')[0])||(!directory&&!/\.(json|ogg|png|jpe?g|webp|gif)$/i.test(name)))throw Error('资源包包含非曲库文件：'+name);
+        if(!TOPS.has(name.split('/')[0])||(!directory&&!/\.(json|md|ogg|png|jpe?g|webp|gif)$/i.test(name)))throw Error('资源包包含非曲库文件：'+name);
         if(((entry.externalFileAttributes>>>16)&0o170000)===0o120000)throw Error('资源包不能包含符号链接');
         if(directory){zip.readEntry();return;}
         if(names.has(name))throw Error('资源路径重复');names.add(name);

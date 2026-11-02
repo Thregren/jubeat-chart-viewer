@@ -38,6 +38,7 @@ public final class LocalServer {
         MIME.put("js", "text/javascript; charset=utf-8");
         MIME.put("css", "text/css; charset=utf-8");
         MIME.put("json", "application/json; charset=utf-8");
+        MIME.put("md", "text/markdown; charset=utf-8");
         MIME.put("txt", "text/plain; charset=utf-8");
         MIME.put("png", "image/png");
         MIME.put("jpg", "image/jpeg");

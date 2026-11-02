@@ -74,6 +74,7 @@
 
   function bindEvents() {
     window.JubeatSongLinks.install(A);
+    window.JubeatBackgroundStories?.install(A);
     const theme = document.getElementById('viewerTheme');
     if (theme) {
       const applyTheme = value => {
@@ -170,6 +171,13 @@
         numCfg.corner = els.numCorner.checked;
         store(STORAGE.numCorner, els.numCorner.checked ? "1" : "0");
       });
+      els.longHoldCountdown.addEventListener("change", () => {
+        if (recording) {
+          els.longHoldCountdown.checked = false;
+          return;
+        }
+        store(STORAGE.longHoldCountdown, els.longHoldCountdown.checked ? "1" : "0");
+      });
       if (els.btnAB) els.btnAB.addEventListener("click", tapAB);
       els.showChordGlow.addEventListener("change", () => {
         store(STORAGE.showChordGlow, els.showChordGlow.checked ? "1" : "0");
@@ -208,6 +216,7 @@
         numAlpha: store(STORAGE.numAlpha),
         numGlowAlpha: store(STORAGE.numGlowAlpha),
         numCorner: store(STORAGE.numCorner),
+        longHoldCountdown: store(STORAGE.longHoldCountdown),
         numColorMode: store(STORAGE.numColorMode),
         numColor: store(STORAGE.numColor),
         showChordGlow: store(STORAGE.showChordGlow),
@@ -285,6 +294,8 @@
         els.numCorner.checked = saved.numCorner === "1";
         numCfg.corner = els.numCorner.checked;
       }
+      els.longHoldCountdown.checked = !recording && saved.longHoldCountdown === "1";
+      els.longHoldCountdown.disabled = recording;
       // 序号颜色：老版本没存过 → 保持默认白（取色器里显示的也是 #ffffff）
       numCfg.color = normalizeHexColor(saved.numColor);
       els.numColor.value = numCfg.color;

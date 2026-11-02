@@ -11,6 +11,13 @@ REPO=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(REPO/'铺面查看器/player'))
 from directory_library import load_directory,asset_path
 
+def sha256_file(path):
+    digest=hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda:stream.read(1024*1024),b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 def pack(root,output,version,volume_mib=256):
     root,output=Path(root).resolve(),Path(output).resolve()
     if output==root or root in output.parents:raise ValueError('包目录必须独立于网页库')
@@ -18,7 +25,9 @@ def pack(root,output,version,volume_mib=256):
     common={'data/library.json','data/markers.json'}
     main=json.loads((root/'data/library.json').read_text());common.update(main.get('versionIndexes',[]))
     marker_files={p.relative_to(root).as_posix() for p in (root/'markers').rglob('*') if p.is_file() and not p.name.startswith('.')}
-    resources=assets|common|marker_files
+    background_files={p.relative_to(root).as_posix() for p in (root/'data/background').rglob('*') if p.is_file() and not p.name.startswith('.')}
+    if (root/'data/background-stories.json').is_file():background_files.add('data/background-stories.json')
+    resources=assets|common|marker_files|background_files
     front={'index.html'}|{p.relative_to(root).as_posix() for p in (root/'static').iterdir() if p.is_file() and not p.name.startswith('.')}
     # Runtime health metadata is small and contains no source paths or original archive data.
     if (root/'data/build.json').exists():common.add('data/build.json');resources.add('data/build.json')
@@ -30,12 +39,12 @@ def pack(root,output,version,volume_mib=256):
         with zipfile.ZipFile(temp,'w',allowZip64=True) as z:
             for rel in sorted(names):
                 source=asset_path(root,rel)
-                z.write(source,rel,compress_type=zipfile.ZIP_DEFLATED if source.suffix in ('.json','.js','.css','.html','.txt') else zipfile.ZIP_STORED)
+                z.write(source,rel,compress_type=zipfile.ZIP_DEFLATED if source.suffix in ('.json','.js','.css','.html','.txt','.md') else zipfile.ZIP_STORED)
         with zipfile.ZipFile(temp) as z:
             bad=z.testzip()
             if bad:raise ValueError('CRC错误：'+bad)
         temp.replace(dest)
-        with dest.open('rb') as f:sha=hashlib.file_digest(f,'sha256').hexdigest()
+        sha=sha256_file(dest)
         row=dict(name=name,kind=kind,bytes=dest.stat().st_size,sha256=sha,files=len(names),crcVerified=True);rows.append(row)
         print('完成',name,dest.stat().st_size,flush=True)
     archive('jubeat-library-'+version+'.zip',resources,'client-library')

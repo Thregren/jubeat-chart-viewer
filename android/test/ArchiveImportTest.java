@@ -25,6 +25,10 @@ public final class ArchiveImportTest {
                 check(!new File(root,active).exists());
             }
         }
+        check(ArchiveImport.extract(new ByteArrayInputStream(zip("data/background/01_story.md","data/background/02_story.MD")),root,null)==2);
+        for (String name : new String[]{"data/background/01_story.md","data/background/02_story.MD"}) {
+            check(new String(Files.readAllBytes(new File(root,name).toPath()),"UTF-8").equals("new"));
+        }
         for (String[] paths : new String[][] {
             {"data/library.json", "data//library.json"}, {"data//library.json", "data/library.json"},
             {"data/library.json", "data///library.json"}, {"media/audio", "media//audio"},
@@ -80,6 +84,6 @@ public final class ArchiveImportTest {
         ArchiveImport.recoverPending(root);
         check(new String(Files.readAllBytes(old),"UTF-8").equals("old")); check(!new File(root,"media/a.ogg").exists());
         Files.walk(temp).sorted(Comparator.reverseOrder()).forEach(p->{try{Files.delete(p);}catch(IOException e){throw new RuntimeException(e);}});
-        System.out.println("Archive import: success, cancellation, CRC, size budget, invalid paths and crash rollback passed");
+        System.out.println("Archive import: markdown acceptance, active-resource rejection, cancellation, CRC, size budget, invalid paths and crash rollback passed");
     }
 }

@@ -229,7 +229,7 @@
       if (!row || typeof row.song !== 'string' || !row.song || seen.has(row.song)) return false;
       seen.add(row.song);
       return true;
-    }).slice(0, 10);
+    }).slice(0, 30);
     rebuildPopularSongs();
     if (popularMode) renderList();
   }
@@ -415,6 +415,7 @@
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
     state.song = song;
+    window.JubeatBackgroundStories?.select(song);
     els.btnShare.disabled = false;
     els.btnShare.dataset.chart = "";
     document.title = song.title + " · 谱面确认";

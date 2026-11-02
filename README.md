@@ -31,21 +31,21 @@
 
 直接打开 **[ub.thregren.world](https://ub.thregren.world/)** 即可使用。iPhone、iPad 和 Android 可通过浏览器的「添加到主屏幕／安装应用」使用 PWA。
 
-**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.46 轻量程序；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供之前发布的客户端和独立完整曲库。
+**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.50 轻量程序；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供之前发布的客户端和独立完整曲库。
 
 | 平台 | 下载 |
 |---|---|
-| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-win-x64.zip) |
-| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-win-arm64.zip) |
-| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-mac-x64.zip) |
-| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-mac-arm64.zip) |
-| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-linux-x86_64.AppImage) |
-| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeatViewer-0.6.46-linux-arm64.AppImage) |
-| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.46/jubeat-viewer-0.6.46-android-min.apk) |
+| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-win-x64.zip) |
+| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-win-arm64.zip) |
+| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-mac-x64.zip) |
+| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-mac-arm64.zip) |
+| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-linux-x86_64.AppImage) |
+| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-linux-arm64.AppImage) |
+| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeat-viewer-0.6.50-android-min.apk) |
 
 离线使用：
 
-1. 下载适合平台的轻量程序，以及网盘中的 `jubeat-library-0.6.40.zip`。该独立曲库包包含 **2459 个歌曲／谱面版本条目、7343 张谱面**，可导入新版客户端。
+1. 下载适合平台的轻量程序，以及网盘中的 `jubeat-library-0.6.50.zip`。该独立曲库包包含 **2469 个歌曲／谱面版本条目、7373 张谱面**，并带有歌曲背景故事资料，可导入新版客户端。
 2. 桌面端将整个曲库 ZIP 拖进窗口，或从文件菜单导入；Android 安装 APK 后选择「导入资源包」，导入同一个 ZIP。
 3. 校验并导入后即可离线看谱和播放。程序与曲库可分别更新；导入期间需要容纳旧库和新库。
 
@@ -54,6 +54,13 @@ macOS 程序未做商业签名，首次打开可在 Finder 中右键「打开」
 更多安装方法见 [客户端与压缩曲库](docs/压缩曲库与客户端.md)，曲库范围和按版本安装见 [目录曲库说明](docs/目录曲库.md)。
 
 ## 最近更新
+
+**v0.6.50**
+
+- 新增歌曲「背景故事」阅读入口，展示版本沿革、收录位置、资料来源与核验边界。
+- 新增长押结束倒计时开关，倒计时与音符序号错开显示；修正 Windows 上 Canvas 数字的衬线字体问题。
+- 修复部分长标题背景故事在面板左侧被裁切的问题。
+- 完整曲库压缩包加入背景故事数据；曲库现有 2469 个条目、7373 张谱面。
 
 **v0.6.46**
 

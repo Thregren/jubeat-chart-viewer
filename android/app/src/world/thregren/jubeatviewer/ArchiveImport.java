@@ -121,7 +121,8 @@ public final class ArchiveImport {
                                 throw new IOException("资源包含非曲库文件：" + name);
                             if (entry.isDirectory()) continue;
                             // Resource imports cannot introduce HTML, JavaScript or other active files.
-                            if (!name.toLowerCase(Locale.ROOT).matches(".*\\.(json|ogg|png|jpe?g|webp|gif)"))
+                            // Markdown is passive reference content; the WebView renders it as text.
+                            if (!name.toLowerCase(Locale.ROOT).matches(".*\\.(json|md|ogg|png|jpe?g|webp|gif)"))
                                 throw new IOException("资源包含非曲库文件：" + name);
                             if (!unique.add(fileAt(root, name).getCanonicalPath())) throw new IOException("资源路径重复：" + name);
                             if (entry.getSize() > MAX_FILE) throw new IOException("单个资源过大");

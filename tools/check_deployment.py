@@ -34,8 +34,8 @@ def inspect(base):
         check('protected '+relative,request(relative,'HEAD')[0]==404)
     status,stats,body=request('api/visitors')
     statistics=json.loads(body)
-    check('aggregate statistics only',status==200 and set(statistics)=={'visitors','today_visitors','views','popular_songs'})
-    check('bounded popular ranking',isinstance(statistics.get('popular_songs'),list) and len(statistics['popular_songs'])<=10)
+    check('aggregate statistics only',status==200 and set(statistics)=={'visitors','today_visitors','views','chart_loads','today_chart_loads','popular_songs'})
+    check('bounded popular ranking',isinstance(statistics.get('popular_songs'),list) and len(statistics['popular_songs'])<=30)
     check('statistics not cached','no-store' in stats.get('cache-control',''))
     return dict(ok=not failures,failures=failures)
 

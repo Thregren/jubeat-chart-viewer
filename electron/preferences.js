@@ -3,7 +3,7 @@ const path = require('node:path');
 const KEYS = new Set([
   'renderQuality',
   'markerNormalSpeed','marker','metroSound','metroVolume','showCombo','firstMarker','showNumbers',
-  'numScale','numAlpha','numGlowAlpha','numCorner','numColorMode','numColor','showChordGlow',
+  'numScale','numAlpha','numGlowAlpha','numCorner','longHoldCountdown','numColorMode','numColor','showChordGlow',
   'chordGlowStyle','phraseMult','phraseFloor','phraseMax','chordGlowPair','settingsVersion',
   'collapsed','sort','holdFilter','autoPreview','timelineFlatten',
 ].map(key => 'jubeat.' + key));

@@ -153,6 +153,12 @@
     padEls: [],
     hitUntil: new Array(16).fill(-1),
     armed: new Array(16).fill(false),
+    // 面板当前已经提交到 DOM 的状态；渲染时只在值变化时才碰 classList。
+    padVisual: {
+      hit: new Array(16).fill(false),
+      armed: new Array(16).fill(false),
+      panelGlow: false,
+    },
     combo: 0,
     maxCombo: 0,
     comboShown: 0,

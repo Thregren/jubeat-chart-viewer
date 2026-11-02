@@ -83,6 +83,11 @@
   function paintFrame(mediaT) {
     // arm upcoming (pending within ARM window)
     const markerMode = !!markerCfg.design;
+    const padVisual = state.padVisual || (state.padVisual = {
+      hit: new Array(16).fill(false),
+      armed: new Array(16).fill(false),
+      panelGlow: false,
+    });
     state.armed.fill(false);
     if (!markerMode) {
       // 没有 marker 时用「落点前微亮」代替接近动画。
@@ -115,10 +120,19 @@
       const armed = !hit && state.armed[i];
       if (hit) anyHit = true;
 
-      if (pad.classList.contains("hit") !== hit) pad.classList.toggle("hit", hit);
-      if (pad.classList.contains("armed") !== armed) pad.classList.toggle("armed", armed);
+      if (padVisual.hit[i] !== hit) {
+        padVisual.hit[i] = hit;
+        pad.classList.toggle("hit", hit);
+      }
+      if (padVisual.armed[i] !== armed) {
+        padVisual.armed[i] = armed;
+        pad.classList.toggle("armed", armed);
+      }
     }
-    els.panelGlow.classList.toggle("on", anyHit);
+    if (padVisual.panelGlow !== anyHit) {
+      padVisual.panelGlow = anyHit;
+      els.panelGlow.classList.toggle("on", anyHit);
+    }
 
     // marker 接近 / 判定动画 + 节拍指示
     drawMarkers(mediaT);

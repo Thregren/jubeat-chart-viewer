@@ -599,8 +599,13 @@
     for (let i = 0; i < state.padEls.length; i++) {
       const pad = state.padEls[i];
       pad.classList.remove("hit", "armed");
+      if (state.padVisual) {
+        state.padVisual.hit[i] = false;
+        state.padVisual.armed[i] = false;
+      }
     }
     els.panelGlow.classList.remove("on");
+    if (state.padVisual) state.padVisual.panelGlow = false;
   }
 
   /** 切歌/切难度：先停播、进度归零、清掉上一首的状态，再去加载新谱面 */

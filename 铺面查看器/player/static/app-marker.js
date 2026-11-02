@@ -495,15 +495,19 @@
     els.panel.style.width = size + "px";
   }
 
-  function roundRectPath(c, x, y, w, h, r) {
+  function roundRectSubpath(c, x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
-    c.beginPath();
     c.moveTo(x + rr, y);
     c.arcTo(x + w, y, x + w, y + h, rr);
     c.arcTo(x + w, y + h, x, y + h, rr);
     c.arcTo(x, y + h, x, y, rr);
     c.arcTo(x, y, x + w, y, rr);
     c.closePath();
+  }
+
+  function roundRectPath(c, x, y, w, h, r) {
+    c.beginPath();
+    roundRectSubpath(c, x, y, w, h, r);
   }
 
   /** notes with a marker animation window covering [lo, hi] (seconds) */
@@ -630,13 +634,13 @@
   }
 
   /** 那枚 V 的三角形路径：平边在 y=0、箭尖在 (0,h)，+y 就是行进方向 */
-  function vPath(w, h) {
+  function vPath(target, w, h) {
     const hw = w / 2;
-    ctx.beginPath();
-    ctx.moveTo(-hw, 0);
-    ctx.lineTo(hw, 0);
-    ctx.lineTo(0, h);
-    ctx.closePath();
+    target.beginPath();
+    target.moveTo(-hw, 0);
+    target.lineTo(hw, 0);
+    target.lineTo(0, h);
+    target.closePath();
   }
 
   /**
@@ -653,109 +657,139 @@
    * tint 传颜色串 = 终点格用的「玻璃」版（整格被按亮到约两倍底色，暗楔/暗影收敛
    * 一档）；null = 移动箭头本体（暗楔更实、内侧更亮）。
    */
-  function drawV(w, h, tint, light) {
+  function paintV(target, w, h, tint, light) {
     const hw = w / 2;
     const k = light == null ? 1 : light;
     const glass = !!tint;
     const soft = Math.max(1.2, w * 0.045);   // 暗楔 / 暗影的软化半径
 
-    ctx.save();
-    vPath(w, h);
-    ctx.clip();
+    target.save();
+    vPath(target, w, h);
+    target.clip();
 
     // 0) V 内侧整体提亮：两臂之间比格子底亮一档，中段最亮、到箭尖收回。
     //    （实机中段 ≈1.37 倍底色；我们的底色更深，所以按「倍数」折算成更小的不透明度）
-    const lift = ctx.createLinearGradient(0, 0, 0, h);
+    const lift = target.createLinearGradient(0, 0, 0, h);
     lift.addColorStop(0.00, `rgba(224,238,255,${(glass ? 0.06 : 0.02) * k})`);
     lift.addColorStop(0.25, `rgba(222,236,255,${(glass ? 0.09 : 0.055) * k})`);
     lift.addColorStop(0.55, `rgba(218,234,255,${(glass ? 0.10 : 0.07) * k})`);
     lift.addColorStop(0.82, `rgba(214,232,255,${(glass ? 0.07 : 0.035) * k})`);
     lift.addColorStop(1.00, "rgba(214,232,255,0)");
-    ctx.fillStyle = lift;
-    ctx.fillRect(-hw, 0, w, h);
+    target.fillStyle = lift;
+    target.fillRect(-hw, 0, w, h);
 
     // 1) 平边中央的暗楔（顶部在软半径外一点，压过平边后靠裁剪切齐）。
     //    移动箭头压得实（顶部约五折），终点格那枚只是浅浅一层（约八五折）。
-    ctx.save();
-    ctx.filter = `blur(${soft.toFixed(2)}px)`;
-    const wedge = ctx.createLinearGradient(0, 0, 0, h * 0.58);
+    target.save();
+    target.filter = `blur(${soft.toFixed(2)}px)`;
+    const wedge = target.createLinearGradient(0, 0, 0, h * 0.58);
     wedge.addColorStop(0, `rgba(0,0,0,${(glass ? 0.16 : 0.52) * k})`);
     wedge.addColorStop(0.45, `rgba(0,0,0,${(glass ? 0.08 : 0.27) * k})`);
     wedge.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = wedge;
-    ctx.beginPath();
-    ctx.moveTo(-w * 0.34, -soft);
-    ctx.lineTo(w * 0.34, -soft);
-    ctx.lineTo(0, h * 0.58);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    target.fillStyle = wedge;
+    target.beginPath();
+    target.moveTo(-w * 0.34, -soft);
+    target.lineTo(w * 0.34, -soft);
+    target.lineTo(0, h * 0.58);
+    target.closePath();
+    target.fill();
+    target.restore();
 
     // 2) 贴两臂内侧的浅暗影（描在两臂折线上，外侧那半被裁掉）
-    ctx.save();
-    ctx.filter = `blur(${(soft * 0.6).toFixed(2)}px)`;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.strokeStyle = `rgba(0,0,0,${(glass ? 0.06 : 0.18) * k})`;
-    ctx.lineWidth = w * 0.26;
-    ctx.beginPath();
-    ctx.moveTo(-hw, 0);
-    ctx.lineTo(0, h);
-    ctx.lineTo(hw, 0);
-    ctx.stroke();
-    ctx.restore();
+    target.save();
+    target.filter = `blur(${(soft * 0.6).toFixed(2)}px)`;
+    target.lineJoin = "round";
+    target.lineCap = "round";
+    target.strokeStyle = `rgba(0,0,0,${(glass ? 0.06 : 0.18) * k})`;
+    target.lineWidth = w * 0.26;
+    target.beginPath();
+    target.moveTo(-hw, 0);
+    target.lineTo(0, h);
+    target.lineTo(hw, 0);
+    target.stroke();
+    target.restore();
 
     // 3) 内侧那条比底色亮的「折痕」：跟两臂平行、往箭尖收，实机里很淡、很宽
-    ctx.save();
-    ctx.filter = `blur(${(soft * 1.15).toFixed(2)}px)`;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.strokeStyle = glass
+    target.save();
+    target.filter = `blur(${(soft * 1.15).toFixed(2)}px)`;
+    target.lineJoin = "round";
+    target.lineCap = "round";
+    target.strokeStyle = glass
       ? `rgba(255,255,255,${0.05 * k})`
       : `rgba(214,234,255,${0.06 * k})`;
-    ctx.lineWidth = w * 0.22;
-    ctx.beginPath();
-    ctx.moveTo(-w * 0.32, h * 0.06);
-    ctx.lineTo(0, h * 0.5);
-    ctx.lineTo(w * 0.32, h * 0.06);
-    ctx.stroke();
-    ctx.restore();
+    target.lineWidth = w * 0.22;
+    target.beginPath();
+    target.moveTo(-w * 0.32, h * 0.06);
+    target.lineTo(0, h * 0.5);
+    target.lineTo(w * 0.32, h * 0.06);
+    target.stroke();
+    target.restore();
 
     // 4) 箭尖亮点（实机那儿正好接上走廊光束，所以移动箭头这枚要留得很轻）
     const spotR = h * (glass ? 0.16 : 0.10);
-    const spot = ctx.createRadialGradient(0, h, 0, 0, h, spotR);
+    const spot = target.createRadialGradient(0, h, 0, 0, h, spotR);
     spot.addColorStop(0, `rgba(255,255,255,${(glass ? 0.5 : 0.28) * k})`);
     spot.addColorStop(0.4, `rgba(210,228,255,${(glass ? 0.2 : 0.1) * k})`);
     spot.addColorStop(1, "rgba(210,228,255,0)");
-    ctx.fillStyle = spot;
-    ctx.beginPath();
-    ctx.arc(0, h, spotR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    target.fillStyle = spot;
+    target.beginPath();
+    target.arc(0, h, spotR, 0, Math.PI * 2);
+    target.fill();
+    target.restore();
 
     // —— 线框：两臂一条折线（亮）+ 平边（淡一档）——
-    ctx.save();
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.shadowColor = `rgba(150,180,240,${0.22 * k})`;
-    ctx.shadowBlur = w * 0.03;
-    ctx.lineWidth = Math.max(1.1, w * 0.018);
+    target.save();
+    target.lineJoin = "round";
+    target.lineCap = "round";
+    target.shadowColor = `rgba(150,180,240,${0.22 * k})`;
+    target.shadowBlur = w * 0.03;
+    target.lineWidth = Math.max(1.1, w * 0.018);
     // 描线明暗：拿实机量到的「线峰值」当标尺，不按倍数放大。实机移动箭头的描线峰值
     // ≈175（格底 56）、终点格那枚压在亮格上 ≈167；我们按 0.70 / 0.60 画，实测峰值
     // ≈196 / ≈178——比实机高 ≈12% / ≈6%。再压下去「整行均值」就反过来比实机暗
     // （实机那条线被 640×480 的模糊摊平了：峰值低、行均值高），所以停在这一档。
-    ctx.strokeStyle = `rgba(232,240,252,${(glass ? 0.60 : 0.70) * k})`;
-    ctx.beginPath();
-    ctx.moveTo(-hw, 0);
-    ctx.lineTo(0, h);
-    ctx.lineTo(hw, 0);
-    ctx.stroke();
-    ctx.strokeStyle = `rgba(228,238,252,${(glass ? 0.34 : 0.42) * k})`;
-    ctx.beginPath();
-    ctx.moveTo(-hw, 0);
-    ctx.lineTo(hw, 0);
-    ctx.stroke();
-    ctx.restore();
+    target.strokeStyle = `rgba(232,240,252,${(glass ? 0.60 : 0.70) * k})`;
+    target.beginPath();
+    target.moveTo(-hw, 0);
+    target.lineTo(0, h);
+    target.lineTo(hw, 0);
+    target.stroke();
+    target.strokeStyle = `rgba(228,238,252,${(glass ? 0.34 : 0.42) * k})`;
+    target.beginPath();
+    target.moveTo(-hw, 0);
+    target.lineTo(hw, 0);
+    target.stroke();
+    target.restore();
+  }
+
+  const vSprites = new Map();
+  const V_SPRITE_LIMIT = 24;
+  function vSprite(w, h, tint, light) {
+    const dpr = canvasW > 0 ? canvas.width / canvasW : 1;
+    const key = `${w.toFixed(2)}:${h.toFixed(2)}:${dpr}:${tint || ""}:${light}`;
+    const cached = vSprites.get(key);
+    if (cached) {
+      vSprites.delete(key);
+      vSprites.set(key, cached);
+      return cached;
+    }
+    const sprite = document.createElement("canvas");
+    sprite.width = Math.max(1, Math.round(w * dpr));
+    sprite.height = Math.max(1, Math.round(h * dpr));
+    const target = sprite.getContext("2d");
+    if (!target) return null;
+    target.setTransform(dpr, 0, 0, dpr, 0, 0);
+    target.translate(w / 2, 0);
+    paintV(target, w, h, tint, light);
+    if (vSprites.size >= V_SPRITE_LIMIT) vSprites.delete(vSprites.keys().next().value);
+    vSprites.set(key, sprite);
+    return sprite;
+  }
+
+  function drawV(w, h, tint, light) {
+    const sprite = vSprite(w, h, tint, light);
+    if (!sprite) return;
+    ctx.drawImage(sprite, -w / 2, 0, w, h);
   }
 
   /**
@@ -811,48 +845,34 @@
     const tint = holdTint();
     const tintLight = holdTintLight();
 
-    // —— 终点格：整格提亮（实机里就是「被按住那一格」的亮面板）+ 一枚固定的 V ——
-    ctx.save();
-    roundRectPath(ctx, -hw, headNear, w, along, headRadius);
+    // 一组长押的每一格本来各自 save/clip/restore。长押重叠时，一帧会留下上百次
+    // 状态切换；把每格圆角作为同一条裁切路径的子路径，一遍提交即可。圆角仍然
+    // 存在，只是格缝之间不再反复进出 Canvas 状态栈。
+    ctx.beginPath();
+    for (let k = 0; k <= N; k++) {
+      roundRectSubpath(ctx, -hw, k * pitch, w, along, k === N ? headRadius : radius);
+    }
     ctx.clip();
+
+    // —— 终点格：整格提亮（实机里就是「被按住那一格」的亮面板）+ 一枚固定的 V ——
     ctx.fillStyle = `rgba(${tintLight}, ${0.20 * lightBeam})`;
     ctx.fillRect(-hw, headNear, w, along);
+
+    // —— 走廊光束：从箭尖到终点格后沿，由上面的合并裁切挡住格子缝 ——
+    if (apexY < headNear - 0.5) {
+      const grad = beamGradient(hw, lightBeam);
+      ctx.fillStyle = grad;
+      ctx.fillRect(-hw, apexY, w, headNear - apexY);
+    }
+
+    // —— 固定的终点 V 与箭头本体共用一次变换保存 ——
+    // progress = 0 时移动箭头正好盖住起点格。
     ctx.save();
     ctx.translate(0, headNear);
     drawV(w, along, tint, lightBeam);
+    ctx.translate(0, backY - headNear);
+    drawV(w, along, null, lightArrow);
     ctx.restore();
-    ctx.restore();
-
-    // —— 走廊光束：从箭尖到终点格后沿，逐格裁切（格子缝里不画） ——
-    if (apexY < headNear - 0.5) {
-      const grad = beamGradient(hw, lightBeam);
-      for (let k = 0; k <= N; k++) {
-        const cy0 = k * pitch;
-        const y0 = Math.max(cy0, apexY);
-        const y1 = Math.min(cy0 + along, headNear);
-        if (y1 - y0 < 1) continue;
-        ctx.save();
-        roundRectPath(ctx, -hw, cy0, w, along, radius);
-        ctx.clip();
-        ctx.fillStyle = grad;
-        ctx.fillRect(-hw, y0, w, y1 - y0);
-        ctx.restore();
-      }
-    }
-
-    // —— 箭头本体：按格裁切后画（progress = 0 时正好盖住起点格） ——
-    for (let k = 0; k <= N; k++) {
-      const cy0 = k * pitch;
-      if (cy0 + along <= backY + 0.5 || cy0 >= apexY - 0.5) continue;
-      ctx.save();
-      roundRectPath(ctx, -hw, cy0, w, along, radius);
-      ctx.clip();
-      ctx.save();
-      ctx.translate(0, backY);
-      drawV(w, along, null, lightArrow);
-      ctx.restore();
-      ctx.restore();
-    }
 
     ctx.restore();
   }
@@ -944,6 +964,30 @@
     ctx.restore();
   }
 
+  /** 同一帧的 marker 都只裁在各自的格子里；把所有圆角格子并成一条裁切路径，
+   *  再依次贴图，就不会为每一颗音符反复 save/clip/restore。 */
+  function drawFrameImages(items) {
+    if (!ctx) return;
+    const visible = items.filter(({ image, rect }) => ready(image) && rect);
+    if (!visible.length) return;
+    ctx.save();
+    ctx.beginPath();
+    for (const { rect } of visible) {
+      roundRectSubpath(ctx, rect.x, rect.y, rect.w, rect.h, padClipRadius(rect));
+    }
+    ctx.clip();
+    for (const { image, rect, alpha } of visible) {
+      ctx.globalAlpha = alpha;
+      if (image._crop) {
+        ctx.drawImage(image._source, ...image._crop.slice(0, 4),
+          rect.x, rect.y, rect.w, rect.h);
+      } else {
+        ctx.drawImage(image._source || image, rect.x, rect.y, rect.w, rect.h);
+      }
+    }
+    ctx.restore();
+  }
+
   /** 当前选中的光晕配色对 */
   function glowPair() {
     const i = Number(els.chordGlowPair && els.chordGlowPair.value);
@@ -1028,14 +1072,187 @@
     return v === "frame" || v === "both" ? v : "glow";
   }
 
-  function drawOrderNumber(note, rect, markerOpacity = 1) {
-    if (!rect) return;
-    const text = String(note.seq || 0);
-    const showNum = !!(els.showNumbers && els.showNumbers.checked);
-    // 同押高亮和「音符序号」是两个开关：只开高亮、不显示数字也要能看（以前两者
-    // 绑在一起，关掉数字连高亮一起没了）。
-    const chord = !A.mode?.suppressChords && markerOpacity > 0 && (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
-    if (!showNum && !chord) return;
+  // 序号字形只随文字 / 字体 / 配色变化，呼吸却每帧都在变。把字形和描边预栅格化，
+  // 每帧只调整 globalAlpha 后贴图；光晕和波纹仍是逐帧路径，动画观感不变。
+  const glyphLayers = new Map();
+  const GLYPH_CACHE_LIMIT = 64;
+  let glyphCacheDpr = 0;
+
+  function makeGlyphLayer(w, h, dpr, paint) {
+    try {
+      if (typeof document === "undefined" || !document.createElement) return null;
+      const layer = document.createElement("canvas");
+      layer.width = Math.max(1, Math.round(w * dpr));
+      layer.height = Math.max(1, Math.round(h * dpr));
+      const target = layer.getContext("2d");
+      if (!target || typeof target.setTransform !== "function"
+        || typeof target.strokeText !== "function" || typeof target.fillText !== "function") {
+        return null;
+      }
+      target.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paint(target);
+      return layer;
+    } catch (_) {
+      // 老 WebView / 测试替身没有离屏 2D 能力时继续走原来的即时绘制。
+      return null;
+    }
+  }
+
+  function glyphLayerSet(text, layout, palette, rgb) {
+    const dpr = canvasW > 0 ? canvas.width / canvasW : 1;
+    if (glyphCacheDpr !== dpr) {
+      glyphCacheDpr = dpr;
+      glyphLayers.clear();
+    }
+    const key = `${text}|${layout.font}|${palette.fill}|${palette.outline}|${rgb}|${dpr}`;
+    const cached = glyphLayers.get(key);
+    if (cached) {
+      glyphLayers.delete(key);
+      glyphLayers.set(key, cached);
+      return cached;
+    }
+
+    // 外层 shadowBlur 最大约 1.25 个字高，再多留一点抗锯齿空间。
+    const pad = Math.ceil(layout.size * 2.25);
+    const cssW = Math.ceil(Math.max(1, layout.textWidth || layout.size) + pad * 2);
+    const cssH = Math.ceil(layout.size * 1.8 + pad * 2);
+    const anchorX = layout.align === "right" ? cssW - pad
+      : layout.align === "center" ? cssW / 2 : pad;
+    const anchorY = layout.baseline === "bottom" ? cssH - pad
+      : layout.baseline === "middle" ? cssH / 2 : pad;
+    const base = (target) => {
+      target.font = layout.font;
+      target.textAlign = layout.align;
+      target.textBaseline = layout.baseline;
+      target.lineJoin = "round";
+    };
+
+    const glowOuter = makeGlyphLayer(cssW, cssH, dpr, (target) => {
+      base(target);
+      target.shadowColor = `rgb(${rgb})`;
+      target.shadowBlur = layout.size * 1.25;
+      target.lineWidth = Math.max(5, layout.size * 0.34);
+      target.strokeStyle = `rgb(${rgb})`;
+      target.strokeText(text, anchorX, anchorY);
+    });
+    const glowInner = makeGlyphLayer(cssW, cssH, dpr, (target) => {
+      base(target);
+      target.shadowColor = `rgb(${rgb})`;
+      target.shadowBlur = layout.size * 0.35;
+      target.lineWidth = Math.max(3, layout.size * 0.2);
+      target.strokeStyle = `rgb(${rgb})`;
+      target.strokeText(text, anchorX, anchorY);
+    });
+    const solid = makeGlyphLayer(cssW, cssH, dpr, (target) => {
+      base(target);
+      target.lineWidth = Math.max(2, layout.size * 0.14);
+      target.strokeStyle = palette.outline;
+      target.fillStyle = palette.fill;
+      target.strokeText(text, anchorX, anchorY);
+      target.fillText(text, anchorX, anchorY);
+    });
+    if (!glowOuter || !glowInner || !solid) {
+      glowOuter?.width && (glowOuter.width = 0);
+      glowInner?.width && (glowInner.width = 0);
+      solid?.width && (solid.width = 0);
+      return null;
+    }
+
+    const layers = {
+      glowOuter, glowInner, solid, w: cssW, h: cssH,
+      offsetX: anchorX, offsetY: anchorY,
+    };
+    if (glyphLayers.size >= GLYPH_CACHE_LIMIT) {
+      glyphLayers.delete(glyphLayers.keys().next().value);
+    }
+    glyphLayers.set(key, layers);
+    return layers;
+  }
+
+  // 同押「加粗面板框」在默认设置下每帧都重画圆角路径和 shadowBlur。
+  // 框的静态部分只由格子尺寸、颜色和 DPR 决定；呼吸时改整体透明度即可。
+  // 亮边与阴影分成两层，才能分别复现原来的 alpha，而不是把整张图一起淡掉。
+  const chordFrameLayers = new Map();
+  const CHORD_FRAME_CACHE_LIMIT = 24;
+  let chordFrameDpr = 0;
+
+  function chordFrameLayer(rect, rgb, inset, lw, fi, radius, ga) {
+    const dpr = canvasW > 0 ? canvas.width / canvasW : 1;
+    if (chordFrameDpr !== dpr) {
+      chordFrameDpr = dpr;
+      chordFrameLayers.clear();
+    }
+    // 阴影的相对强度会随「光晕透明度」变化。按 0.05 分档烘焙，观感差别不可见，
+    // 却能避免浏览器的渐隐帧把缓存冲掉。
+    const shadowGa = Math.round(ga * 20) / 20;
+    const key = `${rgb}|${rect.w.toFixed(2)}|${rect.h.toFixed(2)}|${inset.toFixed(2)}`
+      + `|${lw.toFixed(2)}|${fi.toFixed(2)}|${radius.toFixed(2)}|${shadowGa}|${dpr}`;
+    const cached = chordFrameLayers.get(key);
+    if (cached) {
+      chordFrameLayers.delete(key);
+      chordFrameLayers.set(key, cached);
+      return cached;
+    }
+
+    // 阴影最大约 2.6×线宽；左右再多留 1px 给抗锯齿。
+    const pad = Math.ceil(lw * 2.7 + 1);
+    const cssW = Math.ceil(rect.w + pad * 2);
+    const cssH = Math.ceil(rect.h + pad * 2);
+    const offsetX = pad;
+    const offsetY = pad;
+    const trace = (target) => {
+      roundRectPath(target,
+        offsetX + fi, offsetY + fi,
+        rect.w - fi * 2, rect.h - fi * 2,
+        radius);
+    };
+    const sprite = makeGlyphLayer(cssW, cssH, dpr, (target) => {
+      target.lineJoin = "round";
+      target.lineWidth = lw;
+      target.strokeStyle = `rgb(${rgb})`;
+      target.shadowColor = `rgba(${rgb}, ${0.85 * shadowGa})`;
+      target.shadowBlur = lw * 1.6;
+      trace(target);
+      target.stroke();
+      target.shadowBlur = 0;
+      target.shadowColor = "transparent";
+      trace(target);
+      target.stroke();
+    });
+    if (!sprite) return null;
+
+    const layers = { sprite, w: cssW, h: cssH, offsetX, offsetY };
+    if (chordFrameLayers.size >= CHORD_FRAME_CACHE_LIMIT) {
+      chordFrameLayers.delete(chordFrameLayers.keys().next().value);
+    }
+    chordFrameLayers.set(key, layers);
+    return layers;
+  }
+
+  let numberCacheNotes = null;
+  let numberCacheKey = "";
+  let numberCache = null;
+
+  /** 序号布局与配色只在谱面 / 外观配置变化时重建；呼吸动画仍逐帧计算。 */
+  function orderNumberCache() {
+    const key = [
+      numCfg.scale, numCfg.corner, numCfg.colorMode, numCfg.color,
+      els.showNumbers && els.showNumbers.checked,
+      A.mode && A.mode.rhythmColor,
+    ].join("|");
+    if (numberCacheNotes !== state.notes || numberCacheKey !== key) {
+      numberCacheNotes = state.notes;
+      numberCacheKey = key;
+      numberCache = { layouts: new Map(), colors: new WeakMap() };
+    }
+    return numberCache;
+  }
+
+  function numberLayout(rect, text, cache) {
+    const key = `${text}|${rect.w.toFixed(2)}|${rect.h.toFixed(2)}`;
+    const cached = cache.layouts.get(key);
+    if (cached) return cached;
+
     // 参考视频里数字几乎占满格子；但按「换气」分句之后一句可能很长，
     // 两位数、三位数要缩一点，不然会被格子裁掉。
     const FIT = { 1: 0.58, 2: 0.40, 3: 0.31 };
@@ -1044,40 +1261,81 @@
     const corner = numCfg.corner;
     const fit = (corner ? FIT_CORNER : FIT)[text.length] || (corner ? 0.16 : 0.25);
     const size = Math.max(corner ? 9 : 11, rect.w * fit * numCfg.scale);
-    // 数字本身：默认贴右下角（角落标签），关掉开关才回到格子正中
+    const font = `700 ${size}px ${CANVAS_SANS_FONT}`;
     const pad = Math.max(3, rect.w * 0.09);
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    const x = corner ? rect.x + rect.w - pad : cx;
-    const y = corner ? rect.y + rect.h - pad : cy;
-    ctx.save();
-    ctx.globalAlpha = numCfg.alpha;   // 「序号透明度」：整层（光晕 + 数字）一起淡
-    ctx.font = `700 ${size}px ${CANVAS_SANS_FONT}`;
-    ctx.textAlign = corner ? "right" : "center";
-    ctx.textBaseline = corner ? "bottom" : "middle";
-
-    // 同押光晕 / 波纹的圆心与半径：跟着数字走。数字居中 = 格子中心；数字挪到右下角
-    // 之后就缩到数字自己的中心（用户要的「光晕跟着序号走」，不再占满整格）。
+    const x = corner ? rect.w - pad : rect.w / 2;
+    const y = corner ? rect.h - pad : rect.h / 2;
     let glowSize = Math.max(11, rect.w * (FIT[text.length] || 0.25) * numCfg.scale);
-    let gx = cx;
-    let gy = cy;
+    let gx = rect.w / 2;
+    let gy = rect.h / 2;
+    ctx.font = font;
+    const textWidth = ctx.measureText(text).width;
     if (corner) {
       glowSize = Math.max(9, size * 0.8);
-      gx = x - ctx.measureText(text).width / 2;
+      gx = x - textWidth / 2;
       gy = y - size * 0.52;
     }
 
-    // 光晕 / 数字一律裁剪在这格 marker 的范围内：光晕不许溢出到相邻格子
-    const inset = Math.max(1, rect.w * 0.02);
     // 波纹最大半径 = glowSize × 0.84，圆心先夹回来，免得角上的数字把波纹切掉一半
     const gMax = glowSize * 0.86;
-    const loX = rect.x + inset + gMax;
-    const hiX = rect.x + rect.w - inset - gMax;
-    const loY = rect.y + inset + gMax;
-    const hiY = rect.y + rect.h - inset - gMax;
-    gx = loX < hiX ? Math.min(hiX, Math.max(loX, gx)) : cx;
-    gy = loY < hiY ? Math.min(hiY, Math.max(loY, gy)) : cy;
+    const loX = Math.max(1, rect.w * 0.02) + gMax;
+    const hiX = rect.w - Math.max(1, rect.w * 0.02) - gMax;
+    const loY = Math.max(1, rect.w * 0.02) + gMax;
+    const hiY = rect.h - Math.max(1, rect.w * 0.02) - gMax;
+    gx = loX < hiX ? Math.min(hiX, Math.max(loX, gx)) : rect.w / 2;
+    gy = loY < hiY ? Math.min(hiY, Math.max(loY, gy)) : rect.h / 2;
 
+    const layout = {
+      font, size, textWidth, x, y, gx, gy, glowSize, corner,
+      align: corner ? "right" : "center",
+      baseline: corner ? "bottom" : "middle",
+    };
+    cache.layouts.set(key, layout);
+    return layout;
+  }
+
+  function numberPalette(note, cache) {
+    // 主题可以随时计算颜色；这类模式不缓存，避免读到一个已经过期的主题结果。
+    if (A.mode?.rhythmColor) {
+      const fill = numColorHex(note);
+      return { fill, outline: numOutline(fill) };
+    }
+    let palette = cache.colors.get(note);
+    if (!palette) {
+      const fill = numColorHex(note);
+      palette = { fill, outline: numOutline(fill) };
+      cache.colors.set(note, palette);
+    }
+    return palette;
+  }
+
+  function drawOrderNumber(note, rect, markerOpacity = 1, cache = orderNumberCache()) {
+    if (!rect) return;
+    const text = String(note.seq || 0);
+    const showNum = !!(els.showNumbers && els.showNumbers.checked);
+    // 同押高亮和「音符序号」是两个开关：只开高亮、不显示数字也要能看（以前两者
+    // 绑在一起，关掉数字连高亮一起没了）。
+    const chord = !A.mode?.suppressChords && markerOpacity > 0 && (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
+    if (!showNum && !chord) return;
+    const layout = numberLayout(rect, text, cache);
+    const { font, size, x: localX, y: localY, gx: localGx, gy: localGy, glowSize, corner } = layout;
+    const x = rect.x + localX;
+    const y = rect.y + localY;
+    let gx = rect.x + localGx;
+    let gy = rect.y + localGy;
+    const palette = numberPalette(note, cache);
+    const rgb = chord ? glowRgb(note.glowSlot || 0) : "";
+    const glyphs = (chord || showNum) ? glyphLayerSet(text, layout, palette, rgb) : null;
+    ctx.save();
+    ctx.globalAlpha = numCfg.alpha;   // 「序号透明度」：整层（光晕 + 数字）一起淡
+    if (ctx.font !== font) ctx.font = font;
+    ctx.textAlign = layout.align;
+    ctx.textBaseline = layout.baseline;
+
+    // 同押光晕 / 波纹的圆心与半径：跟着数字走。数字居中 = 格子中心；数字挪到右下角
+    // 之后就缩到数字自己的中心（用户要的「光晕跟着序号走」，不再占满整格）。
+    // 光晕 / 数字一律裁剪在这格 marker 的范围内：光晕不许溢出到相邻格子
+    const inset = Math.max(1, rect.w * 0.02);
     roundRectPath(ctx,
       rect.x + inset, rect.y + inset,
       rect.w - inset * 2, rect.h - inset * 2,
@@ -1087,7 +1345,6 @@
     if (chord) {
       // 同一批（一起按）的几个键共用一套呼吸时钟，所以整组同步。
       // 颜色按这一批所在位置的密度取：密的地方相邻两批在主色 / 副色之间交替。
-      const rgb = glowRgb(note.glowSlot || 0);
       const period = 560;                                     // ms，一个呼吸周期（收得比之前快）
       const phase = (glowNow() % period) / period;             // 0 → 1（暂停时钉住）
       const stroke = Math.pow(1 - phase, 1.4);                 // 波纹 / 描边淡出的速度
@@ -1122,18 +1379,27 @@
         }
         ctx.globalAlpha = numCfg.alpha;   // 别把「序号透明度」冲掉
 
-        // 3) 数字的霓虹描边：外面一层散光、里面一层实色
-        ctx.lineJoin = "round";
-        ctx.shadowColor = `rgba(${rgb}, ${0.95 * ga})`;
-        ctx.shadowBlur = size * (0.6 + 0.65 * glow);
-        ctx.lineWidth = Math.max(5, size * 0.34);
-        ctx.strokeStyle = `rgba(${rgb}, ${(0.5 + 0.5 * glow) * ga})`;
-        ctx.strokeText(text, x, y);
-        ctx.shadowBlur = size * 0.35 * stroke;
-        ctx.globalAlpha = numCfg.alpha * ga * (0.35 + 0.65 * stroke);
-        ctx.lineWidth = Math.max(3, size * 0.2);
-        ctx.strokeStyle = `rgb(${rgb})`;
-        ctx.strokeText(text, x, y);
+        // 3) 数字的霓虹描边：字形已缓存，只改每层的呼吸透明度。
+        if (glyphs) {
+          const left = x - glyphs.offsetX;
+          const top = y - glyphs.offsetY;
+          ctx.globalAlpha = numCfg.alpha * ga * (0.5 + 0.5 * glow);
+          ctx.drawImage(glyphs.glowOuter, left, top, glyphs.w, glyphs.h);
+          ctx.globalAlpha = numCfg.alpha * ga * (0.35 + 0.65 * stroke);
+          ctx.drawImage(glyphs.glowInner, left, top, glyphs.w, glyphs.h);
+        } else {
+          ctx.lineJoin = "round";
+          ctx.shadowColor = `rgba(${rgb}, ${0.95 * ga})`;
+          ctx.shadowBlur = size * (0.6 + 0.65 * glow);
+          ctx.lineWidth = Math.max(5, size * 0.34);
+          ctx.strokeStyle = `rgba(${rgb}, ${(0.5 + 0.5 * glow) * ga})`;
+          ctx.strokeText(text, x, y);
+          ctx.shadowBlur = size * 0.35 * stroke;
+          ctx.globalAlpha = numCfg.alpha * ga * (0.35 + 0.65 * stroke);
+          ctx.lineWidth = Math.max(3, size * 0.2);
+          ctx.strokeStyle = `rgb(${rgb})`;
+          ctx.strokeText(text, x, y);
+        }
         ctx.shadowBlur = 0;
         ctx.globalAlpha = numCfg.alpha;
       }
@@ -1143,29 +1409,44 @@
         // 框心往里让 lw/2，整条框都落在裁剪区里（不会被裁成半个边）。
         const lw = Math.max(3.5, rect.w * 0.085);
         const fi = inset + lw * 0.5 + 1;
-        ctx.lineJoin = "round";
-        ctx.globalAlpha = numCfg.alpha * ga * (0.5 + 0.5 * glow);
-        ctx.shadowColor = `rgba(${rgb}, ${0.85 * ga})`;
-        ctx.shadowBlur = lw * 1.6;
-        ctx.lineWidth = lw;
-        ctx.strokeStyle = `rgb(${rgb})`;
-        roundRectPath(ctx,
-          rect.x + fi, rect.y + fi,
-          rect.w - fi * 2, rect.h - fi * 2,
-          Math.max(5, rect.w * 0.14));
-        ctx.stroke();
-        ctx.shadowBlur = 0;
+        const radius = Math.max(5, rect.w * 0.14);
+        const frameLayers = chordFrameLayer(rect, rgb, inset, lw, fi, radius, ga);
+        if (frameLayers) {
+          const left = rect.x - frameLayers.offsetX;
+          const top = rect.y - frameLayers.offsetY;
+          ctx.globalAlpha = numCfg.alpha * ga * (0.5 + 0.5 * glow);
+          ctx.drawImage(frameLayers.sprite,
+            left, top, frameLayers.w, frameLayers.h);
+        } else {
+          ctx.lineJoin = "round";
+          ctx.globalAlpha = numCfg.alpha * ga * (0.5 + 0.5 * glow);
+          ctx.shadowColor = `rgba(${rgb}, ${0.85 * ga})`;
+          ctx.shadowBlur = lw * 1.6;
+          ctx.lineWidth = lw;
+          ctx.strokeStyle = `rgb(${rgb})`;
+          roundRectPath(ctx,
+            rect.x + fi, rect.y + fi,
+            rect.w - fi * 2, rect.h - fi * 2,
+            radius);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
         ctx.globalAlpha = numCfg.alpha;
       }
     }
 
     if (showNum) {
       // 数字本体：永远画在最上面（压在同押高亮上），深浅色都带对比描边
-      ctx.lineWidth = Math.max(2, size * 0.14);
-      ctx.strokeStyle = numOutline(numColorHex(note));
-      ctx.fillStyle = numColorHex(note);
-      ctx.strokeText(text, x, y);
-      ctx.fillText(text, x, y);
+      if (glyphs) {
+        ctx.globalAlpha = numCfg.alpha;
+        ctx.drawImage(glyphs.solid, x - glyphs.offsetX, y - glyphs.offsetY, glyphs.w, glyphs.h);
+      } else {
+        ctx.lineWidth = Math.max(2, size * 0.14);
+        ctx.strokeStyle = palette.outline;
+        ctx.fillStyle = palette.fill;
+        ctx.strokeText(text, x, y);
+        ctx.fillText(text, x, y);
+      }
     }
     ctx.restore();
   }
@@ -1224,6 +1505,7 @@
     // 数字是压在按键动画之上的覆盖层。挤在同一趟循环里先画的话，后面那些 marker
     // 会把先画的数字盖掉（同押的时候尤其明显）。
     const numbers = [];
+    const frames = [];
 
     for (const n of markerNotesInWindow(chartT - lateSec, chartT - earlySec, holdBack)) {
       const rect = state.padRects[n.index];
@@ -1261,10 +1543,12 @@
 
       counts.set(n.index, count + 1);
       const image = frameForChannel(design, channel, frame, total);
-      drawFrameImage(image, rect);
-      if (number) number[2] = markerOpacity(image);
+      const opacity = markerOpacity(image);
+      frames.push({ image, rect, alpha: opacity });
+      if (number) number[2] = opacity;
     }
 
+    drawFrameImages(frames);
     drawHoldCountdowns(chartT);
     for (const [n, rect, opacity] of numbers) drawOrderNumber(n, rect, opacity);
   }

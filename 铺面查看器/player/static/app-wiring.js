@@ -26,6 +26,8 @@
     // 有 marker 设计时面板不亮：白底会透过 marker 贴图的透明部分，把贴图冲淡
     // （见 app-render.js 的 paintFrame：markerMode 下 hit / armed 两条反馈都不打）。
     if (markerCfg.design) return;
+    if (state.padVisual && state.padVisual.panelGlow) return;
+    if (state.padVisual) state.padVisual.panelGlow = true;
     els.panelGlow.classList.add("on");
   }
 

@@ -1,7 +1,11 @@
 import { chromium } from "playwright";
 
 const base = process.env.JUBEAT_PREVIEW_URL || "http://127.0.0.1:18767/";
-const song = process.env.JUBEAT_AUDIO_SONG || "v0/song000";
+const song = process.env.JUBEAT_AUDIO_SONG || (
+  base.includes("thregren.world")
+    ? "jubeat-festo/首次收录/arcade_90000093"
+    : "v0/song000"
+);
 const edge = process.env.BROWSER_EXECUTABLE
   || "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
 const rates = ["1.25", "0.5", "2", "0.75", "1", "0.25", "1.5", "1"];
@@ -26,7 +30,7 @@ try {
   });
 
   await page.goto(`${base}?song=${encodeURIComponent(song)}&chart=EXT`, {
-    waitUntil: "networkidle",
+    waitUntil: "domcontentloaded",
     timeout: 120000,
   });
   try {

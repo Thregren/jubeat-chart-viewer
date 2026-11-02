@@ -83,7 +83,12 @@ try {
       }));
     }
     page.on("console", message => {
-      if (message.type() === "error") errors.push(message.text());
+      if (message.type() === "error") {
+        const location = message.location().url || "";
+        const optionalStoryCatalog = location.endsWith("/data/background-stories.json")
+          && message.text().includes("404");
+        if (!optionalStoryCatalog) errors.push(`${message.text()} @ ${location || "unknown"}`);
+      }
     });
     const url = `${base}?song=${encodeURIComponent(song)}&chart=EXT&paused=1`;
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120000 });

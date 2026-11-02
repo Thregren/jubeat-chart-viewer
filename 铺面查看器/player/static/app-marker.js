@@ -30,9 +30,10 @@
   const ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
   // Canvas 的通用 monospace 在 Windows 上常落到 Courier New（衬线体）。
   // 序号和倒计时需要明确的跨平台无衬线回退。
-  const CANVAS_SANS_FONT = '"Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Avenir Next", sans-serif';
+  const CANVAS_SANS_FONT = 'system-ui, "Segoe UI", Roboto, "Noto Sans SC", Arial, sans-serif';
   let canvasW = 0;
   let canvasH = 0;
+  let refreshFrame = 0;
 
   function markerUrl(rel) {
     return PATHS.markersBase + encPath(String(rel || "").replace(/^\.?\//, ""));
@@ -442,8 +443,13 @@
     canvas.style.top = `${inner.top - bezel.top}px`;
     canvas.style.width = `${canvasW}px`;
     canvas.style.height = `${canvasH}px`;
-    canvas.width = Math.max(1, Math.round(canvasW * dpr));
-    canvas.height = Math.max(1, Math.round(canvasH * dpr));
+    // 给 width / height 赋值会清空整张位图。安装态首次启动、旋屏和后台恢复时，
+    // ResizeObserver 与视口事件经常会给出同一个尺寸；这时只重设变换和测量，
+    // 不能把刚画好的序号 / 倒计时清掉后等下一帧碰运气补回来。
+    const backingW = Math.max(1, Math.round(canvasW * dpr));
+    const backingH = Math.max(1, Math.round(canvasH * dpr));
+    if (canvas.width !== backingW) canvas.width = backingW;
+    if (canvas.height !== backingH) canvas.height = backingH;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const box = canvas.getBoundingClientRect();
@@ -452,6 +458,20 @@
       return { x: r.left - box.left, y: r.top - box.top, w: r.width, h: r.height };
     });
     A.requestPaint();
+  }
+
+  /**
+   * 浏览器安装态恢复页面时，CSS 尺寸和字体可能在首帧之后才稳定。
+   * 立即按当前尺寸重绘一次，下一帧再测量一次；连续事件会合并成同一个尾帧。
+   */
+  function refreshCanvas() {
+    if (!ctx || !els.panel) return;
+    layoutCanvas();
+    if (refreshFrame) cancelAnimationFrame(refreshFrame);
+    refreshFrame = requestAnimationFrame(() => {
+      refreshFrame = 0;
+      layoutCanvas();
+    });
   }
 
   /** 面板按「可用高度」自适应：小屏 + 选项展开时也不会被挤出可视区 */
@@ -1374,6 +1394,7 @@
     },
     selectMarker,
     layoutCanvas,
+    refreshCanvas,
     glowPair,
     drawMarkers,
     drawFirstMarker,

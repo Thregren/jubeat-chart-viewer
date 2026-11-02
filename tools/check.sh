@@ -116,6 +116,39 @@ if [ "$WANT_FULL" = 1 ]; then
   run "Python 服务连接回收" "$PY" tools/test_python_server.py
   run "静态服务连接与流释放" node --test tools/test_server_resources.mjs
   run "端到端冒烟（tools/smoke_test.py --build --fixture）" "$PY" tools/smoke_test.py --build --fixture
+  if [ -f tools/browser/node_modules/playwright/index.mjs ]; then
+    check_pwa_canvas() {
+      if [ -z "${BROWSER_EXECUTABLE:-}" ]; then
+        for candidate in \
+          "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+          "/usr/bin/google-chrome" \
+          "/usr/bin/chromium"
+        do
+          if [ -x "$candidate" ]; then
+            BROWSER_EXECUTABLE=$candidate
+            export BROWSER_EXECUTABLE
+            break
+          fi
+        done
+      fi
+      fixture=$(mktemp -d)
+      "$PY" tools/browser_fixture.py --out "$fixture" || return 1
+      "$PY" tools/serve.py "$fixture/site" --port 18765 >"$fixture/server.log" 2>&1 &
+      server_pid=$!
+      trap 'kill "$server_pid" 2>/dev/null || true' EXIT HUP INT TERM
+      "$PY" -c "import sys; sys.path.insert(0,'tools'); from smoke_test import wait_ready; sys.exit(0 if wait_ready(18765) else 1)" \
+        && node tools/browser/pwa-canvas-regression.mjs http://127.0.0.1:18765/
+      result=$?
+      kill "$server_pid" 2>/dev/null || true
+      trap - EXIT HUP INT TERM
+      rm -rf "$fixture"
+      return "$result"
+    }
+    run "Android Chrome PWA 序号与倒计时像素回归" check_pwa_canvas
+  else
+    skip "Android Chrome PWA 像素回归" "先在 tools/browser 运行 npm ci"
+  fi
 fi
 
 if [ "$WANT_PHP" = 1 ]; then

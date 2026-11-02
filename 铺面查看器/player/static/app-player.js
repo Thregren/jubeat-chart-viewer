@@ -67,6 +67,9 @@
   let cancelSeekCompletion = null;
   let pendingPlaybackResume = null;
   let pendingRateSeek = null; // Audio seconds, including the intro before chart time zero.
+  // Browsers may retain the old media element's readyState briefly after load().
+  // Do not treat that state as readiness for the source we just assigned.
+  let elementSourcePending = false;
 
   function stopBufferSource() {
     cancelSeekCompletion?.(); cancelSeekCompletion=null;
@@ -290,7 +293,6 @@
       loadElementSource(backend.url);
       backend.buf = null;
       if (A.metrics) A.metrics.audioPCMBytes = 0;
-      flushPendingSeek();
       if (wasPlaying) resumeAfterSeek();
     }
     sfxReset();
@@ -307,6 +309,9 @@
       updateLoadMeter();
     };
     el.addEventListener("loadedmetadata", () => {
+      if (backend.mode === 'element' && el.dataset.src === backend.url) {
+        elementSourcePending = false;
+      }
       if (backend.mode === 'element' && el.dataset.src === backend.url) {
         preservePitch();
         el.playbackRate = selectedRate();
@@ -378,6 +383,7 @@
   /** 变速、解码失败或 ?media=1 时启动 <audio>；已下载的音频通过 Blob 复用。 */
   function loadElementSource(url) {
     if (backend.url !== url) return;
+    elementSourcePending = true;
     audioLoad.pendingLabel = "音频加载";
     audioLoad.pending = true;
     updateLoadMeter();
@@ -394,7 +400,7 @@
   /** 音源是不是已经到齐、可以立刻出声了 */
   function playbackLoaded() {
     if (backend.mode === "webaudio") return !!backend.buf;
-    return els.audio.readyState >= 3;      // HAVE_FUTURE_DATA
+    return elementMediaReady(3);           // HAVE_FUTURE_DATA
   }
 
   /** Read duration through the media pipeline before allocating PCM for legacy indexes. */
@@ -414,7 +420,7 @@
       els.audio.addEventListener('error', done);
       request.signal.addEventListener('abort', done, {once:true});
       timer = setTimeout(done, 5000);
-      if (els.audio.readyState >= 1 || request.signal.aborted) done();
+      if (elementMediaReady(1) || request.signal.aborted) done();
     });
   }
 
@@ -692,9 +698,13 @@
   // 等 <audio> 有元数据 / buffer 解码好再落下去。
   let pendingSeek = null;
 
+  function elementMediaReady(level) {
+    return !elementSourcePending && els.audio.readyState >= level;
+  }
+
   function canSeekNow() {
     if (backend.mode === "webaudio") return !!backend.buf;
-    return els.audio.readyState >= 1;
+    return elementMediaReady(1);
   }
 
   /** 能跳就跳，不能跳就挂起，等就绪事件里补 */
@@ -714,6 +724,7 @@
       resetMediaClock();
       rebuildVisualState(renderMediaTime());
       sfxReset();
+      pendingPlaybackResume?.ready?.();
       return;
     }
     if (pendingSeek == null || !canSeekNow()) return;
@@ -743,7 +754,7 @@
       backend.anchorPos = Math.max(0, Math.min(audioT, lim));
       if (state.playing) startBufferAt(backend.anchorPos);
     } else {
-      if (els.audio.readyState >= 1) {
+      if (elementMediaReady(1)) {
         const dur = els.audio.duration;
         els.audio.currentTime = Number.isFinite(dur) ? Math.max(0, Math.min(audioT, dur)) : audioT;
       }
@@ -795,7 +806,7 @@
     }
     if (!playbackLoaded()) {
       // 已有元数据且整首音频已在本地，交给媒体管线等 seek/解码落地；play promise 可被 pause 取消。
-      if (els.audio.dataset.src === backend.url && els.audio.readyState >= 1 && (backend.objectUrl || els.audio.seeking)) {
+      if (els.audio.dataset.src === backend.url && elementMediaReady(1) && (backend.objectUrl || els.audio.seeking)) {
         return startElementPlay();
       }
       // 音源还没到齐（慢网换歌就是这个状态）：直接拒绝，不排队。
@@ -870,17 +881,18 @@
     }
     const el = els.audio;
     const generation = audioSession.generation, url = backend.url;
-    if (!el.seeking && el.readyState >= 3) {
+    if (!el.seeking && elementMediaReady(3)) {
       sfxReset();
       play();
       return;
     }
     let fired = false;
-    const task = {generation, url}; pendingPlaybackResume = task;
+    const task = {generation, url, ready: () => fire()}; pendingPlaybackResume = task;
     const cancel = () => {fired=true;el.removeEventListener("seeked",fire);el.removeEventListener("canplay",fire);clearTimeout(timer);clearTimeout(deadline);if(cancelSeekCompletion===cancel)cancelSeekCompletion=null;if(pendingPlaybackResume===task)pendingPlaybackResume=null;};
     const fire = () => {
       if (fired) return;
-      if (audioSession.current(generation) && url === backend.url && (el.seeking || el.readyState < 3)) return;
+      if (audioSession.current(generation) && url === backend.url
+          && (el.seeking || !elementMediaReady(3))) return;
       cancel();
       if (!audioSession.current(generation) || url !== backend.url || backend.mode !== "element") return;
       sfxReset();                       // 位置定了，再按最终位置锚打点音

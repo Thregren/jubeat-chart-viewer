@@ -125,3 +125,63 @@ test('countdown remains available when no marker design is selected', () => {
   A.markerCfg.design = null;
   assert.equal(draw(1.5)[0].value, '1.9');
 });
+
+test('same-size canvas refresh preserves the bitmap and only resizes when necessary', () => {
+  const writes = [];
+  const canvas = {
+    _width: 0,
+    _height: 0,
+    style: {},
+    get width() { return this._width; },
+    set width(value) { this._width = value; writes.push(['width', value]); },
+    get height() { return this._height; },
+    set height(value) { this._height = value; writes.push(['height', value]); },
+    getContext: () => ({
+      setTransform() {},
+      measureText() { return { width: 20 }; },
+    }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }),
+  };
+  const panel = {
+    parentElement: {
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }),
+    },
+    closest: () => null,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }),
+    style: {},
+  };
+  const A = {
+    services: { register() {} },
+    els: {
+      markerCanvas: canvas,
+      panel,
+      longHoldCountdown: { checked: false },
+      showNumbers: { checked: false },
+    },
+    state: { notes: [], padRects: [], padEls: [], _parsed: {} },
+    numCfg: { corner: true, scale: 1 },
+    markerCfg: { design: null },
+    renderRatio: () => 2,
+    requestPaint() {},
+  };
+  const window = {
+    JubeatApp: A,
+    JubeatRuntime: { Semaphore: class {} },
+  };
+  const animationFrames = [];
+  vm.runInNewContext(source, {
+    window,
+    console,
+    location: { search: '' },
+    URLSearchParams,
+    performance: { now: () => 0 },
+    requestAnimationFrame: (callback) => { animationFrames.push(callback); return animationFrames.length; },
+    cancelAnimationFrame() {},
+  });
+
+  A.layoutCanvas();
+  assert.deepEqual(writes, [['width', 800], ['height', 800]]);
+  A.layoutCanvas();
+  assert.equal(writes.length, 2);
+  assert.equal(typeof A.refreshCanvas, 'function');
+});

@@ -15,7 +15,7 @@
      abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
      fmtTime, toast,
      playMetro, sfxReset, setPlaying, selectMarker,
-     layoutCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
+     layoutCanvas, refreshCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
      updateComboDisplay, bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
      setSidebarOpen, loadLibrary, renderList, loadChart, backend, bindLoadEvents, startBufferAt,
      sidebarJustOpened,
@@ -439,6 +439,14 @@
     };
     restoreMarkerSpeed();
     window.addEventListener("pageshow", restoreMarkerSpeed);
+    window.addEventListener("pageshow", refreshCanvas);
+    window.addEventListener("orientationchange", refreshCanvas);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", refreshCanvas);
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(refreshCanvas).catch(() => {});
+    }
     els.markerNormalSpeed?.addEventListener("change", () => {
       store(STORAGE.markerNormalSpeed, els.markerNormalSpeed.checked ? "1" : "0");
       A.requestPaint();
@@ -448,6 +456,9 @@
 
     // 切回前台 / 重新可见时，确保音频图还在跑（隐藏页面里 WebAudio 可能被挂起）
     document.addEventListener("visibilitychange", keepAudioAlive);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshCanvas();
+    });
     window.addEventListener("focus", keepAudioAlive);
     // 兜底：任何一次用户手势都顺便确认一次 AudioContext。iOS 上被系统挂起后，
     // resume() 只有在手势里调用才一定成功；真挂起过的话 keepAudioAlive() 会
@@ -528,7 +539,7 @@
       }
     });
 
-    window.addEventListener("resize", layoutCanvas);
+    window.addEventListener("resize", refreshCanvas);
     window.addEventListener("resize", layoutDensity);
     // 窗口跨过 900px 断点时重新决定曲库的去留：宽屏常驻、窄屏收成抽屉。
     // 不然从窄屏拉宽后曲库还是 hidden，而这时 ☰ 又已经不显示了 → 打不开列表。
@@ -537,7 +548,7 @@
     if (narrowMq.addEventListener) narrowMq.addEventListener("change", onBreakpoint);
     else if (narrowMq.addListener) narrowMq.addListener(onBreakpoint);
     if (window.ResizeObserver && els.panel) {
-      const ro = new ResizeObserver(() => A.mode?.scheduleLayout ? A.mode.scheduleLayout() : layoutCanvas());
+      const ro = new ResizeObserver(() => A.mode?.scheduleLayout ? A.mode.scheduleLayout() : refreshCanvas());
       ro.observe(els.panel);
       // 同时 observe 所在区块：歌曲信息 / 断点布局改变中间行时也要重新量一次，
       // 不能只盯着面板自身，否则会留下一个偏大或偏小的旧尺寸。

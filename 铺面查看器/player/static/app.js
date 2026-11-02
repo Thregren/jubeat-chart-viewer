@@ -12,7 +12,7 @@
   // —— 更早那层提供的接口 ——
   const { state, markerCfg, numCfg, abLoop, buildPanel, SFX, sfxTimerSync, loadMarkers,
      seState, assertEls, frontVersion, toast,
-     selectMarker, layoutCanvas, drawMarkers, layoutDensity, tapAB,
+     selectMarker, layoutCanvas, refreshCanvas, drawMarkers, layoutDensity, tapAB,
      clearAB, lockZoom, isNarrow, setSidebarOpen, loadLibrary, selectSong, loadChart,
      rebuildVisualState, backend, audioLoad, loadRatio, seekTo, play, pause, paintFrame,
      requestPaint, updateFrame, urlState, buildGlowPairOptions, bindEvents, checkFrontVersion } = A;
@@ -50,7 +50,7 @@
       clearInterval(versionTimer); document.removeEventListener('visibilitychange', onVisible);
       cancelAnimationFrame(state.raf); state.raf=0; A.setPlaying(false);
     }});
-    layoutCanvas();
+    refreshCanvas();
     layoutDensity();
     setSidebarOpen(!isNarrow());   // 窄屏默认收起曲库抽屉
     const libraryReady = loadLibrary();
@@ -80,6 +80,7 @@
       selectSong,
       setMarker: selectMarker,
       layoutCanvas,
+      refreshCanvas,
       drawMarkers,
       paintFrame,          // 逐帧录制用：按给定时刻同步画一帧
       rebuildVisualState,  // 逐帧录制用：按给定时刻重建连击 / 闪灯 / 长押状态

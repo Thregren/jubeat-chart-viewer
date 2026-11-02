@@ -138,6 +138,25 @@ test('slow playback returns to 1x at the current audio position, with a fresh se
  assert.equal(h.A.backend.buf,null);assert.equal(h.A.rawMediaTime(),18.25);
 });
 
+test('rate handoff ignores stale media readiness until the replacement has metadata',async()=>{
+ const h=player();h.A.bindLoadEvents();
+ Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf:{duration:60},anchorPos:12});h.A.state.playing=true;
+ // Keep the old readyState, matching the brief browser window after load().
+ h.audio.readyState=4;h.audio.load=function(){};
+ let currentTime=12;const writes=[];
+ Object.defineProperty(h.audio,'currentTime',{configurable:true,get:()=>currentTime,set:value=>{writes.push(value);currentTime=value;}});
+ h.A.els.rate.value='.5';h.A.applyPlaybackRate();
+ assert.equal(h.audio.readyState,4);assert.deepEqual(writes,[0]);
+ assert.equal(h.A.audioNow(),12);assert.equal(h.A.state.playing,false);
+ // Even a late canplay from the old pipeline cannot consume the pending position.
+ h.audio.emit('canplay');
+ assert.equal(h.A.audioNow(),12);assert.deepEqual(writes,[0]);assert.equal(h.A.state.playing,false);
+ h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');
+ assert.deepEqual(writes,[0,12]);assert.equal(h.A.audioNow(),12);assert.equal(h.A.state.playing,false);
+ h.audio.emit('canplay');await turn();await turn();
+ assert.equal(h.audio.paused,false);assert.equal(h.A.state.playing,true);assert.equal(h.audio.playbackRate,.5);
+});
+
 test('rate handoffs preserve intros and rapid changes, while pause and seek override pending resume',async()=>{
  for(const action of ['resume','pause','seek']) {
   const h=player();h.A.bindLoadEvents();h.audio.load=function(){this.readyState=0;this.currentTime=0;};

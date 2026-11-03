@@ -1408,16 +1408,18 @@ input[type="range"] {
   .story-copy { font-size:12px; line-height:1.66; }
 }
 
-/* Touch targets must win over the compact desktop and phone widths. */
+/* Touch targets stay in a compact right-hand column and must not add height. */
 @media (pointer: coarse) {
   .np-actions {
-    position: static;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: grid;
+    gap: 5px;
+    width: 58px;
   }
-  .np-actions > .song-share-btn { flex: 0 0 auto; width: 96px; height: 44px; border-radius: 8px; color: var(--ink); font-size: 12px; font-weight: 600; }
-  .stage .np-main { padding-right: 0; }
+  .np-actions > .song-share-btn { width: 58px; height: 34px; padding: 0; border-radius: 8px; color: var(--ink); font: 600 11px var(--font); }
+  .stage .np-main { padding-right: 66px; }
 }
 
 /* Secondary information stays in the sidebar, outside the chart layout. */

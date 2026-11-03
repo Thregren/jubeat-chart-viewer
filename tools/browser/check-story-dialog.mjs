@@ -113,6 +113,7 @@ try {
     const buttonState = await button.evaluate(node => {
       const rect = node.getBoundingClientRect();
       const actions = node.closest(".np-actions");
+      const share = document.querySelector("#btnShare");
       const title = document.querySelector("#npTitle");
       const difficulty = document.querySelector("#diffRow");
       const cover = document.querySelector(".cover-wrap");
@@ -124,6 +125,12 @@ try {
         hidden: node.hidden,
         disabled: node.disabled,
         rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+        shareRect: share && (() => {
+          const value = share.getBoundingClientRect();
+          return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+        })(),
+        stackedVertically: share ? rect.top >= share.getBoundingClientRect().bottom - 0.5 : null,
+        alignedRight: share ? Math.abs(rect.right - share.getBoundingClientRect().right) <= 0.5 : null,
         actions: actions && (() => {
           const value = actions.getBoundingClientRect();
           return { left: value.left, top: value.top, right: value.right, bottom: value.bottom };
@@ -190,8 +197,11 @@ try {
     const { dialog, head, title, subtitle, close, body, documentTitle, copy } = result;
     if (buttonState.hidden) failures.push("background story button hidden on tablet");
     if (buttonState.disabled) failures.push("background story button disabled on tablet");
-    if (scenario.hasTouch && (buttonState.rect.width < 44 || buttonState.rect.height < 44)) {
+    if (scenario.hasTouch && (buttonState.rect.width < 44 || buttonState.rect.height < 34)) {
       failures.push(`background story button is too small: ${buttonState.rect.width}x${buttonState.rect.height}`);
+    }
+    if (scenario.hasTouch && (buttonState.stackedVertically !== true || buttonState.alignedRight !== true)) {
+      failures.push(`background story button is not below share at right edge: ${JSON.stringify(buttonState.shareRect)}`);
     }
     if (buttonState.overlapsTitle) failures.push("background story button overlaps song title");
     if (buttonState.overlapsDifficulty) failures.push("background story button overlaps difficulty buttons");

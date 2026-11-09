@@ -26,7 +26,8 @@ test('default browser recovery timers preserve the global receiver',()=>{
 });
 function timers(){const pending=new Map();let id=0;return{pending,setTimeout(fn){pending.set(++id,fn);return id},clearTimeout(id){pending.delete(id)},run(){const jobs=[...pending.values()];pending.clear();jobs.forEach(fn=>fn())}};}
 function player({nativeFallback=false}={}){
- const time=timers(),plays=[],sessions=[],toasts=[],rebuilt=[];let fetches=0;
+ const time=timers(),plays=[],sessions=[],toasts=[],rebuilt=[];let fetches=0,now=1000;
+ const perf={now:()=>now};
  const element=()=>({classList:{toggle(){}},style:{},setAttribute(){}});
  const events=new Map();
  const audio={readyState:0,duration:NaN,paused:true,seeking:false,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},removeAttribute(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(name,fn){if(!events.has(name))events.set(name,new Set());events.get(name).add(fn)},removeEventListener(name,fn){events.get(name)?.delete(fn)},emit(name,ev={type:name}){for(const fn of [...(events.get(name)||[])])fn(ev)}};
@@ -35,8 +36,8 @@ function player({nativeFallback=false}={}){
  const A={services:new Services.Services(),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(t){rebuilt.push(t)},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
  const Runtime={...R,AudioSession:class extends R.AudioSession{constructor(){super(time);sessions.push(this)}}};
  const window={JubeatApp:A,JubeatServices:{...Services,audioHeader:()=>({duration:60,sampleRate:48000,channels:2})},JubeatRuntime:Runtime,addEventListener(){}};
- vm.runInNewContext(source,{window,URL,Blob,URLSearchParams,location:{search:''},performance,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{fetches++;return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}})}});
- return{A,audio,ctx,time,plays,sessions,toasts,rebuilt,services:window.JubeatServices,fetches:()=>fetches};
+ vm.runInNewContext(source,{window,URL,Blob,URLSearchParams,location:{search:''},performance:perf,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{fetches++;return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}})}});
+ return{A,audio,ctx,time,plays,sessions,toasts,rebuilt,services:window.JubeatServices,fetches:()=>fetches,advanceClock(ms){now+=ms}};
 }
 test('decode queue serializes work, survives errors, and retains only completion',async()=>{
  const session=new R.AudioSession();let unblock;const events=[];
@@ -258,4 +259,57 @@ test('iOS 15 CAF nativeFallback and metadata-preload seeks resume at HAVE_CURREN
  h.audio.seeking=false;h.audio.readyState=2;h.audio.emit('seeked');await turn();await turn();
  assert.equal(h.A.state.playing,true);assert.equal(h.audio.paused,false);
  assert.equal(h.A.audioNow(),18.02);
+});
+test('fast-to-slow playback rate transition keeps media clock monotonic, smooths WSOLA buffer-drain spikes, and preserves Ogg page-boundary seek floor',async()=>{
+ const h=player();h.A.bindLoadEvents();
+ let currentTime=0;
+ Object.defineProperty(h.audio,'currentTime',{
+  configurable:true,
+  get:()=>currentTime,
+  // Simulate Ogg Opus demuxer snapping backwards by 48ms on the initial handoff seek to 10s
+  set:value=>{currentTime=value===10?9.952:value;},
+ });
+ Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf:{duration:60},anchorPos:10});
+ h.A.state.playing=true;
+ h.A.els.rate.value='2';h.A.applyPlaybackRate();
+ h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');
+ // Floor must prevent backwards jump from 10s down to 9.952s
+ assert.equal(h.A.audioNow(),10);
+ assert.equal(h.A.renderMediaTime(),10);
+ h.audio.emit('canplay');await turn();await turn();
+ assert.equal(h.A.state.playing,true);
+ // Advance raw currentTime to 10.020 and extrapolate 40ms at 2.0x -> 10.100
+ currentTime=10.020;h.A.audioNow();
+ h.advanceClock(40);
+ assert.ok(Math.abs(h.A.audioNow()-10.100)<1e-9);
+ // Slow down from 2.0x to 0.5x; clock must not snap backwards to 10.020
+ h.A.els.rate.value='0.5';h.A.applyPlaybackRate();h.audio.emit('ratechange');
+ const atSwitch=h.A.renderMediaTime();
+ assert.ok(Math.abs(atSwitch-10.100)<1e-9);
+ // 16ms later, simulate <audio> WSOLA draining old 2.0x buffer (+53ms jump in 16ms -> 3.3x spike)
+ h.advanceClock(16);currentTime=10.153;
+ const afterSpike=h.A.renderMediaTime();
+ // Slew limiter (maxSlope = 0.5 + (2.0 - 0.5) * 0.35 = 1.025) caps jump to +16.4ms instead of +53ms
+ assert.ok(afterSpike>atSwitch,'clock advances monotonically');
+ assert.ok(afterSpike<10.120,`slew limiter smoothed spike to ${afterSpike}`);
+ // Over the next 60ms, simulate WSOLA refill stall (raw currentTime barely moves and stays below floor)
+ let prev=afterSpike;
+ for(const raw of [10.153,10.155,10.158]){
+  h.advanceClock(20);currentTime=raw;
+  const cur=h.A.renderMediaTime();
+  assert.ok(cur>=prev,`clock must never jump backwards during post-slowdown WSOLA stall (${cur} < ${prev})`);
+  prev=cur;
+ }
+});
+test('clicking play during a paused rate-handoff queues resume instead of showing a loading error toast',async()=>{
+ const h=player();h.A.bindLoadEvents();
+ Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',objectUrl:'blob:song',buf:{duration:60},anchorPos:5});
+ h.A.state.playing=false;
+ h.A.els.rate.value='0.75';h.A.applyPlaybackRate();
+ assert.equal(h.A.backend.mode,'element');
+ await h.A.play();
+ assert.equal(h.toasts.length,0,'must not toast a false loading error during rate handoff');
+ assert.equal(h.A.playbackActive(),true);
+ h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');h.audio.emit('canplay');await turn();await turn();
+ assert.equal(h.A.state.playing,true);assert.equal(h.audio.paused,false);assert.equal(h.audio.currentTime,5);
 });

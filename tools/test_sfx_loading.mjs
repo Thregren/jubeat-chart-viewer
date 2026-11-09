@@ -7,7 +7,7 @@ const source = fs.readFileSync(process.env.SFX_SOURCE || new URL('../铺面查�
 const settle = () => new Promise(setImmediate);
 
 function player({online = true, initialContext = true, suspended = false} = {}) {
-  let clock = 0, id = 0, position = 0, respond = () => ({ok: true, status: 200});
+  let clock = 0, id = 0, position = 0, rawPos = 0, respond = () => ({ok: true, status: 200});
   const timeouts = new Map(), intervals = new Map(), requests = [], started = [];
   let disconnects = 0;
   const parameter = () => ({value: 1, setValueAtTime() {}, exponentialRampToValueAtTime() {}});
@@ -23,7 +23,7 @@ function player({online = true, initialContext = true, suspended = false} = {}) 
   const A = {resourcePath: value => value,
     frontVersion: () => 'test', els: {metroSound: {value: 'billy'}, metroVolume: {value: '100'}, rate: {value: '1'}},
     state: {playing: false, notes: [{t: .1}], _parsed: {secToBeat: t => t}},
-    master: () => null, requestPaint() {}, rawMediaTime: () => position, currentMediaTime: () => position,
+    master: () => null, requestPaint() {}, rawMediaTime: () => rawPos, currentMediaTime: () => position,
   };
   const window = {
     JubeatApp: A, JubeatSfx: {soundTaiko() {synths++;}},
@@ -43,7 +43,7 @@ function player({online = true, initialContext = true, suspended = false} = {}) 
     A, ctx, requests, started,
     get timers() {return intervals.size;}, get disconnects() {return disconnects;},
     get contexts() {return contexts;}, get synths() {return synths;},
-    online(value) {online = value;}, position(value) {position = value;},
+    online(value) {online = value;}, position(value) {position = value; rawPos = value;}, rawPosition(value) {rawPos = value;},
     respond(fn) {respond = fn;},
     tick() {for (const fn of intervals.values()) fn();},
     advance(ms) {clock += ms; for (const [key, job] of [...timeouts]) if (job.at <= clock) {timeouts.delete(key); job.fn();}},
@@ -167,4 +167,38 @@ test('sfxTick skips scheduling while scrubbing and scales lookahead horizon with
   assert.equal(h.started.length, 2, 'at 2x rate, 0.12s real-time horizon covers 0.24s of chart notes');
   assert.ok(Math.abs(h.started[0].t - (h.ctx.currentTime + 0.05 / 2)) < 1e-9);
   assert.ok(Math.abs(h.started[1].t - (h.ctx.currentTime + 0.20 / 2)) < 1e-9);
+});
+
+test('fast-to-slow sfxReset({ rateChange: true }) preserves played notes, immediately reschedules upcoming notes, and re-syncs after settle', async () => {
+  const h = player();
+  h.A.state.notes = [{t: 3.05}, {t: 3.08}, {t: 3.14}];
+  h.A.els.rate.value = '2';
+  h.position(3.0);
+  h.A.setPlaying(true); await settle();
+  h.tick();
+  // At 2x from 3.0s, all 3 notes (3.05, 3.08, 3.14) are queued within [3.0, 3.24]
+  assert.equal(h.started.length, 3);
+  // Advance audioCtx by 30ms (to 2.03s): note 3.05 (scheduled at 2.025s) has already played,
+  // while 3.08 (scheduled at 2.040s) and 3.14 (scheduled at 2.070s) have not sounded yet.
+  // Extrapolated currentMediaTime is 3.06, while rawMediaTime lags at 3.03.
+  h.ctx.currentTime = 2.03;
+  h.position(3.06);
+  h.rawPosition(3.03);
+  h.started.length = 0;
+  // Switch down to 0.5x
+  h.A.els.rate.value = '0.5';
+  h.A.sfxReset({rateChange: true});
+  // Immediately upon sfxReset({rateChange:true}) (without waiting 25ms for setInterval):
+  // - 3.05 must NOT double-fire even though rawMediaTime (3.03) < 3.05
+  // - 3.08 is within [3.06, 3.12] (0.5 * 0.12 = 0.06s horizon) and must be immediately rescheduled at 0.5x!
+  assert.equal(h.started.length, 1, 'note 3.08 immediately rescheduled without re-firing 3.05');
+  assert.ok(Math.abs(h.started[0].t - (2.03 + (3.08 - 3.06) / 0.5)) < 1e-9);
+  // Advance past 3.08 to 3.09 (ctx.currentTime = 2.15) so 3.08 has now sounded, and let the 140ms settle timer fire
+  h.ctx.currentTime = 2.15;
+  h.position(3.09);
+  h.started.length = 0;
+  h.advance(140);
+  // Settle re-sync must not re-fire 3.08, and must schedule 3.14 at 0.5x (within [3.09, 3.15])
+  assert.equal(h.started.length, 1, 'settle re-sync schedules 3.14 without re-firing 3.08');
+  assert.ok(Math.abs(h.started[0].t - (2.15 + (3.14 - 3.09) / 0.5)) < 1e-9);
 });

@@ -882,13 +882,16 @@
     if (!ctx || !state.padRects || state.padRects.length < 16) return;
     const notes = state.notes;
     if (!notes.length) return;
+    const animationRate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
+    const holdPre = HOLD_PRE * animationRate;
+    const holdPost = HOLD_POST * animationRate;
     const maxHold = (state._parsed && state._parsed.maxHold) || 0;
-    const lo = chartT - maxHold - HOLD_PRE - 0.05;
-    // 还没开始的长押也要提前 HOLD_PRE 亮起来，所以上界要往后放一个提前量
-    const hi = chartT + HOLD_PRE + 0.05;
+    const lo = chartT - maxHold - holdPre - 0.05;
+    // 还没开始的长押也要提前 holdPre 亮起来，所以上界要往后放一个提前量
+    const hi = chartT + holdPre + 0.05;
     for (const n of notesInWindow(lo, hi, chartHolds())) {
       if (n.endT == null) continue;
-      if (chartT < n.t - HOLD_PRE || chartT > n.endT + HOLD_POST) continue;
+      if (chartT < n.t - holdPre || chartT > n.endT + holdPost) continue;
       const g = holdCells(n);
       if (!g) continue;
       drawHoldArrow(n, g, chartT);

@@ -309,11 +309,14 @@
     } else if (backend.mode === "element") {
       // The source may still be loading after the first handoff. Keep its
       // pending position untouched; loadedmetadata will apply the final rate.
+      const prevRate = backend.rate || els.audio.playbackRate || 1;
+      syncMediaClockRate(prevRate, rate);
       preservePitch();
       els.audio.playbackRate = rate;
       backend.rate = rate;
-      // Do not extrapolate the next media time with the previous rate.
-      resetMediaClock();
+      sfxReset({ rateChange: true });
+      A.requestPaint();
+      return;
     }
     sfxReset();
     A.requestPaint();
@@ -353,8 +356,11 @@
     });
     el.addEventListener('ratechange', () => {
       if (backend.mode !== 'element' || el.dataset.src !== backend.url) return;
-      resetMediaClock();
-      sfxReset();
+      const prevRate = backend.rate || 1;
+      const nextRate = el.playbackRate || 1;
+      backend.rate = nextRate;
+      syncMediaClockRate(prevRate, nextRate);
+      sfxReset({ rateChange: true });
     });
     el.addEventListener("progress", refresh);
     el.addEventListener("canplay", () => {
@@ -378,7 +384,7 @@
       audioLoad.buffering = false;
       if (backend.mode === "element" && el.dataset.src === backend.url) {
         audioLoad.pending = false;
-        resetMediaClock();
+        resetMediaClock(true);
         if (!state.scrubbing) rebuildVisualState(renderMediaTime());
         sfxReset();
       }
@@ -656,14 +662,46 @@
   //   - 只有在「正在播放 + 没有 seek + 缓冲够 + 刚才还在推进」时才外推
   //   - 最多补 55ms（约一个采样间隔），再多就是猜了，不如用原始值
   const CLOCK_MAX_EXTRAP = 0.055;
-  const audioClock = { base: 0, at: 0, fresh: 0 };
+  const audioClock = { sample: 0, base: 0, at: 0, fresh: -Infinity, floor: 0, rateAt: -Infinity, prevRate: 1 };
 
-  function resetMediaClock() {
-    audioClock.base = els.audio.currentTime || 0;
-    audioClock.at = performance.now();
+  function resetMediaClock(preserveFloor = false) {
+    const raw = els.audio.currentTime || 0;
+    const now = performance.now();
+    audioClock.sample = raw;
+    audioClock.base = raw;
+    audioClock.at = now;
     // Force one raw sample before extrapolating again. Using 0 here fails
     // during the first 150ms of a page's lifetime.
     audioClock.fresh = -Infinity;
+    if (typeof preserveFloor === "number" && Number.isFinite(preserveFloor) && Math.abs(preserveFloor - raw) <= 0.15) {
+      audioClock.floor = Math.max(raw, preserveFloor);
+    } else if (preserveFloor === true && Math.abs(audioClock.floor - raw) <= 0.15) {
+      audioClock.floor = Math.max(raw, audioClock.floor);
+    } else {
+      audioClock.floor = raw;
+    }
+    audioClock.rateAt = -Infinity;
+    audioClock.prevRate = els.audio.playbackRate || backend.rate || 1;
+  }
+
+  function syncMediaClockRate(prevRate, nextRate) {
+    if (!state.playing || els.audio.paused || els.audio.seeking) {
+      resetMediaClock(true);
+      return;
+    }
+    const pos = audioNow();
+    const now = performance.now();
+    audioClock.sample = els.audio.currentTime || 0;
+    audioClock.base = pos;
+    audioClock.at = now;
+    audioClock.floor = Math.max(audioClock.floor, pos);
+    if (prevRate > nextRate) {
+      audioClock.rateAt = now;
+      audioClock.prevRate = prevRate;
+    } else if (nextRate > prevRate) {
+      audioClock.rateAt = -Infinity;
+      audioClock.prevRate = nextRate;
+    }
   }
 
   function pendingAudioTime() {
@@ -697,21 +735,42 @@
     const raw = els.audio.currentTime || 0;
     const now = performance.now();
     if (!state.playing || els.audio.paused || els.audio.seeking) {
+      audioClock.sample = raw;
       audioClock.base = raw;
       audioClock.at = now;
       audioClock.fresh = -Infinity;
-      return raw;
+      if (Math.abs(audioClock.floor - raw) > 0.15) audioClock.floor = raw;
+      else audioClock.floor = Math.max(raw, audioClock.floor);
+      audioClock.rateAt = -Infinity;
+      return audioClock.floor;
     }
-    if (raw !== audioClock.base) {
-      audioClock.base = raw;
+    if (raw < audioClock.floor - 0.25) {
+      audioClock.floor = raw;
+    }
+    const rate = els.audio.playbackRate || 1;
+    if (raw !== audioClock.sample) {
+      const dtSample = Math.max(0, (now - audioClock.at) / 1000);
+      audioClock.sample = raw;
+      if (now - audioClock.rateAt <= 220 && audioClock.prevRate > rate && raw > audioClock.base) {
+        const maxSlope = rate + (audioClock.prevRate - rate) * 0.35;
+        audioClock.base = Math.min(raw, audioClock.base + Math.min(0.06, dtSample) * maxSlope);
+      } else {
+        audioClock.base = raw;
+      }
       audioClock.at = now;
       audioClock.fresh = now;
     }
-    if (els.audio.readyState < 3) return raw;            // 还没缓冲够，别猜
-    if (now - audioClock.fresh > 150) return raw;        // 150ms 没动过 = 卡住了
-    const rate = els.audio.playbackRate || 1;
+    if (els.audio.readyState < 3 || now - audioClock.fresh > 150) {
+      audioClock.floor = Math.max(audioClock.floor, raw);
+      return audioClock.floor;
+    }
+    const catchupRate = (now - audioClock.rateAt <= 220 && audioClock.prevRate > rate && audioClock.base < raw)
+      ? rate + (audioClock.prevRate - rate) * 0.35
+      : rate;
     const dt = Math.min(CLOCK_MAX_EXTRAP, Math.max(0, (now - audioClock.at) / 1000));
-    return audioClock.base + dt * rate;
+    const extrap = Math.min(raw + CLOCK_MAX_EXTRAP * rate, audioClock.base + dt * catchupRate);
+    audioClock.floor = Math.max(audioClock.floor, extrap);
+    return audioClock.floor;
   }
 
   // 录制模式（?rec=1）：由外部指定的画面时间。设上之后 renderMediaTime() 直接返回它，
@@ -773,8 +832,9 @@
       const pos = pendingRateSeek;
       pendingRateSeek = null;
       const duration = els.audio.duration;
-      els.audio.currentTime = Number.isFinite(duration) ? Math.max(0, Math.min(pos, duration)) : pos;
-      resetMediaClock();
+      const target = Number.isFinite(duration) ? Math.max(0, Math.min(pos, duration)) : pos;
+      els.audio.currentTime = target;
+      resetMediaClock(target);
       rebuildVisualState(renderMediaTime());
       sfxReset();
       pendingPlaybackResume?.ready?.();
@@ -862,6 +922,10 @@
       if (els.audio.dataset.src === backend.url && elementMediaReady(1) && (backend.objectUrl || els.audio.preload === "metadata" || els.audio.seeking || elementMediaReady(2))) {
         return startElementPlay();
       }
+      if (backend.mode === "element" && elementSourcePending && els.audio.dataset.src === backend.url && (backend.objectUrl || pendingRateSeek != null)) {
+        resumeAfterSeek();
+        return;
+      }
       // 音源还没到齐（慢网换歌就是这个状态）：直接拒绝，不排队。
       // 排队的版本会在数据刚到、谱面状态还没落好时就起播，听起来就是「提前响了、不对拍」。
       // 按钮此时是 disabled 的，这里兜住键盘（空格）这类入口。
@@ -885,7 +949,7 @@
         if (state.scrubbing) els.audio.pause();
         return;
       }
-      resetMediaClock();
+      resetMediaClock(true);
       setPlaying(true);
       els.playIcon.textContent = "❚❚";
       els.btnPlay.setAttribute("aria-label", "暂停");
@@ -944,7 +1008,7 @@
     const el = els.audio;
     const generation = audioSession.generation, url = backend.url;
     if (!el.seeking && elementMediaReady(3)) {
-      resetMediaClock();
+      resetMediaClock(true);
       rebuildVisualState(renderMediaTime());
       sfxReset();
       play();
@@ -960,7 +1024,7 @@
           && (el.seeking || !elementMediaReady(minReady))) return;
       cancel();
       if (!audioSession.current(generation) || url !== backend.url || backend.mode !== "element") return;
-      resetMediaClock();
+      resetMediaClock(true);
       rebuildVisualState(renderMediaTime());
       sfxReset();                       // 位置定了，再按最终位置锚打点音
       play();

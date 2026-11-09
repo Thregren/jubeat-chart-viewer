@@ -191,7 +191,7 @@
   // —— 打点音排程器 ——
   // 以前打点音是在渲染循环里、等 note 的谱面时间到了才响，掉一帧就晚一帧（还会攒一堆一起响）。
   // 现在改成提前 120ms 用 WebAudio 的时间轴排好，响铃时刻和渲染帧率无关。
-  const sfxSched = { idx: 0, timer: 0, bus: null, horizon: 0.12 };
+  const sfxSched = { idx: 0, timer: 0, bus: null, horizon: 0.12, queued: [], playedUntil: -Infinity, resyncTimer: 0 };
 
   function sfxBus() {
     if (!audioCtx) return null;
@@ -204,7 +204,23 @@
   }
 
   /** 跳转 / 暂停 / 变速 / 换谱：清掉已排程的音，并把指针挪到当前时间 */
-  function sfxReset() {
+  function sfxReset(options = {}) {
+    const rateChange = !!options?.rateChange;
+    if (sfxSched.resyncTimer) {
+      clearTimeout(sfxSched.resyncTimer);
+      sfxSched.resyncTimer = 0;
+    }
+    if (rateChange && audioCtx && sfxSched.queued.length) {
+      const cutoff = audioCtx.currentTime + 0.004;
+      for (const item of sfxSched.queued) {
+        if (item.when <= cutoff && item.t > sfxSched.playedUntil) {
+          sfxSched.playedUntil = item.t;
+        }
+      }
+    } else if (!rateChange) {
+      sfxSched.playedUntil = -Infinity;
+    }
+    sfxSched.queued.length = 0;
     if (sfxSched.bus) {
       try {
         sfxSched.bus.disconnect();
@@ -213,15 +229,27 @@
       }
       sfxSched.bus = null;
     }
-    const now = A.rawMediaTime();          // 用原始时间定位，跳转后不会把中间的音丢掉
+    const rawNow = A.rawMediaTime();          // 用原始时间定位，跳转后不会把中间的音丢掉
+    const curNow = rateChange && typeof A.currentMediaTime === "function" ? A.currentMediaTime() : rawNow;
+    const now = rateChange ? Math.min(rawNow, curNow) : rawNow;
+    const minT = Math.max(now - 1e-4, sfxSched.playedUntil + 1e-4);
     let lo = 0;
     let hi = state.notes.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (state.notes[mid].t < now - 1e-4) lo = mid + 1;
+      if (state.notes[mid].t < minT) lo = mid + 1;
       else hi = mid;
     }
     sfxSched.idx = lo;
+    if (rateChange && state.playing && !state.scrubbing) {
+      sfxTick();
+      if (!options?.settled) {
+        sfxSched.resyncTimer = setTimeout(() => {
+          sfxSched.resyncTimer = 0;
+          if (state.playing && !state.scrubbing) sfxReset({ rateChange: true, settled: true });
+        }, 140);
+      }
+    }
   }
 
   // 打点音排程器只在「正在播放且音效启用」时开着。
@@ -291,13 +319,16 @@
     // 同押（同一时刻一起按的一批 note）只发一发：
     // 以前是按 note 发，4 押就叠 4 下，音量直接顶穿。判定阈值和 core.numberNotes()
     // 分「同一批」用的 1e-4 秒保持一致 —— 数字 / 光晕算作一批的，打点音也只响一下。
-    let lastT = -Infinity;
+    let lastT = sfxSched.playedUntil;
     while (sfxSched.idx < state.notes.length && state.notes[sfxSched.idx].t <= horizon) {
       const note = state.notes[sfxSched.idx++];
-      if (note.t < now - 0.04 * rate) continue;          // 已经过去的就别补了
+      if (note.t <= sfxSched.playedUntil + 1e-4) continue;
+      if (note.t < now - 0.04 * Math.max(1, rate)) continue; // 已经过去的就别补了
       if (note.t - lastT < 1e-4) continue;               // 和上一发是同一批（同押）
       lastT = note.t;
-      playHitSound(note, audioCtx.currentTime + (note.t - now) / rate, bus);
+      const when = Math.max(audioCtx.currentTime, audioCtx.currentTime + (note.t - now) / rate);
+      sfxSched.queued.push({ t: note.t, when });
+      playHitSound(note, when, bus);
     }
   }
 

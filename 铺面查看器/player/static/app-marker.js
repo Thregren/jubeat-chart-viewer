@@ -1518,8 +1518,9 @@
       // 顺序数字：官方是「拍点前 0.10s」才出现（见 NUM_LEAD），跟上这一段的命中动画
       // 一起收尾；长押按住期间一直留着，松开时再跟着爆一次。这一段不属于 marker
       // 素材，所以放在窗口早退之前，设成「无（仅面板灯）」时也就自然不画了。
+      const numLead = NUM_LEAD * animationRate;
       const numEnd = (dur != null ? dur : 0) + lateSec;
-      const number = rel >= -NUM_LEAD && rel < numEnd ? [n, rect, 0] : null;
+      const number = rel >= -numLead && rel < numEnd ? [n, rect, 0] : null;
       if (number) numbers.push(number);
 
       if (u < early || u >= late) continue;

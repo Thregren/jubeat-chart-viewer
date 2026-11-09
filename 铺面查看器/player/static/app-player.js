@@ -66,13 +66,23 @@
   const audioSession = transport.session;
   let cancelSeekCompletion = null;
   let pendingPlaybackResume = null;
+  let pendingElementPlay = 0;
   let pendingRateSeek = null; // Audio seconds, including the intro before chart time zero.
   // Browsers may retain the old media element's readyState briefly after load().
   // Do not treat that state as readiness for the source we just assigned.
   let elementSourcePending = false;
 
+  function playbackActive() {
+    return Boolean(
+      state.playing || !els.audio.paused
+      || (pendingPlaybackResume && audioSession.current(pendingPlaybackResume.generation))
+      || (pendingElementPlay && audioSession.current(pendingElementPlay))
+    );
+  }
+
   function stopBufferSource() {
     cancelSeekCompletion?.(); cancelSeekCompletion=null;
+    pendingElementPlay = 0;
     transport.stop();
   }
 
@@ -286,8 +296,7 @@
     if (backend.mode === 'webaudio' && rate !== 1 && backend.buf && backend.url) {
       const off = (Number(els.offset.value) || 0) / 1000;
       const pos = rawAudioTime();
-      const wasPlaying = state.playing || !els.audio.paused
-        || (pendingPlaybackResume && audioSession.current(pendingPlaybackResume.generation));
+      const wasPlaying = playbackActive();
       pause();
       backend.mode = "element";
       backend.rate = rate;
@@ -322,6 +331,7 @@
     el.addEventListener("loadedmetadata", () => {
       if (backend.mode === 'element' && el.dataset.src === backend.url) {
         elementSourcePending = false;
+        if (el.preload === "metadata") audioLoad.pending = false;
       }
       if (backend.mode === 'element' && el.dataset.src === backend.url) {
         preservePitch();
@@ -349,17 +359,29 @@
     el.addEventListener("progress", refresh);
     el.addEventListener("canplay", () => {
       audioLoad.buffering = false;
+      if (backend.mode === "element" && el.dataset.src === backend.url) {
+        audioLoad.pending = false;
+      }
       flushPendingSeek();
       refresh();
       A.visitors?.event('audio_ready');
     });
     el.addEventListener("canplaythrough", () => {
       audioLoad.buffering = false;
+      if (backend.mode === "element" && el.dataset.src === backend.url) {
+        audioLoad.pending = false;
+      }
       flushPendingSeek();
       refresh();
     });
     el.addEventListener("playing", () => {
       audioLoad.buffering = false;
+      if (backend.mode === "element" && el.dataset.src === backend.url) {
+        audioLoad.pending = false;
+        resetMediaClock();
+        if (!state.scrubbing) rebuildVisualState(renderMediaTime());
+        sfxReset();
+      }
       refresh();
     });
     // 「缓冲中」只在**真的要出声**的时候才算数。
@@ -644,15 +666,28 @@
     audioClock.fresh = -Infinity;
   }
 
-  function rawAudioTime() {
+  function pendingAudioTime() {
     if (pendingRateSeek != null) return pendingRateSeek;
+    if (pendingSeek != null && !canSeekNow()) {
+      const lim = state.duration > 0 ? Math.min(pendingSeek, state.duration) : pendingSeek;
+      const s = Math.max(0, lim);
+      const off = (Number(els.offset.value) || 0) / 1000;
+      return Math.max(0, s + (state.baseOffset || 0) - off);
+    }
+    return null;
+  }
+
+  function rawAudioTime() {
+    const pending = pendingAudioTime();
+    if (pending != null) return pending;
     return backend.mode === 'webaudio'
       ? (state.playing ? audioNow() : backend.anchorPos)
       : (els.audio.currentTime || 0);
   }
 
   function audioNow() {
-    if (pendingRateSeek != null) return pendingRateSeek;
+    const pending = pendingAudioTime();
+    if (pending != null) return pending;
     // WebAudio 直接播 buffer：位置就是「起播点 + 经过的 ctx 时间」，连续、无量化台阶
     if (backend.mode === "webaudio") {
       if (!state.playing || !A.audioCtx) return backend.anchorPos;
@@ -661,12 +696,17 @@
     }
     const raw = els.audio.currentTime || 0;
     const now = performance.now();
+    if (!state.playing || els.audio.paused || els.audio.seeking) {
+      audioClock.base = raw;
+      audioClock.at = now;
+      audioClock.fresh = -Infinity;
+      return raw;
+    }
     if (raw !== audioClock.base) {
       audioClock.base = raw;
       audioClock.at = now;
       audioClock.fresh = now;
     }
-    if (!state.playing || els.audio.paused || els.audio.seeking) return raw;
     if (els.audio.readyState < 3) return raw;            // 还没缓冲够，别猜
     if (now - audioClock.fresh > 150) return raw;        // 150ms 没动过 = 卡住了
     const rate = els.audio.playbackRate || 1;
@@ -745,11 +785,13 @@
     pendingSeek = null;
     // Completing this source's deferred seek must preserve its scheduled resume.
     seekPosition(sec);
+    pendingPlaybackResume?.ready?.();
   }
 
   function seekTo(sec) {
     if(A.mode?.ownsFrame)return;
     cancelSeekCompletion?.(); cancelSeekCompletion=null;
+    pendingElementPlay = 0;
     pendingRateSeek = null;
     audioSession.invalidate();
     pendingSeek = canSeekNow() ? null : sec;
@@ -760,7 +802,7 @@
     if(A.mode?.ownsFrame)return;
     const s = Math.max(0, Math.min(sec, state.duration || 0));
     const off = (Number(els.offset.value) || 0) / 1000;
-    const audioT = s + (state.baseOffset || 0) - off;
+    const audioT = Math.max(0, s + (state.baseOffset || 0) - off);
     if (backend.mode === "webaudio") {
       // 直接换一个 BufferSource 从新位置起播：采样级精确，不存在「管线重建」
       const lim = backend.buf ? backend.buf.duration : audioT;
@@ -776,9 +818,7 @@
       const lim = backend.buf ? backend.buf.duration : audioT;
       backend.anchorPos = Math.max(0, Math.min(audioT, lim));
     }
-    audioClock.base = els.audio.currentTime || 0;
-    audioClock.at = performance.now();
-    audioClock.fresh = 0;          // 跳转后先老老实实用原始值，等音频真的推进了再外推
+    resetMediaClock();             // 跳转后先老老实实用原始值，等音频真的推进了再外推
     sfxReset();
     rebuildVisualState(renderMediaTime());
     state.lastTimeText = fmtTime(s);
@@ -818,8 +858,8 @@
       return;
     }
     if (!playbackLoaded()) {
-      // 已有元数据且整首音频已在本地，交给媒体管线等 seek/解码落地；play promise 可被 pause 取消。
-      if (els.audio.dataset.src === backend.url && elementMediaReady(1) && (backend.objectUrl || els.audio.seeking)) {
+      // 已有元数据且整首音频已在本地或等待流式续播，交给媒体管线等 seek/解码落地；play promise 可被 pause 取消。
+      if (els.audio.dataset.src === backend.url && elementMediaReady(1) && (backend.objectUrl || els.audio.preload === "metadata" || els.audio.seeking || elementMediaReady(2))) {
         return startElementPlay();
       }
       // 音源还没到齐（慢网换歌就是这个状态）：直接拒绝，不排队。
@@ -835,15 +875,21 @@
   async function startElementPlay() {
     const generation = audioSession.invalidate();
     const url = backend.url;
+    pendingElementPlay = generation;
     try {
       preservePitch();
       els.audio.playbackRate = selectedRate();
       backend.rate = els.audio.playbackRate;
       await els.audio.play();
-      if (!audioSession.current(generation) || url !== backend.url) return;
+      if (!audioSession.current(generation) || url !== backend.url || state.scrubbing) {
+        if (state.scrubbing) els.audio.pause();
+        return;
+      }
+      resetMediaClock();
       setPlaying(true);
       els.playIcon.textContent = "❚❚";
       els.btnPlay.setAttribute("aria-label", "暂停");
+      rebuildVisualState(renderMediaTime());
       sfxReset();
     } catch (err) {
       // 自己 pause / 换歌打断的排队请求，不是错误，别弹提示
@@ -851,12 +897,15 @@
       if (err && err.name === "AbortError") return;
       A.visitors?.event('play_error',{code:'element_play'});
       toast(`无法播放：${err.message}`, true);
+    } finally {
+      if (pendingElementPlay === generation) pendingElementPlay = 0;
     }
   }
 
   function pause() {
     A.directory?.stopPreview();
     cancelSeekCompletion?.(); cancelSeekCompletion=null;
+    pendingElementPlay = 0;
     audioSession.invalidate();
     if (backend.mode === "webaudio") {
       backend.anchorPos = audioNow();       // 先记下位置再停
@@ -872,7 +921,7 @@
   }
 
   function togglePlay() {
-    if (state.playing) pause();
+    if (playbackActive()) pause();
     else play();
   }
 
@@ -895,6 +944,8 @@
     const el = els.audio;
     const generation = audioSession.generation, url = backend.url;
     if (!el.seeking && elementMediaReady(3)) {
+      resetMediaClock();
+      rebuildVisualState(renderMediaTime());
       sfxReset();
       play();
       return;
@@ -902,18 +953,21 @@
     let fired = false;
     const task = {generation, url, ready: () => fire()}; pendingPlaybackResume = task;
     const cancel = () => {fired=true;el.removeEventListener("seeked",fire);el.removeEventListener("canplay",fire);clearTimeout(timer);clearTimeout(deadline);if(cancelSeekCompletion===cancel)cancelSeekCompletion=null;if(pendingPlaybackResume===task)pendingPlaybackResume=null;};
-    const fire = () => {
+    const fire = (ev) => {
       if (fired) return;
+      const minReady = (ev === true || ev?.type === "seeked") ? 1 : 2;
       if (audioSession.current(generation) && url === backend.url
-          && (el.seeking || !elementMediaReady(3))) return;
+          && (el.seeking || !elementMediaReady(minReady))) return;
       cancel();
       if (!audioSession.current(generation) || url !== backend.url || backend.mode !== "element") return;
+      resetMediaClock();
+      rebuildVisualState(renderMediaTime());
       sfxReset();                       // 位置定了，再按最终位置锚打点音
       play();
     };
     el.addEventListener("seeked", fire);
     el.addEventListener("canplay", fire);
-    const timer = setTimeout(fire, fallbackMs);
+    const timer = setTimeout(() => fire(true), fallbackMs);
     const deadline = setTimeout(cancel, 10000);
     cancelSeekCompletion=cancel;
   }
@@ -922,10 +976,10 @@
   function settleAfterSeek() {
     cancelSeekCompletion?.(); cancelSeekCompletion=null;
     const el=els.audio,generation=audioSession.generation,url=backend.url;
-    if(backend.mode==='webaudio'||!el.seeking){rebuildVisualState(renderMediaTime());sfxReset();return;}
+    if(backend.mode==='webaudio'||!el.seeking){resetMediaClock();rebuildVisualState(renderMediaTime());sfxReset();return;}
     let timer;
     const clean=()=>{clearTimeout(timer);el.removeEventListener('seeked',fire);el.removeEventListener('error',clean);if(cancelSeekCompletion===clean)cancelSeekCompletion=null;};
-    const fire=()=>{clean();if(audioSession.current(generation)&&url===backend.url){rebuildVisualState(renderMediaTime());sfxReset();}};
+    const fire=()=>{clean();if(audioSession.current(generation)&&url===backend.url){resetMediaClock();rebuildVisualState(renderMediaTime());sfxReset();A.requestPaint();}};
     el.addEventListener('seeked',fire,{once:true});el.addEventListener('error',clean,{once:true});
     timer=setTimeout(clean,10000);cancelSeekCompletion=clean;
   }
@@ -977,6 +1031,7 @@
     seekTo,
     play,
     pause,
+     playbackActive,
     togglePlay,
     restart,
     resumeAfterSeek,

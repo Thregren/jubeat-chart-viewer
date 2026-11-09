@@ -375,8 +375,8 @@
       clearAB(null);
       state.scrubbing = true;
       scrubPointerId = ev.pointerId;
-      resumeAfterScrub = state.playing;
-      if (state.playing) pause();
+      resumeAfterScrub = A.playbackActive ? A.playbackActive() : state.playing;
+      if (resumeAfterScrub) pause();
       els.densityCanvas.setPointerCapture(ev.pointerId);
       const sec = densitySeekFromEvent(ev);
       state.scrubSec = sec;
@@ -491,6 +491,10 @@
 
     els.audio.addEventListener("playing", () => {
       if (backend.mode !== "element" || els.audio.paused || els.audio.dataset.src !== backend.url) return;
+      if (state.scrubbing) {
+        els.audio.pause();
+        return;
+      }
       setPlaying(true);
       els.playIcon.textContent = "❚❚";
     });

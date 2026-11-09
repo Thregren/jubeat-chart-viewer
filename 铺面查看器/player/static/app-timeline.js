@@ -185,8 +185,9 @@
     if(e.button!==0 || state.scrubbing || !state.notes.length || A.density.placeholder || !view)return;
     e.preventDefault();
     const sec=A.currentMediaTime(), m=getModel();
-    drag={id:e.pointerId,x:xOf(e),start:sec,beat:m.secToBeat(sec),view:m.frame(sec,canvas.clientWidth,+span.value,+division.value),model:m,notes:state.notes,resume:state.playing,moved:false};
-    A.clearAB(null);if(state.playing)A.pause();
+    const resume=A.playbackActive ? A.playbackActive() : state.playing;
+    drag={id:e.pointerId,x:xOf(e),start:sec,beat:m.secToBeat(sec),view:m.frame(sec,canvas.clientWidth,+span.value,+division.value),model:m,notes:state.notes,resume,moved:false};
+    A.clearAB(null);if(resume)A.pause();
     state.scrubbing=true;state.scrubSec=sec;canvas.setPointerCapture(e.pointerId);
     canvas.focus({preventScroll:true});repaint();
   });

@@ -152,3 +152,19 @@ test('retries cannot accumulate uncancellable decoders indefinitely', async () =
   }
   assert.equal(decodes, 2);
 });
+
+test('sfxTick skips scheduling while scrubbing and scales lookahead horizon with playback rate', async () => {
+  const h = player();
+  h.A.state.notes = [{t: 1.05}, {t: 1.20}];
+  h.A.els.rate.value = '2';
+  h.position(1.0);
+  h.A.setPlaying(true); await settle();
+  h.A.state.scrubbing = true;
+  h.tick();
+  assert.equal(h.started.length, 0, 'must not schedule hit sounds while scrubbing');
+  h.A.state.scrubbing = false;
+  h.tick();
+  assert.equal(h.started.length, 2, 'at 2x rate, 0.12s real-time horizon covers 0.24s of chart notes');
+  assert.ok(Math.abs(h.started[0].t - (h.ctx.currentTime + 0.05 / 2)) < 1e-9);
+  assert.ok(Math.abs(h.started[1].t - (h.ctx.currentTime + 0.20 / 2)) < 1e-9);
+});

@@ -12,7 +12,7 @@ vm.runInNewContext(src,{window:w,console,document:{createElement:()=>({getContex
 function draw(t){w.numbers=[];A.drawMarkers(t);return w.numbers;}
 assert.equal(draw(1.1)[0].opacity,1);assert.equal(draw(1.155)[0].opacity,6/255);const previous=reads;draw(1.155);assert.equal(reads,previous);
 assert.equal(draw(1.160001).length,0);A.markerCfg.design.h[4]=8;assert.equal(draw(1.08).length,0);
-A.markerCfg.design.h[4]=16;A.els.rate.value='2';assert.equal(draw(1.31)[0].opacity,6/255);assert.equal(draw(1.32).length,0);
+A.markerCfg.design.h[4]=16;A.els.rate.value='2';assert.equal(draw(0.79).length,0);assert.equal(draw(0.81).length,1);assert.equal(draw(1.31)[0].opacity,6/255);assert.equal(draw(1.32).length,0);
 A.els.rate.value='1';A.state.notes=[{t:1,index:0,groupSize:2,kind:'hold',endT:2}];A.state._parsed={maxHold:1};assert.equal(draw(1.5)[0].opacity,0);assert.equal(draw(2.155)[0].opacity,6/255);assert.equal(draw(2.160001).length,0);
 console.log('Chord fade/lifetime: last frame alpha, half-open end, shorter H, rate, hold release, alpha cache passed');
 

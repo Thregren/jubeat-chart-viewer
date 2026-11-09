@@ -26,17 +26,17 @@ test('default browser recovery timers preserve the global receiver',()=>{
 });
 function timers(){const pending=new Map();let id=0;return{pending,setTimeout(fn){pending.set(++id,fn);return id},clearTimeout(id){pending.delete(id)},run(){const jobs=[...pending.values()];pending.clear();jobs.forEach(fn=>fn())}};}
 function player({nativeFallback=false}={}){
- const time=timers(),plays=[],sessions=[],toasts=[];let fetches=0;
+ const time=timers(),plays=[],sessions=[],toasts=[],rebuilt=[];let fetches=0;
  const element=()=>({classList:{toggle(){}},style:{},setAttribute(){}});
  const events=new Map();
- const audio={readyState:0,duration:NaN,paused:true,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},removeAttribute(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(name,fn){if(!events.has(name))events.set(name,new Set());events.get(name).add(fn)},removeEventListener(name,fn){events.get(name)?.delete(fn)},emit(name){for(const fn of [...(events.get(name)||[])])fn()}};
+ const audio={readyState:0,duration:NaN,paused:true,seeking:false,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},removeAttribute(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(name,fn){if(!events.has(name))events.set(name,new Set());events.get(name).add(fn)},removeEventListener(name,fn){events.get(name)?.delete(fn)},emit(name,ev={type:name}){for(const fn of [...(events.get(name)||[])])fn(ev)}};
  const els={audio,rate:{value:'1'},offset:{value:'0'}};for(const k of ['loadRow','btnPlay','loadLabel','loadPct','loadFill','loadBar','statTime','timeTotal','playIcon','timeNow'])els[k]=element();
  const ctx={state:'running',currentTime:0,resume(){return Promise.resolve()},decodeAudioData(){return Promise.resolve({length:4096,numberOfChannels:2,duration:60})},createGain(){return{connect(){}}},createAnalyser(){return{connect(){}}},createBufferSource(){return{playbackRate:{value:1},connect(){},stop(){},disconnect(){},start(_,off){plays.push({url:A.backend.url,off})}}}};
- const A={services:new Services.Services(),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(){},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
+ const A={services:new Services.Services(),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(t){rebuilt.push(t)},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
  const Runtime={...R,AudioSession:class extends R.AudioSession{constructor(){super(time);sessions.push(this)}}};
  const window={JubeatApp:A,JubeatServices:{...Services,audioHeader:()=>({duration:60,sampleRate:48000,channels:2})},JubeatRuntime:Runtime,addEventListener(){}};
  vm.runInNewContext(source,{window,URL,Blob,URLSearchParams,location:{search:''},performance,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{fetches++;return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}})}});
- return{A,audio,ctx,time,plays,sessions,toasts,services:window.JubeatServices,fetches:()=>fetches};
+ return{A,audio,ctx,time,plays,sessions,toasts,rebuilt,services:window.JubeatServices,fetches:()=>fetches};
 }
 test('decode queue serializes work, survives errors, and retains only completion',async()=>{
  const session=new R.AudioSession();let unblock;const events=[];
@@ -195,4 +195,67 @@ test('late media failures from cancelled play requests cannot show stale errors'
   rejectPlay(new Error('old source failed'));await turn();
   assert.equal(h.toasts.length,cancelled?0:1);assert.equal(h.A.state.playing,false);
  }
+});
+test('density-bar scrub during rate handoff preserves target position, clock continuity, and playback resume',async()=>{
+ const h=player();h.A.bindLoadEvents();
+ h.audio.load=function(){this.readyState=0;this.currentTime=0;};
+ Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf:{duration:60},anchorPos:2.25});
+ h.A.state.baseOffset=7;h.A.els.offset.value='125';h.A.state.playing=true;
+ h.A.els.rate.value='0.75';h.A.applyPlaybackRate();
+ assert.equal(h.A.playbackActive(),true);assert.equal(h.A.state.playing,false);
+ const resumeAfterScrub=h.A.playbackActive();
+ if(resumeAfterScrub)h.A.pause();
+ h.A.state.scrubbing=true;h.A.state.scrubSec=4;
+ assert.equal(h.A.currentMediaTime(),4);
+ h.A.state.scrubbing=false;h.A.state.scrubSec=-1;
+ h.A.seekTo(4);if(resumeAfterScrub)h.A.resumeAfterSeek();
+ assert.equal(h.A.audioNow(),10.875);
+ assert.equal(h.A.rawMediaTime(),4);
+ assert.equal(h.A.currentMediaTime(),4);
+ assert.equal(h.A.renderMediaTime(),4);
+ assert.equal(h.rebuilt.at(-1),4);
+ assert.equal(h.A.playbackActive(),true);
+ h.audio.readyState=1;h.audio.duration=60;h.audio.seeking=true;h.audio.emit('loadedmetadata');
+ assert.equal(h.audio.currentTime,10.875);assert.equal(h.A.state.playing,false);
+ h.audio.seeking=false;h.audio.readyState=2;h.audio.emit('seeked');await turn();await turn();
+ assert.equal(h.A.state.playing,true);assert.equal(h.audio.paused,false);
+ assert.equal(h.audio.playbackRate,0.75);assert.equal(h.A.currentMediaTime(),4);
+});
+test('repeated density-bar scrubs while element seek or play is pending never leak playback mid-scrub or lose resume',async()=>{
+ const h=player();h.A.bindLoadEvents();
+ Object.assign(h.A.backend,{mode:'element',url:'song.ogg',rate:1.5});
+ h.audio.dataset.src='song.ogg';h.audio.readyState=4;h.audio.duration=60;h.A.els.rate.value='1.5';
+ await h.A.play();assert.equal(h.A.state.playing,true);
+ // First scrub releases at 10s while browser seek is still in flight.
+ const resume1=h.A.playbackActive();assert.equal(resume1,true);
+ h.A.pause();h.audio.seeking=true;h.A.seekTo(10);if(resume1)h.A.resumeAfterSeek();
+ assert.equal(h.A.state.playing,false);assert.equal(h.A.playbackActive(),true);
+ // Second scrub starts before the first seek finishes.
+ const resume2=h.A.playbackActive();assert.equal(resume2,true);
+ if(resume2)h.A.pause();
+ h.A.state.scrubbing=true;h.A.state.scrubSec=25;
+ // Late completion of the first seek must not start audio during the second scrub.
+ h.audio.seeking=false;h.audio.emit('seeked');h.audio.emit('canplay');await turn();await turn();
+ assert.equal(h.audio.paused,true);assert.equal(h.A.state.playing,false);
+ // Releasing the second scrub resumes cleanly at 25s.
+ h.A.state.scrubbing=false;h.A.state.scrubSec=-1;
+ h.audio.seeking=true;h.A.seekTo(25);if(resume2)h.A.resumeAfterSeek();
+ h.audio.seeking=false;h.audio.readyState=2;h.audio.emit('seeked');await turn();await turn();
+ assert.equal(h.audio.currentTime,25);assert.equal(h.audio.paused,false);assert.equal(h.A.state.playing,true);
+});
+test('iOS 15 CAF nativeFallback and metadata-preload seeks resume at HAVE_CURRENT_DATA without extrapolating while paused',async()=>{
+ const h=player({nativeFallback:true});h.A.bindLoadEvents();
+ h.A.els.rate.value='0.75';
+ await h.A.prepareBuffer('song.caf');
+ assert.equal(h.fetches(),0);assert.equal(h.A.backend.mode,'element');assert.equal(h.audio.preload,'metadata');
+ h.audio.readyState=1;h.audio.duration=60;h.audio.emit('loadedmetadata');h.time.run();
+ assert.equal(h.A.audioLoad.pending,false);assert.equal(h.A.els.btnPlay.disabled,false);
+ await h.A.play();assert.equal(h.A.state.playing,true);assert.equal(h.audio.playbackRate,0.75);
+ const resume=h.A.playbackActive();assert.equal(resume,true);
+ h.A.pause();h.audio.seeking=true;h.A.seekTo(18);if(resume)h.A.resumeAfterSeek();
+ // Frame boundary adjustment while paused/seeking must not arm extrapolation.
+ h.audio.currentTime=18.02;assert.equal(h.A.audioNow(),18.02);
+ h.audio.seeking=false;h.audio.readyState=2;h.audio.emit('seeked');await turn();await turn();
+ assert.equal(h.A.state.playing,true);assert.equal(h.audio.paused,false);
+ assert.equal(h.A.audioNow(),18.02);
 });

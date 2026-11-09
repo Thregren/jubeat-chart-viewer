@@ -240,9 +240,9 @@
     lastPaintedForced = A.forcedMediaTime == null ? NaN : A.forcedMediaTime;
 
     // A–B 段落循环：播放头一越过 B 就跳回 A（优先于整首循环和收尾）
-    if (state.playing && abLoop.b != null && mediaT >= abLoop.b) {
+    if (state.playing && !state.scrubbing && abLoop.b != null && mediaT >= abLoop.b) {
       seekTo(abLoop.a);
-    } else if (state.playing && (els.audio.ended || mediaT >= (state.duration || 0))) {
+    } else if (state.playing && !state.scrubbing && (els.audio.ended || mediaT >= (state.duration || 0))) {
       // 截掉尾部空白之后，音频不会自然 ended，所以在这里按谱面长度收尾
       if (els.autoLoop.checked && state.song) {
         seekTo(0);

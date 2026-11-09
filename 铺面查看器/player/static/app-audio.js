@@ -277,7 +277,7 @@
   }
 
   function sfxTick() {
-    if (!state.playing || !state.notes.length || !els.metroSound.value) return;
+    if (!state.playing || state.scrubbing || !state.notes.length || !els.metroSound.value) return;
     if (metroGain(1) <= 0) return;
     // Never queue against a frozen clock while native music keeps advancing.
     if (!audioCtx || audioCtx.state !== "running") return;
@@ -287,14 +287,14 @@
     // 「现在」估得越准，排出来的打点音就越贴拍子（用原始时间会整体晚 10~30ms）
     const now = A.currentMediaTime();
     const rate = Number(els.rate.value) || 1;
-    const horizon = now + sfxSched.horizon;
+    const horizon = now + sfxSched.horizon * rate;
     // 同押（同一时刻一起按的一批 note）只发一发：
     // 以前是按 note 发，4 押就叠 4 下，音量直接顶穿。判定阈值和 core.numberNotes()
     // 分「同一批」用的 1e-4 秒保持一致 —— 数字 / 光晕算作一批的，打点音也只响一下。
     let lastT = -Infinity;
     while (sfxSched.idx < state.notes.length && state.notes[sfxSched.idx].t <= horizon) {
       const note = state.notes[sfxSched.idx++];
-      if (note.t < now - 0.04) continue;                 // 已经过去的就别补了
+      if (note.t < now - 0.04 * rate) continue;          // 已经过去的就别补了
       if (note.t - lastT < 1e-4) continue;               // 和上一发是同一批（同押）
       lastT = note.t;
       playHitSound(note, audioCtx.currentTime + (note.t - now) / rate, bus);

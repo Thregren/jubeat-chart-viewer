@@ -146,7 +146,7 @@ try {
     const wall = (current.at - previous.at) / 1000;
     const expectedMax = wall * Math.max(previous.playbackRate, current.playbackRate) + 0.18;
     for (const [label, key] of [
-      ["audio element", "currentTime"],
+      ...(!previous.paused && !current.paused ? [["audio element", "currentTime"]] : []),
       ["raw media", "rawMedia"],
       ["chart media", "currentMedia"],
       ["render media", "renderMedia"],
@@ -161,6 +161,77 @@ try {
   }
   if (clockFailures.length) {
     throw new Error(`media clocks lost continuity: ${JSON.stringify(clockFailures.slice(0, 4))}`);
+  }
+
+  // Verify density-bar scrubbing under variable-speed playback (including rapid
+  // back-to-back scrubs while the previous media seek/resume is still settling).
+  await page.selectOption("#rate", "0.75");
+  const scrubCheck = await page.evaluate(async () => {
+    const audio = document.querySelector("#audio");
+    const canvas = document.querySelector("#densityCanvas");
+    const player = window.__player;
+    const rect = canvas.getBoundingClientRect();
+    let playedDuringScrub = false;
+    const onPlaying = () => {
+      if (player.state.scrubbing) playedDuringScrub = true;
+    };
+    audio.addEventListener("playing", onPlaying);
+    const dispatch = (type, ratio, pointerId = 1) => {
+      const clientX = rect.left + Math.max(8, Math.min(rect.width - 8, rect.width * ratio));
+      const clientY = rect.top + rect.height * 0.5;
+      canvas.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: type === "pointerup" ? 0 : 1,
+        pointerId,
+        clientX,
+        clientY,
+      }));
+    };
+    try {
+      dispatch("pointerdown", 0.25, 11);
+      dispatch("pointermove", 0.35, 11);
+      dispatch("pointerup", 0.35, 11);
+      // Immediately start a second scrub before the first async seek/resume settles.
+      dispatch("pointerdown", 0.40, 12);
+      await new Promise(resolve => setTimeout(resolve, 60));
+      const midScrubPaused = audio.paused && !player.state.playing && player.state.scrubbing;
+      dispatch("pointermove", 0.55, 12);
+      dispatch("pointerup", 0.55, 12);
+      const targetMedia = player.currentMediaTime();
+      const deadline = performance.now() + 8000;
+      while (performance.now() < deadline) {
+        if (player.state.playing && !audio.paused && !audio.seeking) break;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      const resumedMedia = player.renderMediaTime();
+      await new Promise(resolve => setTimeout(resolve, 350));
+      const advancedMedia = player.renderMediaTime();
+      return {
+        playedDuringScrub,
+        midScrubPaused,
+        playing: player.state.playing,
+        paused: audio.paused,
+        rate: audio.playbackRate,
+        targetMedia,
+        resumedMedia,
+        advancedMedia,
+        loads: window.__audioRateProbe.loads(),
+      };
+    } finally {
+      audio.removeEventListener("playing", onPlaying);
+    }
+  });
+  if (scrubCheck.playedDuringScrub || !scrubCheck.midScrubPaused) {
+    throw new Error(`audio leaked during density scrub: ${JSON.stringify(scrubCheck)}`);
+  }
+  if (!scrubCheck.playing || scrubCheck.paused || scrubCheck.rate !== 0.75 || scrubCheck.loads !== 1) {
+    throw new Error(`variable-speed scrub failed to resume cleanly: ${JSON.stringify(scrubCheck)}`);
+  }
+  if (Math.abs(scrubCheck.resumedMedia - scrubCheck.targetMedia) > 0.35
+      || scrubCheck.advancedMedia <= scrubCheck.resumedMedia + 0.08) {
+    throw new Error(`variable-speed scrub desynchronized chart clock: ${JSON.stringify(scrubCheck)}`);
   }
 
   const summary = result.events

@@ -882,7 +882,7 @@
     if (!ctx || !state.padRects || state.padRects.length < 16) return;
     const notes = state.notes;
     if (!notes.length) return;
-    const animationRate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
+    const animationRate = (window.JubeatRuntime?.markerRate?.(Number(els.rate?.value), !!els.markerNormalSpeed?.checked) || 1);
     const holdPre = HOLD_PRE * animationRate;
     const holdPost = HOLD_POST * animationRate;
     const maxHold = (state._parsed && state._parsed.maxHold) || 0;
@@ -1499,10 +1499,12 @@
     const maPer = timing.maFrameMs;
     const hPer = timing.burstMs ? timing.burstMs / hFrames : timing.hFrameMs;
     // Delta is in chart seconds; dividing by rate gives normal real-time animation.
-    const animationRate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
+    const animationRate = (window.JubeatRuntime?.markerRate?.(Number(els.rate?.value), !!els.markerNormalSpeed?.checked) || 1);
     const earlySec = (early * animationRate) / 1000;
     const lateSec = (Math.min(late, hFrames * hPer) * animationRate) / 1000;
-    const holdBack = (state._parsed && state._parsed.maxHold) || 0;
+    // v0.6.56: 动画窗口按倍速放大时，长押尾判的回溯窗口也必须一起放大，
+    // 否则 2× 下正在收尾的长押会被查询窗口裁掉（marker 凭空消失）。
+    const holdBack = ((state._parsed && state._parsed.maxHold) || 0) * animationRate;
     const counts = new Map();
     // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
     // 数字是压在按键动画之上的覆盖层。挤在同一趟循环里先画的话，后面那些 marker
@@ -1528,7 +1530,11 @@
 
       if (u < early || u >= late) continue;
       const count = counts.get(n.index) || 0;
-      if (count >= 6) continue;
+      // v0.6.56: 同屏上限原本按 1× 的窗口宽度定死为 6。开「Marker 原速」后
+      // 2× 会把窗口拉到 2 倍宽，密集谱面里超出的 marker 会被静默丢弃，
+      // 看起来就是「marker 没跟音乐对上」。上限随窗口等比放大。
+      const maxPerPad = Math.ceil(6 * Math.max(1, animationRate));
+      if (count >= maxPerPad) continue;
 
       let channel;
       let frame;
@@ -1567,7 +1573,7 @@
       firstCueBatch = window.JubeatFirstMarker.firstBatch(state.notes);
     }
     if (!firstCueBatch.length) return;
-    const rate = window.JubeatRuntime.markerRate(Number(els.rate.value), !!els.markerNormalSpeed?.checked);
+    const rate = (window.JubeatRuntime?.markerRate?.(Number(els.rate?.value), !!els.markerNormalSpeed?.checked) || 1);
     const early = window.JubeatRuntime.markerTiming(markerCfg.design, markerCfg).earlyMs;
     const lead = markerCfg.design ? Math.max(0, -early * rate / 1000) : 0.5167 * rate;
     // 音符已在当前渲染帧进入 MA 时，不让预告覆盖它（含被夹到 0 的早首音）。

@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import fs from "node:fs";
 
 const base = process.env.JUBEAT_PREVIEW_URL || "http://127.0.0.1:18767/";
 const song = process.env.JUBEAT_AUDIO_SONG || (
@@ -6,8 +7,10 @@ const song = process.env.JUBEAT_AUDIO_SONG || (
     ? "jubeat-festo/首次收录/arcade_90000093"
     : "v0/song000"
 );
+const edgePath = "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
+const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const edge = process.env.BROWSER_EXECUTABLE
-  || "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
+  || (fs.existsSync(edgePath) ? edgePath : chromePath);
 const rates = ["1.25", "0.5", "2", "0.75", "1", "0.25", "1.5", "1"];
 
 const browser = await chromium.launch({
@@ -206,7 +209,16 @@ try {
         await new Promise(resolve => setTimeout(resolve, 25));
       }
       const resumedMedia = player.renderMediaTime();
-      await new Promise(resolve => setTimeout(resolve, 350));
+      // v0.6.56: 真正要验的是「marker 用的画面时间」与「音乐播放头」是否同拍。
+      // 旧断言只比较两个都来自 audioNow() 的内部时钟，画面整体漂移也照样通过。
+      const off = (Number(window.JubeatApp.els.offset.value) || 0) / 1000;
+      const base = window.JubeatApp.state.baseOffset || 0;
+      const bias = () => player.renderMediaTime() - (audio.currentTime + off - base);
+      const biases = [];
+      for (let sample = 0; sample < 10; sample += 1) {
+        biases.push(bias());
+        await new Promise(resolve => setTimeout(resolve, 30));
+      }
       const advancedMedia = player.renderMediaTime();
       return {
         playedDuringScrub,
@@ -217,6 +229,7 @@ try {
         targetMedia,
         resumedMedia,
         advancedMedia,
+        biases,
         loads: window.__audioRateProbe.loads(),
       };
     } finally {
@@ -232,6 +245,16 @@ try {
   if (Math.abs(scrubCheck.resumedMedia - scrubCheck.targetMedia) > 0.35
       || scrubCheck.advancedMedia <= scrubCheck.resumedMedia + 0.08) {
     throw new Error(`variable-speed scrub desynchronized chart clock: ${JSON.stringify(scrubCheck)}`);
+  }
+  // Marker 判定帧与音乐播放头的相位差：绝对值要小，更关键的是**不能随播放漂移**。
+  // 官方 marker 一帧约 33.3ms 真实时间；旧版单调 floor 会在拖动后留下持续漂移。
+  const biases = scrubCheck.biases;
+  const maxAbsBias = Math.max(...biases.map(value => Math.abs(value)));
+  const biasDrift = Math.max(...biases) - Math.min(...biases);
+  if (maxAbsBias > 0.08 || biasDrift > 0.033) {
+    throw new Error(`variable-speed scrub left markers out of sync with music: ${JSON.stringify({
+      maxAbsBias, biasDrift, biases,
+    })}`);
   }
 
   const summary = result.events

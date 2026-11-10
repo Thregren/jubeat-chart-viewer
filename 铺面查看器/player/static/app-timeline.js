@@ -11,7 +11,6 @@
   const recording=!!window.__recActive;
   let activeBefore=null, size={w:0,h:0,dirty:true}, ariaAt=null;
   let background=null, backgroundKey="";
-  const stats={full:0,patch:0,reuse:0};
   button.hidden=recording;
   (button.closest('label') || button).hidden=recording;
   button.disabled=recording;
@@ -144,7 +143,7 @@
     view=timelineModel.frameFast
       ? timelineModel.frameFast(sec,w,spanValue,divisionValue)
       : timelineModel.frame(sec,w,spanValue,divisionValue);
-    drawScene(ctx,view,w,h,dpr,flattened);stats.full++;
+    drawScene(ctx,view,w,h,dpr,flattened);
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.strokeStyle="#ff7c88";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(view.playhead,0);ctx.lineTo(view.playhead,h);ctx.stroke();ctx.lineWidth=1;
     const ariaKey=Math.floor(sec*10)+':'+state.duration;
@@ -177,8 +176,8 @@
   });
   const xOf=e=>{const rect=canvas.getBoundingClientRect();return (e.clientX-rect.left)*(size.w||canvas.clientWidth)/rect.width;};
   const clamp=t=>Math.max(0,Math.min(t,state.duration||0));
-  function position(e,click=false) {
-    const x=xOf(e),beat=click ? drag.view.left+x/drag.view.scale : drag.beat-(x-drag.x)/drag.view.scale;
+  function position(e,click=false,x=xOf(e)) {
+    const beat=click ? drag.view.left+x/drag.view.scale : drag.beat-(x-drag.x)/drag.view.scale;
     return clamp(drag.model.beatToSec(beat));
   }
   canvas.addEventListener("pointerdown",e=>{
@@ -194,8 +193,9 @@
   canvas.addEventListener("pointermove",e=>{
     if(!drag || e.pointerId!==drag.id)return;
     if(drag.notes!==state.notes){finish(null,true);return;}
-    drag.moved ||= Math.abs(xOf(e)-drag.x)>3;
-    state.scrubSec=position(e);repaint();
+    const x=xOf(e);
+    drag.moved ||= Math.abs(x-drag.x)>3;
+    state.scrubSec=position(e,false,x);repaint();
   });
   function finish(e,cancel=false) {
     if(!drag || (e && e.pointerId!==drag.id))return;
@@ -227,6 +227,6 @@
   observer?.observe(slot);
   window.addEventListener("resize",resized);
   A.services.register('timeline', {dispose(){observer?.disconnect();window.removeEventListener('resize',resized);}});
-  Object.assign(A,{drawTimeline,timelineStats:()=>({...stats})});
+  Object.assign(A,{drawTimeline});
   setShown(false);
 })();

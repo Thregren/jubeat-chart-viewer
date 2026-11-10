@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 
 REPO = Path(__file__).resolve().parent.parent
@@ -24,9 +25,17 @@ def read(path):
 
 def write(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp=path.with_name(path.name+'.tmp')
-    tmp.write_text(json.dumps(value,ensure_ascii=False,separators=(',',':'))+'\n',encoding='utf-8')
-    tmp.replace(path)
+    # mkstemp 给每个写者（convert() 里 ThreadPoolExecutor 并发调用）保留唯一
+    # 临时名，避免固定 .tmp 互相截断；flush+fsync 保证落盘后再原子替换。
+    fd, temporary = tempfile.mkstemp(prefix=path.name+'.tmp-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            stream.write(json.dumps(value,ensure_ascii=False,separators=(',',':'))+'\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 def probe(path):
     p=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_name,sample_rate,channels:format=duration','-of','json',str(path)],capture_output=True,check=True)

@@ -19,10 +19,19 @@ function frontendRoot() {
 function stageFrontend(dir) {
   const src=frontendRoot(); fs.mkdirSync(path.join(dir,'static'),{recursive:true});
   const sourceStatic=fs.existsSync(path.join(src,'static'))?path.join(src,'static'):src;
-  fs.copyFileSync(path.join(src,'index.html'),path.join(dir,'index.html'));
+  // 前端文件（含 6.8MB 的 background-stories-data.js）没变就别每次启动都复制：
+  // size + mtimeMs 一致且目标存在时跳过。
+  const copyIfChanged=(from,to)=>{
+    const fromStat=fs.statSync(from);
+    let toStat=null;
+    try{toStat=fs.statSync(to);}catch{}   // 目标还不存在 → 复制
+    if(toStat&&toStat.size===fromStat.size&&toStat.mtimeMs===fromStat.mtimeMs)return;
+    fs.copyFileSync(from,to);
+  };
+  copyIfChanged(path.join(src,'index.html'),path.join(dir,'index.html'));
   for(const name of fs.readdirSync(sourceStatic)){
     if(name==='index.html'||name.startsWith('.')||!fs.statSync(path.join(sourceStatic,name)).isFile())continue;
-    fs.copyFileSync(path.join(sourceStatic,name),path.join(dir,'static',name));
+    copyIfChanged(path.join(sourceStatic,name),path.join(dir,'static',name));
   }
 }
 async function importLibrary(file) {

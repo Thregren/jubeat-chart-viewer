@@ -34,7 +34,9 @@ def inspect(base):
         check('protected '+relative,request(relative,'HEAD')[0]==404)
     status,stats,body=request('api/visitors')
     statistics=json.loads(body)
-    check('aggregate statistics only',status==200 and set(statistics)=={'visitors','today_visitors','views','chart_loads','today_chart_loads','popular_songs'})
+    # chart_loads / today_chart_loads were removed from the public aggregate;
+    # the viewer already treats their absence as "unavailable" (app-visitors.js).
+    check('aggregate statistics only',status==200 and set(statistics)=={'visitors','today_visitors','views','popular_songs'})
     check('bounded popular ranking',isinstance(statistics.get('popular_songs'),list) and len(statistics['popular_songs'])<=30)
     check('statistics not cached','no-store' in stats.get('cache-control',''))
     return dict(ok=not failures,failures=failures)

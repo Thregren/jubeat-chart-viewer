@@ -206,7 +206,7 @@
     // 时间轴（刻度 / 播放头 / A–B / 点击跳转）全都按同一张图的左右边界换算，
     // 否则播放头走到两端时会和柱子错开一截。
     const ox = density.graphX;
-    const graphW = density.graphW || (density.cols * pitch);
+    const graphW = density.graphW;
     const xOf = (sec) => ox + (sec / dur) * graphW;
 
     // 时间网格：每 30 秒一条淡竖线，够高才写刻度（矮条子上字会糊住方块）
@@ -323,16 +323,9 @@
     return ratio * dur;
   }
 
-  function updateComboDisplay() {
-    // 连击只画在面板上（半透明大字），这里只记录状态变化
-    if (state.comboShown !== state.combo) state.comboShown = state.combo;
-  }
-
   function resetCombo() {
     state.combo = 0;
     state.maxCombo = 0;
-    state.comboShown = -1;
-    updateComboDisplay();
   }
 
   function bumpCombo() {
@@ -433,7 +426,6 @@
     layoutDensity,
     drawDensity,
     densitySeekFromEvent,
-    updateComboDisplay,
     resetCombo,
     bumpCombo,
     bucketInfo,

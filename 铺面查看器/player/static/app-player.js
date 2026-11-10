@@ -31,6 +31,14 @@
   const backend = transport.backend;
   const FORCE_MEDIA = new URLSearchParams(location.search).get("media") === "1";
   const NATIVE_FALLBACK = !!A.mediaCompatibility?.nativeFallback;
+  // ?outms=NN（毫秒）手动标定输出延迟，只在 IIFE 顶层解析一次；?outms=0 关闭补偿。
+  // 无效值（非数字 / 越出 0~300）视为不覆盖，回退到 AudioContext 的实测延迟。
+  const OUT_MS_OVERRIDE = (() => {
+    const params = new URLSearchParams(location.search);
+    if (!params.has("outms")) return null;
+    const ms = Number(params.get("outms"));
+    return Number.isFinite(ms) && ms >= 0 && ms <= 300 ? ms / 1000 : null;
+  })();
 
   // 输出总线：音乐和打点音都接到这里 → 同一条输出、同一个延迟；
   // 顺带挂一个分析器，`?debug=1` 时能直接看到「到底有没有声音送到输出」。
@@ -605,11 +613,7 @@
    * ?outms=0 可关闭补偿做 A/B 对比。
    */
   function outputLatency() {
-    const params = new URLSearchParams(location.search);
-    const override = Number(params.get("outms"));
-    if (params.has("outms") && Number.isFinite(override) && override >= 0 && override <= 300) {
-      return override / 1000;
-    }
+    if (OUT_MS_OVERRIDE != null) return OUT_MS_OVERRIDE;
     if (!A.audioCtx) return 0;
     const l = Number(A.audioCtx.outputLatency) || Number(A.audioCtx.baseLatency) || 0;
     return Number.isFinite(l) && l > 0 ? Math.min(0.2, l) : 0;

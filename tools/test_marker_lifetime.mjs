@@ -2,7 +2,9 @@ import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:asser
 import {createRequire} from 'node:module';
 const runtime=createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
 let src=fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js',import.meta.url),'utf8');
-const a=src.indexOf('  function drawOrderNumber('),b=src.indexOf('  function drawPanelFrames()',a);
+// drawPanelFrames (the old empty stub) was removed. Slice from the reusable
+// drawMarkers containers instead so they stay in scope; indexOf -1 would truncate.
+const a=src.indexOf('  function drawOrderNumber('),b=src.indexOf('  const counts = new Map();',a);
 src=src.slice(0,a)+'  function drawOrderNumber(n,r,opacity){window.numbers.push({n,opacity});}\n'+src.slice(b);
 src=src.replace('frameForChannel(design, channel, frame, total);','window.testFrame(channel,frame);');
 let sampled=null,reads=0;const frames=Array.from({length:16},(_,i)=>({complete:true,naturalWidth:1,naturalHeight:1,alpha:i===15?6:255}));

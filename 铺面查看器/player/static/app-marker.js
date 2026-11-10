@@ -457,7 +457,7 @@
       const r = el.getBoundingClientRect();
       return { x: r.left - box.left, y: r.top - box.top, w: r.width, h: r.height };
     });
-    A.requestPaint();
+    A.requestPaint?.();
   }
 
   /**
@@ -491,7 +491,8 @@
     const availH = Math.max(120, stage.clientHeight - padV - bezelPad - 2);
     // 上限只是别让面板在超大屏上无限膨胀；窄屏（手机/平板竖屏）给得宽松些，
     // iPad 竖屏可用高有 700+，卡在 430 会白白浪费高度（面板是正方形的，宽也会一起长大）。
-    const size = Math.min(availW, availH, A.isNarrow() ? 720 : 560);
+    const isNarrow = typeof A.isNarrow === "function" ? A.isNarrow() : false;
+    const size = Math.min(availW, availH, isNarrow ? 720 : 560);
     els.panel.style.width = size + "px";
   }
 
@@ -1454,10 +1455,6 @@
     ctx.restore();
   }
 
-  // Retain the renderer hook for callers, but never paint the per-design FR
-  // background: some designs fill every idle pad with a permanent colored glow.
-  function drawPanelFrames() {}
-
   /**
    * 官方 marker 的逐帧渲染 —— 严格按 jubeat.dll 反汇编出来的规格
    * （见 marker/jubeat_official/README.md 与素材包里的 ANIMATION.md）：
@@ -1472,6 +1469,13 @@
    * 长押：按下（t）与松开（endT）各播一次同一套 H4 动画，都画在被按住的那一格；
    * 中间那段只有「会移动的箭头」陪着你（drawHoldArrows）。
    */
+  // 逐帧复用的三个容器：drawMarkers 每个渲染帧都跑一遍，别每帧新建 Map / 数组。
+  // 注意 numbers 里每颗 note 的 [note, rect, opacity] 三元组仍在循环内每帧新建，
+  // 复用同一个数组对象会把上一帧的 note / rect / opacity 串到这一帧。
+  const counts = new Map();
+  const numbers = [];
+  const frames = [];
+
   function drawMarkers(chartT) {
     if(A.mode?.ownsFrame&&A.mode.draw?.(chartT))return;
     if (!ctx) return;
@@ -1505,12 +1509,12 @@
     // v0.6.56: 动画窗口按倍速放大时，长押尾判的回溯窗口也必须一起放大，
     // 否则 2× 下正在收尾的长押会被查询窗口裁掉（marker 凭空消失）。
     const holdBack = ((state._parsed && state._parsed.maxHold) || 0) * animationRate;
-    const counts = new Map();
+    counts.clear();
+    numbers.length = 0;
+    frames.length = 0;
     // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
     // 数字是压在按键动画之上的覆盖层。挤在同一趟循环里先画的话，后面那些 marker
     // 会把先画的数字盖掉（同押的时候尤其明显）。
-    const numbers = [];
-    const frames = [];
 
     for (const n of markerNotesInWindow(chartT - lateSec, chartT - earlySec, holdBack)) {
       const rect = state.padRects[n.index];
@@ -1673,7 +1677,7 @@
   // 其实是「图片解码好了没」的判定），既没用又容易在下一次改动里被误用。
   Object.assign(A, {
     ctx,
-    markerPrimitives: {frameImage,frameUrl,ready,drawFrameImage,drawPanelFrames,drawComboOverlay,drawHoldArrow,holdCells,drawOrderNumber,drawHoldCountdowns,holdCountdownText,holdCountdownLayout,preloadUrls},
+    markerPrimitives: {frameImage,frameUrl,ready,drawFrameImage,drawComboOverlay,drawHoldArrow,holdCells,drawOrderNumber,drawHoldCountdowns,holdCountdownText,holdCountdownLayout,preloadUrls},
     loadMarkers,
     markerPreviewSources(design) {
       const sources = [];

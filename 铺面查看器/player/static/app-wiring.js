@@ -16,11 +16,11 @@
      fmtTime, toast,
      playMetro, sfxReset, setPlaying, selectMarker,
      layoutCanvas, refreshCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
-     updateComboDisplay, bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
+     bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
      setSidebarOpen, loadLibrary, renderList, loadChart, backend, bindLoadEvents, startBufferAt,
      sidebarJustOpened,
      keepAudioAlive, audioNow, currentMediaTime, seekTo, play, pause, togglePlay, restart,
-     resumeAfterSeek, settleAfterSeek, stop, requestPaint } = A;
+     resumeAfterSeek, settleAfterSeek, stop } = A;
 
   function pulseGlow() {
     // 有 marker 设计时面板不亮：白底会透过 marker 贴图的透明部分，把贴图冲淡
@@ -74,6 +74,16 @@
     if (chips[1]) chips[1].style.background = pair.alt;
   }
 
+  /**
+   * 从 localStorage 恢复 <select> 的值前先过白名单：直接 select.value = 脏值会把
+   * .value 变成 ""（没有匹配的 option），表现就是节拍音悄悄变成「关」、排序 / 断句
+   * 参数失效，而且用户很难再点回来。不匹配就什么都不做，保留 HTML 里的默认选中项。
+   */
+  function restoreSelectValue(select, value) {
+    const v = String(value);
+    if ([...select.options].some((o) => o.value === v)) select.value = v;
+  }
+
   function bindEvents() {
     window.JubeatSongLinks.install(A);
     window.JubeatBackgroundStories?.install(A);
@@ -108,9 +118,11 @@
     // 与其在每个控件的回调里挨个补 requestPaint()、漏一个就出现「改了没反应」，
     // 不如在捕获阶段统一听一遍：input/change 覆盖滑杆 / 下拉 / 复选框，
     // 键盘（方向键跳转、A 打点等）也顺便点一下，多画的这一帧是幂等的。
-    document.addEventListener("input", requestPaint, true);
-    document.addEventListener("change", requestPaint, true);
-    document.addEventListener("keydown", requestPaint, true);
+    // 反向引用更晚的层：A.requestPaint 是 app-render 挂载的，不能在这里落成加载那一刻的快照。
+    const requestRepaint = () => A.requestPaint?.();
+    document.addEventListener("input", requestRepaint, true);
+    document.addEventListener("change", requestRepaint, true);
+    document.addEventListener("keydown", requestRepaint, true);
     if (els.markerSelect) {
       els.markerSelect.addEventListener("change", () => selectMarker(els.markerSelect.value));
       els.metroSound.addEventListener("change", () => {
@@ -124,8 +136,6 @@
       });
       els.showCombo.addEventListener("change", () => {
         store(STORAGE.showCombo, els.showCombo.checked ? "1" : "0");
-        state.comboShown = -1;
-        updateComboDisplay();
       });
       els.firstMarker.addEventListener("change", () => {
         store(STORAGE.firstMarker, els.firstMarker.checked ? "1" : "0");
@@ -232,7 +242,7 @@
         holdFilter: store(STORAGE.holdFilter),
       };
       els.autoPreview.checked = !window.__recActive && saved.autoPreview === "1";
-      if (saved.metroSound != null) els.metroSound.value = saved.metroSound;
+      if (saved.metroSound != null) restoreSelectValue(els.metroSound, saved.metroSound);
       els.metroVolume.value = String(window.JubeatCore.soundEffectVolume(saved.metroVolume));
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
       // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
@@ -302,20 +312,19 @@
       numCfg.color = normalizeHexColor(saved.numColor);
       els.numColor.value = numCfg.color;
       setNumColorMode(saved.numColorMode);
-      if (saved.phraseMult != null) els.phraseMult.value = saved.phraseMult;
-      if (saved.phraseFloor != null) els.phraseFloor.value = saved.phraseFloor;
-      if (saved.phraseMax != null) els.phraseMax.value = saved.phraseMax;
+      if (saved.phraseMult != null) restoreSelectValue(els.phraseMult, saved.phraseMult);
+      if (saved.phraseFloor != null) restoreSelectValue(els.phraseFloor, saved.phraseFloor);
+      if (saved.phraseMax != null) restoreSelectValue(els.phraseMax, saved.phraseMax);
       if (saved.chordGlowPair != null && GLOW_PAIRS[Number(saved.chordGlowPair)]) {
-        els.chordGlowPair.value = saved.chordGlowPair;
+        restoreSelectValue(els.chordGlowPair, saved.chordGlowPair);
       }
       updateGlowChips();
       updateABButton();
-      if (saved.sort) els.sortSelect.value = saved.sort;
-      if (saved.holdFilter != null) els.holdFilter.value = saved.holdFilter;
+      if (saved.sort) restoreSelectValue(els.sortSelect, saved.sort);
+      if (saved.holdFilter != null) restoreSelectValue(els.holdFilter, saved.holdFilter);
       // 窄屏默认收起选项，给面板留空间
       const narrow = window.matchMedia("(max-width: 900px)").matches;
       setCollapsed(saved.collapsed != null ? saved.collapsed === "1" : narrow);
-      updateComboDisplay();
     }
 
     els.sortSelect.addEventListener("change", () => {
@@ -593,6 +602,10 @@
       const res = await fetch(A.resourcePath('static/release.json'), {cache:'no-store', signal:request.signal});
       if (!res.ok) return;
       const data = await window.JubeatRuntime.readJSON(res, {maxBytes:4096});
+      // 只认最新一次自检的结果：期间若又 start() 过、或请求被超时 / 服务销毁取消，
+      // 旧结果一律作废 —— 尤其别让它去写下面 sessionStorage 的重载去重键，
+      // 否则随后真正有效的那次会被误判为「刚重载过」而跳过。
+      if (!versionRequests.current(request)) return;
       const m = typeof data.version === 'string' && /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(data.version) ? [null,data.version] : null;
       if (!m || m[1] === frontVersion()) return;
       if (document.querySelector('meta[name="jubeat-share-song"]')) {

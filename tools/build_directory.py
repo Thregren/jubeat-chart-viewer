@@ -22,6 +22,11 @@ def copy_or_link(source, dest):
     if dest.exists():
         if os.path.samefile(source, dest):
             return
+        # 先用轻量 stat 快路径：size + mtime 完全一致就直接跳过，避免把
+        # 几十 MB 音频读成两份内存做比较（data/、songs/ 下每个文件都会走到这里）。
+        src_stat, dst_stat = os.stat(source), os.stat(dest)
+        if (src_stat.st_size, src_stat.st_mtime_ns) == (dst_stat.st_size, dst_stat.st_mtime_ns):
+            return
         if source.read_bytes() == dest.read_bytes():
             return
         # 仅替换构建产物路径，不改动源库或其他硬链接。

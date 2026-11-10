@@ -188,7 +188,10 @@ def write_atomic(path: Path, data: bytes) -> None:
 # Range 值的形状：恰好一个短横线，两侧要么是纯数字要么是空。
 # 三份实现（这里 / electron/site-server.js / deploy/php）共用同一套语义，
 # 一致性由 tools/test_range.py 用同一张用例表守着。
-_RANGE_SPEC = re.compile(r"(\d*)-(\d*)")
+# 必须用 [0-9] 而非 \d：Python 的 \d 默认匹配 Unicode 十进制数字（阿拉伯-印度、
+# 全角等），而 Node 的 /^\d+$/ 与 PHP 非 u 模式的 PCRE 只认 ASCII；用 \d 会让
+# 同一请求在开发服务器走 206、在线上走 200。
+_RANGE_SPEC = re.compile(r"([0-9]*)-([0-9]*)")
 
 
 def parse_range(header: str, size: int) -> tuple[int, int] | None:

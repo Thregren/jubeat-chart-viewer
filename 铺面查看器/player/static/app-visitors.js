@@ -6,6 +6,9 @@
   const value=document.getElementById('chartLoadValue'),today=document.getElementById('todayChartLoadValue');
   let currentSong=null,currentChart=null;
   const sentOnce=new Set();
+  // 播放里程碑已推进到的档位（0=未开始 … 4=complete）：只在跨过阈值时调用 event()，
+  // 避免每帧都构造 event() 的 data / key 字符串；换歌换谱时随 sentOnce 一起清零。
+  let playStage=0;
   const bucket=ms=>{
     const value=Number(ms);
     if(!Number.isFinite(value)||value<0)return undefined;
@@ -50,17 +53,19 @@
   A.visitors=Object.freeze({
     song(song,chart){
       if(typeof song!=='string'||typeof chart!=='string')return false;
-      currentSong=song;currentChart=chart;sentOnce.clear();
+      currentSong=song;currentChart=chart;sentOnce.clear();playStage=0;
       return queue.push('song\0'+song+'\0'+chart,{event:'song',song,chart});
     },
     event(type,detail={}){return event(type,detail,true);},
     playback(seconds,duration,playing){
       if(!playing||!currentSong||!Number.isFinite(seconds)||!Number.isFinite(duration)||duration<=0)return;
       const ratio=seconds/duration;
-      event('play_start',{},true);
-      if(ratio>=0.25)event('play_25',{},true);
-      if(ratio>=0.75)event('play_75',{},true);
-      if(ratio>=0.995)event('play_complete',{},true);
+      // 只有首次跨过各阈值才调用 event()（event() 内仍按原 key 去重），
+      // 否则每帧都会为 play_start 及已达成的里程碑白构造 data / key 字符串。
+      if(playStage<1){playStage=1;event('play_start',{},true);}
+      if(playStage<2&&ratio>=0.25){playStage=2;event('play_25',{},true);}
+      if(playStage<3&&ratio>=0.75){playStage=3;event('play_75',{},true);}
+      if(playStage<4&&ratio>=0.995){playStage=4;event('play_complete',{},true);}
     },
   });
   queue.push('page',{event:'page'});

@@ -161,10 +161,7 @@
     },
     combo: 0,
     maxCombo: 0,
-    comboShown: 0,
-    lastFrameT: 0,
     chartCache: new Map(),
-    density: null, // {bucket, counts, max}
     scrubbing: false,
     scrubSec: -1,  // 拖动中的预览位置（拖动时不动 <audio>，松手才真正 seek）
     // —— marker / timing ——

@@ -89,6 +89,10 @@ RANGE_CASES: list[tuple[int, str, tuple[int, int] | None]] = [
     (1000, "1-2-3", None),
     (1000, "bytes=0 - 99", None),
     (1000, "bytes=0-99,", None),
+    # Unicode 十进制数字：Python 的 \d 默认会接受，Node/PHP 只认 ASCII [0-9]
+    (1000, "bytes=٠-٩", None),                      # 阿拉伯-印度数字
+    (1000, "bytes=０-９", None),                    # 全角数字
+    (1000, "bytes=0-٩", None),                      # ASCII 与 Unicode 混用
 ]
 
 

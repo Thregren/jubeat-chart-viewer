@@ -596,16 +596,15 @@
     state.hitUntil.fill(-1);
     state.armed.fill(false);
     if (ctx) ctx.clearRect(0, 0, A.canvasW, A.canvasH);
+    // 差值守卫：DOM 上的 class / padVisual 只在当前记录为 true 时才摘掉，
+    // 拖动时每帧都调 clearPads，绝大多数 pad 本就是干净的不必再碰 classList。
+    const pv = state.padVisual;
     for (let i = 0; i < state.padEls.length; i++) {
       const pad = state.padEls[i];
-      pad.classList.remove("hit", "armed");
-      if (state.padVisual) {
-        state.padVisual.hit[i] = false;
-        state.padVisual.armed[i] = false;
-      }
+      if (pv && pv.hit[i]) { pad.classList.remove("hit"); pv.hit[i] = false; }
+      if (pv && pv.armed[i]) { pad.classList.remove("armed"); pv.armed[i] = false; }
     }
-    els.panelGlow.classList.remove("on");
-    if (state.padVisual) state.padVisual.panelGlow = false;
+    if (pv && pv.panelGlow) { els.panelGlow.classList.remove("on"); pv.panelGlow = false; }
   }
 
   /** 切歌/切难度：先停播、进度归零、清掉上一首的状态，再去加载新谱面 */
@@ -642,7 +641,6 @@
     state._parsed = null;
     state.duration = 0;
     clearPads();
-    state.density = null;
     els.timeNow.textContent = fmtTime(0);
     els.timeTotal.textContent = fmtTime(0);
     els.statBpm.textContent = "—";
@@ -681,7 +679,6 @@
     // 总连击 = 到该时刻为止已经过的 note 数，而不是继续累加旧值。
     state.combo = r.passed;
     state.maxCombo = r.passed;
-    state.comboShown = -1;
   }
 
 

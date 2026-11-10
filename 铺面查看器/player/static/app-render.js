@@ -11,7 +11,7 @@
 
   // —— 更早那层提供的接口 ——
   const { Core, els, state, markerCfg, abLoop, fmtTime, drawMarkers, drawDensity,
-     updateComboDisplay, bumpCombo, rebuildVisualState, backend, masterPeak, audioNow,
+     bumpCombo, rebuildVisualState, backend, masterPeak, audioNow,
      renderMediaTime, seekTo, play, pause } = A;
 
   // —— frame render ——
@@ -137,7 +137,6 @@
     // marker 接近 / 判定动画 + 节拍指示
     drawMarkers(mediaT);
     if(!A.mode?.ownsFrame)A.drawFirstMarker(mediaT);
-    updateComboDisplay();
     if(A.mode?.ownsFrame&&A.mode.paintDensity)A.mode.paintDensity();
     else drawDensity(mediaT);
     A.drawTimeline?.(mediaT);
@@ -162,7 +161,7 @@
 
   function updateFrame(now) {
     state.raf = 0;
-    if(A.mode?.ownsFrame)return;
+    if (A.mode?.ownsFrame) { state.raf = requestAnimationFrame(updateFrame); return; }
     // 完全空闲（暂停、没在拖、没有外部指定帧时间、没开调试面板）且没有脏标记
     // → 这一帧不画，也不再排下一帧。
     if (!paintDirty && !state.playing && !state.scrubbing
@@ -197,7 +196,6 @@
     state.raf = requestAnimationFrame(updateFrame);
     const mediaT = renderMediaTime();   // 画面比音频位置提前一个输出延迟，和耳朵对齐
     A.visitors?.playback?.(mediaT,state.duration,state.playing&&!state.scrubbing);
-    state.lastFrameT = now;
 
     // ?debug=1：把时间轴的关键值写进 DOM，方便从外部核对（排查对拍问题用）
     if (DEBUG_TIMELINE) {
@@ -220,12 +218,15 @@
     }
 
     // 时间显示也用平滑后的时钟，避免显示值一顿一顿地跳；
+    // 先按 10 次/秒节流，再格式化（uiDue 不放行时连字符串都不构造），
     // 百分秒没变化时不要反复提交 textContent。
-    const timeText = fmtTime(mediaT + (state.baseOffset || 0)
-      - (Number(els.offset.value) || 0) / 1000);
-    if (A.services.renderer.uiDue(now, forceUi) && state.lastTimeText !== timeText) {
-      state.lastTimeText = timeText;
-      els.timeNow.textContent = timeText;
+    if (A.services.renderer.uiDue(now, forceUi)) {
+      const timeText = fmtTime(mediaT + (state.baseOffset || 0)
+        - (Number(els.offset.value) || 0) / 1000);
+      if (state.lastTimeText !== timeText) {
+        state.lastTimeText = timeText;
+        els.timeNow.textContent = timeText;
+      }
     }
 
     if (state.notes.length) {

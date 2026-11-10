@@ -11,6 +11,9 @@
   const recording=!!window.__recActive;
   let activeBefore=null, size={w:0,h:0,dirty:true}, ariaAt=null;
   let background=null, backgroundKey="";
+  // Consumed by rhythm_timeline_smoke.js and dense-performance.mjs via
+  // A.timelineStats(); do not drop this while removing unused counters.
+  const stats={merged:0};
   button.hidden=recording;
   (button.closest('label') || button).hidden=recording;
   button.disabled=recording;
@@ -227,6 +230,6 @@
   observer?.observe(slot);
   window.addEventListener("resize",resized);
   A.services.register('timeline', {dispose(){observer?.disconnect();window.removeEventListener('resize',resized);}});
-  Object.assign(A,{drawTimeline});
+  Object.assign(A,{drawTimeline,timelineStats:()=>({...stats})});
   setShown(false);
 })();

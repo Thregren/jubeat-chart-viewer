@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 const runtime=createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
 const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js',import.meta.url),'utf8');
 const manifest=JSON.parse(fs.readFileSync(new URL('../marker/jubeat_official/manifest.json',import.meta.url)));
-test('all marker designs keep idle pads free of static backgrounds, including cached FR textures',()=>{
+test('all marker designs keep idle pads free of static backgrounds',()=>{
  let draws=0;
  const ctx=new Proxy({drawImage(){draws++;}},{get:(target,key)=>key in target?target[key]:()=>{}});
  const A={services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},
@@ -17,7 +17,9 @@ test('all marker designs keep idle pads free of static backgrounds, including ca
  for(const design of manifest.designs){
   A.markerCfg.design=design;
   if(design.fr)A.markerCfg.images.set(`markers/${design.dir}/${design.prefix}_FR01.png`,{complete:true,naturalWidth:160,naturalHeight:160});
-  draws=0;A.drawMarkers(0);A.markerPrimitives.drawPanelFrames();
+  // drawPanelFrames was an empty stub and has been removed; drawMarkers alone
+  // must not paint any permanent pad background.
+  draws=0;A.drawMarkers(0);
   assert.equal(draws,0,`${design.id} painted a permanent panel background`);
   if(design.num===25)assert.match(A.markerPreviewSources(design)[0],/TM0025_H408\.png$/);
  }

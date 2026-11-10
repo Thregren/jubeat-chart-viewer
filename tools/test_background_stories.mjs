@@ -88,6 +88,7 @@ function installHarness(t, {fetchImpl, song = null, withDocument = false} = {}) 
     state: {song},
     els: {btnBackgroundStory: button},
     visitors: {event() {}},
+    resourcePath: path => path,  // real app-base.js resolves deployment prefixes
   };
   const Stories = freshStories();
 
@@ -227,7 +228,7 @@ serialTest("button visibility follows the song and recording mode", t => {
   globalThis.__recActive = false;
 });
 
-serialTest("valid external catalog replaces the built-in catalog and updates lookup", async t => {
+serialTest("valid external catalog merges into the built-in catalog and updates lookup", async t => {
   const catalog = externalCatalog();
   const calls = [];
   const fetchImpl = async (url, options) => {
@@ -245,8 +246,13 @@ serialTest("valid external catalog replaces the built-in catalog and updates loo
   globalThis.fetch = fetchImpl;
   await Stories.loadExternalCatalog();
   assert.deepEqual(calls, [{url: "data/background-stories.json", options: {cache: "no-cache"}}]);
-  assert.equal(globalThis.JUBEAT_BACKGROUND_STORIES, catalog);
-  assert.equal(Stories.recordFor("arcade_11000068"), null);
+  // External catalogs are an optional delta: built-in 2430 records must survive,
+  // external records are merged in by id.
+  const merged = globalThis.JUBEAT_BACKGROUND_STORIES;
+  assert.equal(merged.schemaVersion, 2);
+  assert.equal(merged.records.arcade_99999999, catalog.records.arcade_99999999);
+  assert.ok(Object.keys(merged.records).length > 1);
+  assert.ok(Stories.recordFor("arcade_11000068"), "built-in lookup must survive the merge");
   assert.equal(Stories.recordFor("arcade_99999999").documents[0].title, "外部资料");
   assert.equal(Stories.recordFor(song).documents[0].sections[0].text, "来自离线曲库的外部故事。");
   assert.equal(button.hidden, false);

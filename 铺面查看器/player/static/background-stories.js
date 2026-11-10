@@ -12,6 +12,7 @@
   let activeSong=null;
   let restoreFocusOnClose=false;
   let catalogRequest=null;
+  let catalogFailed=false;
 
   function recordFor(song,catalog=root.JUBEAT_BACKGROUND_STORIES){
     catalog=catalog||root.JUBEAT_BACKGROUND_STORIES;
@@ -184,19 +185,36 @@
     return true;
   }
 
-  function loadExternalCatalog(){
-    if(catalogRequest||typeof root.fetch!=='function')return catalogRequest;
-    catalogRequest=root.fetch('data/background-stories.json',{cache:'no-cache'})
+  function loadExternalCatalog(force=false){
+    if(force){catalogRequest=null;catalogFailed=false;}
+    if(catalogRequest||catalogFailed||typeof root.fetch!=='function')return catalogRequest;
+    // 走 app-base.js 的 resourcePath：/share/ 等子路径部署时会补上资源前缀，
+    // 裸相对路径会从当前目录取，必然 404。辅助函数尚不可用时干脆不发这次必失败的请求。
+    const resolve=app?.resourcePath||root.JubeatApp?.resourcePath;
+    if(typeof resolve!=='function')return catalogRequest;
+    catalogRequest=root.fetch(resolve('data/background-stories.json'),{cache:'no-cache'})
       .then(response=>{
         if(!response.ok)throw new Error('background catalog unavailable');
         return response.json();
       })
       .then(catalog=>{
         if(!validCatalog(catalog))throw new Error('background catalog invalid');
-        root.JUBEAT_BACKGROUND_STORIES=catalog;
+        // 内置 2449 篇是权威数据：外部记录按 id 覆盖/补充，整体合并而非整体替换，
+        // 这样外部文件再小也不会把内置文档清空。
+        const builtin=root.JUBEAT_BACKGROUND_STORIES||{};
+        root.JUBEAT_BACKGROUND_STORIES=Object.freeze({
+          ...builtin,
+          records:{...(builtin.records||{}),...catalog.records},
+        });
         sync(activeSong);
       })
-      .catch(()=>{});
+      .catch(()=>{
+        // 失败复位，避免后续调用被一个已失败的 promise 永久短路；
+        // catalogFailed 做一次性退避（文件本就不存在，不必每次都重试），
+        // 导出的 loadExternalCatalog(true) 即为强制重试入口。
+        catalogRequest=null;
+        catalogFailed=true;
+      });
     return catalogRequest;
   }
 

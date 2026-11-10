@@ -85,6 +85,7 @@ run "构建失败与发布回滚" "$PY" tools/test_build.py
 
 # ── 3. Range / 路径穿越三实现一致性 ──────────────────────────
 run "Range + 路径穿越（python3 tools/test_range.py）" "$PY" tools/test_range.py
+run "缓存响应头一致性（python3 tools/test_cache_headers.py）" "$PY" tools/test_cache_headers.py
 
 # ── 4. Python 语法 ───────────────────────────────────────────
 # 字节码写到临时目录，别把 __pycache__ 弄进仓库

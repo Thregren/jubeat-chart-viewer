@@ -400,7 +400,7 @@ def main(extension=None) -> int:
     ap.add_argument("--limit", type=int, default=0, help="只构建前 N 首（调试）")
     ap.add_argument("--encode-jobs", type=int, default=2, help="同时转码音频数量，1 为省资源档")
     ap.add_argument("--jobs", type=int, default=min(8, (os.cpu_count() or 4)),
-                    help="并行度（默认 CPU 数，最多 8）")
+                    help="并行度（默认 CPU 数，范围 1–32）")
     ap.add_argument("--prune", action="store_true",
                     help="删掉输出目录里已不需要的文件（曲库删歌后同步用）")
     ap.add_argument("--retain-days", type=int, default=30, help="旧哈希资源保留天数（默认30；当前引用始终保留）")

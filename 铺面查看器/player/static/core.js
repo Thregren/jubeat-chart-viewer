@@ -132,7 +132,12 @@
         const gapBeats = lastT === null ? null : ((n.t - lastT) * bpmAt(lastT)) / 60;
         if (gapBeats !== null && recent.length) {
           const sorted = [...recent].sort((a, b) => a - b);
-          const med = sorted[sorted.length >> 1];
+          const mid = sorted.length >> 1;
+          // 偶数长度取中间两数的平均（PHRASE_LOOKBACK=8 恒为偶数，旧写法取的是
+          // 上中位数，和注释里的「中位数」对不上）；奇数长度就是正中间那个数。
+          const med = sorted.length % 2
+            ? sorted[mid]
+            : (sorted[mid - 1] + sorted[mid]) / 2;
           if (gapBeats >= Math.max(mult * med, floor)) {
             seq = 0;
             // 换气后这一句的节奏另算：不清空就会拿上一句的密集节奏当基准，
@@ -249,7 +254,6 @@
 
     const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
     const baseBpm = bpms.length ? bpms[0] : 0;
-    const multi = timeEvents.length > 1;
 
     return {
       notes,
@@ -258,7 +262,6 @@
       bpmAt: map.bpmAt,
       timeEvents,
       baseBpm,
-      multiBpm: multi,
       maxSec,
       maxHold,
       type1,
@@ -439,13 +442,14 @@
   }
 
   // 常用音效音量档位；兼容旧滑杆保存的任意百分比。
-  const SFX_VOLUME_LEVELS = [0, 25, 50, 60, 75, 100, 150, 200];
+  const DEFAULT_SFX_VOLUME = 60;
+  const SFX_VOLUME_LEVELS = [0, 25, 50, DEFAULT_SFX_VOLUME, 75, 100, 150, 200];
   function soundEffectVolume(value) {
-    if (value == null || String(value).trim() === "") return 60;
+    if (value == null || String(value).trim() === "") return DEFAULT_SFX_VOLUME;
     const n = Number(value);
-    if (!Number.isFinite(n)) return 60;
+    if (!Number.isFinite(n)) return DEFAULT_SFX_VOLUME;
     return SFX_VOLUME_LEVELS.reduce((best, level) =>
-      Math.abs(level - n) < Math.abs(best - n) ? level : best, 60);
+      Math.abs(level - n) < Math.abs(best - n) ? level : best, DEFAULT_SFX_VOLUME);
   }
 
   // 同押共享颜色，按拍间隔的换气和持续节奏变化分组。

@@ -93,7 +93,15 @@ def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool) -> dict:
             ok = False
             print("    JSON 解析失败:", exc)
     c.check("曲库索引可用", ok and len(songs) > 0, f"{status} {len(songs)} 首")
-    c.check("索引带 ETag", "ETag" in hdrs or expect_gzip is False, str(hdrs.get("ETag")))
+    # serve.py 静态直发模式不发 ETag（也不处理 If-None-Match），对 library.json 真正保证的
+    # 缓存契约是 Cache-Control: no-cache；开发服务器才发 ETag。两种模式分别严格断言，不能写恒真式。
+    if expect_gzip:
+        c.check("索引带 ETag（开发服务器）", "ETag" in hdrs,
+                f"{label}: ETag={hdrs.get('ETag')!r}")
+    else:
+        c.check("索引带 Cache-Control: no-cache（静态站点）",
+                hdrs.get("Cache-Control") == "no-cache",
+                f"{label}: Cache-Control={hdrs.get('Cache-Control')!r}")
     if expect_gzip:
         s2, h2, b2 = fetch(base + "/data/library.json", {"Accept-Encoding": "gzip"})
         c.check("索引支持 gzip", h2.get("Content-Encoding") == "gzip" and len(b2) < len(body),
@@ -209,8 +217,11 @@ def main() -> int:
         r = subprocess.run([sys.executable, str(REPO / "tools" / "build_site.py"),
                             "--legacy-mcz", "--out", str(site), "--limit", "5", "--force"],
                            capture_output=True, text=True, env=env)
-        if r.returncode not in (0, 2):
-            print(r.stdout[-2000:], r.stderr[-2000:])
+        # site_builder.py: return 0 if not stats.failed else 2 —— 退出码 2 代表有曲目构建失败，
+        # 绝不能当「降级成功」放行（test_pwa_assets.py / test_build_assets.py 对同一构建都要求 0）。
+        if r.returncode != 0:
+            print(f"构建失败：returncode={r.returncode}（2=有曲目构建失败）", file=sys.stderr)
+            print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
             return 1
 
     try:

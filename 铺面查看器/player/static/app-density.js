@@ -409,16 +409,6 @@
         : `循环 ${fmtTime(abLoop.a)} – ${fmtTime(abLoop.b)}　再按一下（快捷键 A）清除`;
   }
 
-  /**
-   * 手机端锁死页面缩放。
-   * viewport 里的 user-scalable=no 在 iOS Safari 上基本没用，所以再补几层：
-   *   - 拦掉 Safari 的 gesturestart / gesturechange / gestureend（双指缩放）
-   *   - 多指 touchmove 一律 preventDefault（其它浏览器的手势缩放）
-   *   - 双击缩放（dblclick）和桌面端 ctrl + 滚轮缩放也吞掉
-   * 单指手势完全不碰，所以曲库列表照常能滑。
-   */
-
-
   // —— 对外接口 ——
   Object.assign(A, {
     density,

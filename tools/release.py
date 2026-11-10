@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -36,6 +35,7 @@ DOCS = REPO / "docs"
 
 sys.path.insert(0, str(REPO / "铺面查看器" / "player"))
 from version import read_version  # noqa: E402
+from asset_hash import sha256_file  # noqa: E402
 
 PASS, FAIL, WARN = "\033[32m✓\033[0m", "\033[31m✗\033[0m", "\033[33m!\033[0m"
 
@@ -58,14 +58,6 @@ def artifact_path(tag_version: str, plat: str, ext: str, dist: Path) -> Path:
 
 def android_artifact_path(version: str) -> Path:
     return ANDROID_DIST / f"jubeat-viewer-{version}-android-min.apk"
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _asar_files(blob: bytes | None) -> dict | None:
@@ -223,7 +215,7 @@ def collect(version: str, dist: Path) -> tuple[list[tuple[Path, str, int]], list
         if bad:
             problems.append(f"{path.name}：{bad}")
             continue
-        rows.append((path, sha256_of(path), size))
+        rows.append((path, sha256_file(path), size))
 
     apk = android_artifact_path(version)
     if not apk.is_file():
@@ -233,7 +225,7 @@ def collect(version: str, dist: Path) -> tuple[list[tuple[Path, str, int]], list
         if bad:
             problems.append(f"{apk.name}：{bad}")
         else:
-            rows.append((apk, sha256_of(apk), apk.stat().st_size))
+            rows.append((apk, sha256_file(apk), apk.stat().st_size))
     return rows, problems
 
 

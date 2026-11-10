@@ -34,7 +34,20 @@
         }
       } finally {this.running=false;}
     }
-    dispose(){this.closed=true;this.items.length=0;}
+    dispose(){
+      this.closed=true;
+      const pending=this.items.splice(0);
+      if(typeof fetch!=='function')return;
+      // pagehide 触发 services.dispose()：队列里没发完的事件做一次尽力发送。
+      // 沿用 app-visitors.js:20 的端点 / payload；keepalive 让请求在卸载后仍可完成，
+      // 不 await、不重试，失败静默（卸载阶段无法上报错误）。
+      for(const item of pending){
+        try {
+          fetch('/api/visitors',{method:'POST',credentials:'same-origin',cache:'no-store',keepalive:true,
+            headers:{'Content-Type':'application/json'},body:JSON.stringify(item.event)}).catch(()=>{});
+        } catch (_) { /* 卸载阶段静默即可 */ }
+      }
+    }
   }
   return {EventQueue};
 });

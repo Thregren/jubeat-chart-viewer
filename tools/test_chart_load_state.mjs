@@ -19,7 +19,7 @@ function fixture(fetch,parseNotes=Core.parseNotes) {
     resetLoadMeter(){},stopBufferSource(){},requestPaint(){paints++;},urlState:()=>({}),seekWhenReady(){}};
   const chartRequests=new Runtime.RequestScope();
   const countedParseNotes=(...args)=>{parseCalls++;return parseNotes(...args);};
-  const context={A,els,state,Core,Runtime,chartRequests,fetch,performance,console:{error(){}},window:{},ctx:null,
+  const context={A,els,state,Core,Runtime,chartRequests,fetch,performance,TextDecoder,console:{error(){}},window:{},ctx:null,
     audioUrl:()=> 'song.ogg',chartPath:()=> 'chart.json',pickChart:Core.pickChart,parseNotes:countedParseNotes,
     chartCacheGet:key=>cache.get(key),chartCachePut:(key,value)=>cache.set(key,value),
     setPlaying(){},clearAB(){},resetCombo(){},toast(){},layoutCanvas(){},computeDuration:()=>10,fmtTime:String,
@@ -45,7 +45,9 @@ test('invalid derived chart timing never becomes the active or cached chart', as
 test('successful chart loading restores chart, parsed state and sharing together', async () => {
   const chart={meta:{},time:[{beat:[0,0,1],bpm:120}],note:[{beat:[1,0,1],index:0}]};
   const f=fixture(async()=>new Response(JSON.stringify(chart)));
-  await f.load();assert.deepEqual(f.state.chart,chart);assert.equal(f.state.notes.length,1);
+  // JSON.parse now runs inside the vm realm, so prototypes differ from the
+  // fixture's objects; compare the parsed data instead of realm identity.
+  await f.load();assert.equal(JSON.stringify(f.state.chart),JSON.stringify(chart));assert.equal(f.state.notes.length,1);
   assert(f.state._parsed);assert.equal(f.cache.size,1);assert.equal(f.els.btnShare.disabled,false);
 });
 

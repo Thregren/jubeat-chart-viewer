@@ -239,8 +239,10 @@ class IndexIntegrity(unittest.TestCase):
         self.assertNotEqual(lib.published_response()[2], first[2])
 
     def test_marker_errors_hide_paths(self):
+        # config.MARKERS_ROOT is lazy (PEP 562); patch its resolver instead of
+        # a module-level constant that no longer exists.
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(markers, "MARKERS_ROOT", Path(tmp)), \
+                patch.object(markers.config, "markers_root", lambda: Path(tmp)), \
                 patch.object(markers, "_cache", {}), contextlib.redirect_stderr(io.StringIO()):
             self.assertNotIn(tmp, json.dumps(markers.manifest()))
             (Path(tmp) / "manifest.json").write_text("{")

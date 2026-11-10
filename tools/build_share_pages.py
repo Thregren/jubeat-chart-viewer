@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 import tempfile
 from urllib.parse import quote, urlencode, urlsplit
+from package_site import safe_file as _checked_path
 
 
 def song_key(value):
@@ -20,15 +21,13 @@ def song_key(value):
 
 
 def safe_file(root, relative):
-    if not isinstance(relative, str) or not relative or '\\' in relative:
+    """复用 package_site 的路径校验；分享页对非法/缺失资源保持静默退化语义。"""
+    if not isinstance(relative, str):
         return None
-    rel = Path(relative)
-    if rel.is_absolute() or any(part in ('..', '.') for part in rel.parts):
+    try:
+        return _checked_path(root, relative)
+    except (ValueError, TypeError):
         return None
-    path = (root / rel).resolve()
-    if os.path.commonpath([str(root.resolve()), str(path)]) != str(root.resolve()) or not path.is_file():
-        return None
-    return path
 
 
 def write(path, data):
@@ -124,14 +123,14 @@ def build_share_pages(library, out, base_url='https://ub.thregren.world/', versi
         image_type = 'image/jpeg' if image_path.lower().endswith(('.jpg', '.jpeg')) else 'image/png'
         size = '' if not width else '<meta property="og:image:width" content="%s"><meta property="og:image:height" content="%s">' % (width, height)
         metadata = '''
-<meta name="jubeat-share-root" content="{base}"><meta name="jubeat-share-song" content="{id}">
+<meta name="app-version" content="{app_version}"><meta name="jubeat-share-root" content="{base}"><meta name="jubeat-share-song" content="{id}">
 <meta name="description" content="{description}"><meta property="og:type" content="website"><meta property="og:site_name" content="jubeat 谱面确认">
 <meta property="og:locale" content="zh_CN"><meta property="og:title" content="{title} · 谱面确认"><meta property="og:description" content="{description}"><meta property="og:url" content="{url}">
 <meta property="og:image" content="{image}"><meta property="og:image:secure_url" content="{image}"><meta property="og:image:type" content="{image_type}"><meta property="og:image:alt" content="{title} 专辑封面">{size}
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title} · 谱面确认"><meta name="twitter:description" content="{description}"><meta name="twitter:image" content="{image}">
 <meta itemprop="name" content="{title} · 谱面确认"><meta itemprop="description" content="{description}"><meta itemprop="image" content="{image}">
 <link rel="canonical" href="{url}">
-'''.format(base=e(base_url), title=e(title), description=e(description), id=e(identity), url=e(page_url), image=e(image_url), image_type=e(image_type), size=size)
+'''.format(app_version=e(version), base=e(base_url), title=e(title), description=e(description), id=e(identity), url=e(page_url), image=e(image_url), image_type=e(image_type), size=size)
         content = re.sub(r'<title>.*?</title>', lambda _: '<title>' + e(title) + ' · 谱面确认</title>', viewer, count=1, flags=re.S)
         content = content.replace('</head>', metadata + '</head>', 1)
         content = re.sub(r'<img id="cover"[^>]*>', lambda _: '<img id="cover" class="on" src="' + e(image_url) + '" alt="' + e(title + ' 专辑封面') + '" />', content, count=1)

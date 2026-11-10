@@ -17,7 +17,6 @@ STORED 直接塞。这两点缺一个，安卓上解出来就是一堆乱码名 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import sys
 import time
 import zipfile
@@ -28,6 +27,7 @@ REPO = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 
 from pack_zip import human, pack  # noqa: E402
+from asset_hash import sha256_file  # noqa: E402
 
 # 客户端自带前端；歌曲分享页面只供线上访问，不属于可导入的曲库资源。
 EXCLUDES = ("index.html", "static", "share", "robots.txt")
@@ -38,14 +38,6 @@ def version() -> str:
     if not v:
         sys.exit("仓库根的 VERSION 是空的")
     return v
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def main() -> int:
@@ -72,7 +64,7 @@ def main() -> int:
     size = out.stat().st_size
     print(f"✓ {out}")
     print(f"  {files} 个文件  ·  原始 {human(raw)}  →  压缩后 {human(size)}  ·  {time.time() - t0:.1f}s")
-    print(f"  sha256 {sha256_of(out)}")
+    print(f"  sha256 {sha256_file(out)}")
 
     # 归档里没有任何一条需要 ZIP64 才能表示（单个条目、单个偏移都没过 4 GB 线）
     over = [n for n in _entries_over_4g(out)]

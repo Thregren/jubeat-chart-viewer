@@ -509,7 +509,7 @@ button:focus-visible,
   color: var(--muted);
 }
 
-.stat value {
+.stat .stat-value {
   font-family: var(--mono);
   font-size: 18px;
   font-weight: 600;
@@ -1159,7 +1159,7 @@ input[type="range"] {
     gap: 0 clamp(6px, 2vw, 14px);
   }
   .stat label { font-size: 9px; letter-spacing: 0.08em; }
-  .stat value { font-size: 14px; line-height: 1.15; }
+  .stat .stat-value { font-size: 14px; line-height: 1.15; }
 
   .panel-stage { padding: 2px 12px 4px; }
 
@@ -1419,7 +1419,6 @@ input[type="range"] {
     width: 58px;
   }
   .np-actions > .song-share-btn { width: 58px; height: 34px; padding: 0; border-radius: 8px; color: var(--ink); font: 600 11px var(--font); }
-  .stage .np-main { padding-right: 66px; }
 }
 
 /* Secondary information stays in the sidebar, outside the chart layout. */

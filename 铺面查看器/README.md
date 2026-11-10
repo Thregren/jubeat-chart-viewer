@@ -1,7 +1,9 @@
 # 开发服务器（可选）
 
-平常用**静态站点**就够了：仓库根目录 `python3 tools/build_site.py` 展开曲库，
+平常用**静态站点**就够了：仓库根目录 `python3 tools/build_directory.py --library <曲库目录> --out site` 展开曲库，
 `python3 tools/serve.py site` 预览，部署时交给 nginx（见 [../deploy/README.md](../deploy/README.md)）。
+默认入口只认 `--library` / `--out` / `--no-markers`；`--prune` / `--force` / `--limit` / `--jobs`
+属于旧 MCZ 导入模式，须显式 `tools/build_site.py --legacy-mcz`（并设置 `JUBEAT_LIBRARY`）才启用。
 
 这个目录里是一台**可选的**开发服务器：直接从 `music/*.mcz` 按需解包，改谱面/换曲库不用重新构建，
 适合本机调试。它和静态站点**共用同一套 URL 布局和同一份前端**，行为一致。

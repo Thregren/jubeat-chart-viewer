@@ -2,13 +2,13 @@
 """为开放目录曲库生成公共浏览器包（不包含歌曲，配合按版本ZIP安装）。"""
 from __future__ import annotations
 import argparse
-import hashlib
 import json
 import re
 from pathlib import Path
 import shutil
 import zipfile
 from build_directory import build_directory, REPO
+from asset_hash import sha256_file
 
 GUIDE = '''本地统一曲库网页版（jubeat-directory-v1）
 
@@ -66,20 +66,22 @@ def package_common(root: Path, output: Path, rebuild=True):
     for top in ('static','markers','share'):
         names.update(p.relative_to(root).as_posix() for p in (root/top).rglob('*') if p.is_file() and not any(x.startswith('.') for x in p.relative_to(root).parts))
     output.parent.mkdir(parents=True,exist_ok=True);temp=output.with_name(output.name+'.partial')
-    with zipfile.ZipFile(temp,'w',compression=zipfile.ZIP_DEFLATED,allowZip64=True) as z:
-        for name in sorted(names):
-            if name == 'data/library.json':
-                manifest=json.loads((root/name).read_bytes())
-                manifest['versionIndexes']=[re.sub(r'\.[a-f0-9]{20}(?=\.json$)', '', p) for p in manifest.get('versionIndexes', [])]
-                manifest.pop('catalogRevision', None)
-                z.writestr(name,json.dumps(manifest,ensure_ascii=False,separators=(',',':')))
-            else:
-                z.write(root/name,name)
-    with zipfile.ZipFile(temp) as z:
-        if z.testzip(): raise ValueError('公共包CRC校验失败')
-    temp.replace(output)
-    with output.open('rb') as stream:
-        sha=hashlib.file_digest(stream,'sha256').hexdigest() if hasattr(hashlib,'file_digest') else hashlib.sha256(stream.read()).hexdigest()
+    try:
+        with zipfile.ZipFile(temp,'w',compression=zipfile.ZIP_DEFLATED,allowZip64=True) as z:
+            for name in sorted(names):
+                if name == 'data/library.json':
+                    manifest=json.loads((root/name).read_bytes())
+                    manifest['versionIndexes']=[re.sub(r'\.[a-f0-9]{20}(?=\.json$)', '', p) for p in manifest.get('versionIndexes', [])]
+                    manifest.pop('catalogRevision', None)
+                    z.writestr(name,json.dumps(manifest,ensure_ascii=False,separators=(',',':')))
+                else:
+                    z.write(root/name,name)
+        with zipfile.ZipFile(temp) as z:
+            if z.testzip(): raise ValueError('公共包CRC校验失败')
+        temp.replace(output)
+    finally:
+        temp.unlink(missing_ok=True)
+    sha=sha256_file(output)
     report=dict(format='jubeat-directory-v1',package='common',files=len(names),bytes=output.stat().st_size,sha256=sha,crc_verified=True)
     output.with_suffix('.zip.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False,indent=2),flush=True)

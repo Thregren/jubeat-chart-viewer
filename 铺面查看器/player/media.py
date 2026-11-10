@@ -83,15 +83,41 @@ MAX_CHART_BYTES = 8 * 1024 * 1024
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
 
 
-def member_info(zf: zipfile.ZipFile, member: str) -> zipfile.ZipInfo:
+def _member_index(zf: zipfile.ZipFile) -> dict:
+    """同一个 ZipFile 的「成员名 → ZipInfo」索引，挂在 zf 上做一次性缓存。
+
+    scan_song() 会为 .mcz 里的每个谱面成员调用一次 member_info()；以前每次都
+    infolist() + 全表重算 zip_name()，是 O(谱面数 × 成员数)。这里按 zf 对象缓存
+    （不以 id(zf) 作全局键：对象回收后 id 会被复用，容易串到另一个 zip 上），
+    生命周期与打开的 zip 完全一致。zip_name() 的解码逻辑保持不变，每个成员只算一次。
+    """
+    cached = getattr(zf, "_jubeat_member_index", None)
+    if cached is not None:
+        return cached
     infos = zf.infolist()
     if len(infos) > MAX_ARCHIVE_ENTRIES:
         raise ValueError("Archive has too many entries")
+    by_name = {}
+    by_base = {}
+    for info in infos:
+        if info.is_dir():
+            continue
+        name = zip_name(info)
+        # 与原来 next(...) 的「第一个命中」一致：精确匹配同时认原始名与解码名。
+        by_name.setdefault(info.filename, info)
+        by_name.setdefault(name, info)
+        by_base.setdefault(os.path.basename(name), []).append(info)
+    cached = {"by_name": by_name, "by_base": by_base}
+    zf._jubeat_member_index = cached
+    return cached
+
+
+def member_info(zf: zipfile.ZipFile, member: str) -> zipfile.ZipInfo:
+    index = _member_index(zf)
     base = os.path.basename(member)
-    target = next((i for i in infos if not i.is_dir() and
-                   (i.filename == member or zip_name(i) == member)), None)
+    target = index["by_name"].get(member)
     if target is None:
-        matches = [i for i in infos if not i.is_dir() and os.path.basename(zip_name(i)) == base]
+        matches = index["by_base"].get(base, [])
         if len(matches) != 1:
             raise FileNotFoundError("Missing or ambiguous archive member: " + member)
         target = matches[0]

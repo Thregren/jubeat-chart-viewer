@@ -135,7 +135,6 @@
     } finally { libraryRequests.finish(request); }
   }
 
-  /** 按搜索框 + 机台版本筛选（纯前端，不请求服务器） */
   /** 是否有长押：索引里每个难度都记了 holds 数（曲名带 [2] 的通常就是长押版） */
   function hasHold(song) {
     return songMeta(song).hasHold;
@@ -154,6 +153,8 @@
   let popularRaw = [];
   let popularSongs = [];
   let popularMode = false;
+  // 每轮封面预取自增一次：旧的 next() 递归链发现 generation 变了就自行停止。
+  let prefetchGeneration = 0;
   /** 曲库变了（重新读取 / 换库）就得把这两级缓存作废 */
   function invalidateSongCaches() {
     filterCache = { key: null, list: [] };
@@ -202,11 +203,13 @@
   }
 
   function prefetchPopularCovers() {
+    const generation = ++prefetchGeneration;
     if (typeof Image !== 'function' || !popularSongs.length) return;
     const songs = popularSongs.filter(song => song.cover);
     let cursor = 0;
     const next = () => {
-      if (cursor >= songs.length) return;
+      // 新一轮预取已开始：旧链不再继续发请求，自行终止。
+      if (generation !== prefetchGeneration || cursor >= songs.length) return;
       const image = new Image();
       image.decoding = 'async';
       image.onload = image.onerror = () => next();
@@ -217,19 +220,15 @@
 
   function rebuildPopularSongs() {
     const byId = new Map(state.songs.map(song => [song.id, song]));
-    popularSongs = popularRaw.map(row => byId.get(row.song)).filter(Boolean);
+    popularSongs = popularRaw.map(row => byId.get(row?.song)).filter(Boolean);
     if (!popularSongs.length) popularMode = false;
     syncPopularButton();
     prefetchPopularCovers();
   }
 
   function setPopularSongs(rows) {
-    const seen = new Set();
-    popularRaw = (Array.isArray(rows) ? rows : []).filter(row => {
-      if (!row || typeof row.song !== 'string' || !row.song || seen.has(row.song)) return false;
-      seen.add(row.song);
-      return true;
-    }).slice(0, 30);
+    // app-visitors.js 已按 song 去重并截到 30 条，这里不再重复过滤。
+    popularRaw = Array.isArray(rows) ? rows : [];
     rebuildPopularSongs();
     if (popularMode) renderList();
   }
@@ -435,13 +434,21 @@
       els.cover.onerror = () => els.cover.classList.remove("on");
     } else { els.cover.removeAttribute("src"); }
 
+    // pick difficulty（先算出要加载的难度，注入按钮时用它标 aria-selected）
+    let pick = preferredCode ? pickChart(song.charts, preferredCode) : null;
+    if (!pick) pick = song.charts.find((c) => c.code === "EXT") || song.charts[song.charts.length - 1];
+
     // difficulties
     els.diffRow.replaceChildren();
+    const selectedCode = pick?.code || "";
     song.charts.forEach((c, i) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "diff-btn " + diffClass(c.code);
       b.dataset.code = c.code;
+      // index.html 里 #diffRow 是 role="tablist"，子按钮补上 tab 语义与选中态。
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", String(c.code === selectedCode));
       // 用 DOM + textContent，不拼 innerHTML：code / level 来自 .mcz 文件名，
       // 万一哪天解析规则放宽、有脏数据溜进来，这里也不会变成注入点。
       b.append(document.createTextNode(c.code), el("span", "lv", c.level || "等级未知"));
@@ -449,9 +456,6 @@
       els.diffRow.appendChild(b);
     });
 
-    // pick difficulty
-    let pick = preferredCode ? pickChart(song.charts, preferredCode) : null;
-    if (!pick) pick = song.charts.find((c) => c.code === "EXT") || song.charts[song.charts.length - 1];
     if (!pick) {
       chartRequests.cancel(); stopForLoad();
       state.chart = null; state.chartMeta = null; state.notes = []; state.bpmEvents = [];
@@ -513,12 +517,15 @@
       if (!payload) {
         const res = await fetch(chartPath(song, chart), { signal: request.signal });
         if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
-        payload = { chart: Runtime.validateChart(await Runtime.readJSON(res)), chartMeta: chart };
+        // 直接读字节以拿到真实 byteLength，挂到 payload.bytes：CatalogStore.put
+        // 据此记账，不必再 JSON.stringify(value.chart) 全量序列化一遍。
+        const buf = await Runtime.readBytes(res, 8 * 1024 * 1024);
+        const chartData = Runtime.validateChart(JSON.parse(new TextDecoder().decode(buf)));
+        payload = { chart: chartData, chartMeta: chart, bytes: buf.byteLength };
         if (!chartRequests.current(request) || state.song !== song) return;
       }
-      // 注意别叫 chart：上面已经有一个同名的难度元信息对象（`chart`），
-      // 这里再声明一次会在 try 块内把它遮住，于是块内更早的
-      // chartPath(state.song, chart) 直接踩 TDZ → 每次冷加载都 ReferenceError。
+      // 加载期间可能已切歌 / 又发起了一次加载：请求不再是当前请求、或 state.song
+      // 已变，就丢弃这次结果，避免旧谱面覆盖新选择。
       if (!chartRequests.current(request) || state.song !== song) return;
       A.metrics = A.metrics || {}; A.metrics.chartMs = performance.now() - started;
       const chartJson = payload.chart;
@@ -542,7 +549,9 @@
       const activeCode = (payload.chartMeta || chart || {}).code || "";
       A.visitors?.song(song.id, activeCode);
       for (const btn of els.diffRow.querySelectorAll(".diff-btn")) {
-        btn.classList.toggle("active", !!activeCode && btn.dataset.code === activeCode);
+        const selected = !!activeCode && btn.dataset.code === activeCode;
+        btn.classList.toggle("active", selected);
+        btn.setAttribute("aria-selected", String(selected));
       }
 
       state.duration = computeDuration(parsed);

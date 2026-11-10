@@ -1,4 +1,6 @@
-# 每次 push / PR 跑一遍 tools/check.sh --release。
+# push 到 master 分支或 v* 标签、任意 PR、以及 workflow_dispatch 手动触发时，
+# 跑一遍 tools/check.sh --release（外加浏览器回归 / 安卓 Java 单测两个 job）。
+# 注意 push 只覆盖 master 与 v* 标签，别处的 push 不会触发本工作流。
 #
 # 这里守的都是「不会报错、只会静默出错」的东西：
 #   * 三份后端（Python 开发服务器 / Electron 静态服务 / PHP 整包）的 Range 与
@@ -7,6 +9,12 @@
 #     浏览器缓存里一直是老前端
 #   * 前端纯逻辑（谱面解析 / 顺序数字 / A–B 打点）的单测
 #   * 两种部署模式的端到端接口冒烟（静态直发 + 开发服务器）
+#   * 安卓内置服务 / 导入 / 偏好规则的 5 个纯 Java 测试（java-tests job）
+#
+# tools/check.sh 里的 tools/test_range.py 只比 Python / Node / PHP / serve 四份实现，
+# 并不编译或运行 android/test/ 下的 Java 测试；安卓 HttpRange 那份由 java-tests job
+# 拿同一张 RANGE_CASES 用例表单独钉住（HttpRange.java 里「由 test_range.py 覆盖」
+# 的注释并不成立，别再据此以为 Java 实现已经被 CI 覆盖）。
 #
 # 桌面包（6 份 zip / AppImage）不在 CI 里打：要 GUI 环境、几分钟，而且产物不入库。
 name: CI
@@ -85,3 +93,75 @@ jobs:
         with:
           name: browser-regression
           path: ${{ runner.temp }}/browser-evidence
+
+  # android/app/src 下只有 HttpRange / PreferenceRules / ArchiveImport / LocalServer
+  # 四个类不依赖 android.* / org.json；其余（MainActivity 等）需要 android.jar，
+  # 不在纯 JDK 里编译。android/test/ 的 5 个测试都是无 JUnit 的纯 Java main，
+  # 用 ubuntu-latest 自带的 javac / java 就能编译运行，所以这里独立成 job。
+  java-tests:
+    name: Android Java 单测（纯 JDK main）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 编译 5 个测试 + 它们依赖的 4 个纯 Java 类
+        run: |
+          set -eu
+          java -version
+          javac -version
+          OUT="$RUNNER_TEMP/jubeat-java-classes"
+          mkdir -p "$OUT"
+          javac -encoding UTF-8 -d "$OUT" \
+            android/app/src/world/thregren/jubeatviewer/HttpRange.java \
+            android/app/src/world/thregren/jubeatviewer/PreferenceRules.java \
+            android/app/src/world/thregren/jubeatviewer/ArchiveImport.java \
+            android/app/src/world/thregren/jubeatviewer/LocalServer.java \
+            android/test/HttpRangeTest.java \
+            android/test/ServerSmoke.java \
+            android/test/PreferenceRulesTest.java \
+            android/test/ArchiveImportTest.java \
+            android/test/LocalServerTest.java
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: 运行 4 个自校验 main
+        run: |
+          set -eu
+          java -cp "$OUT" world.thregren.jubeatviewer.PreferenceRulesTest
+          java -cp "$OUT" world.thregren.jubeatviewer.ArchiveImportTest
+          java -cp "$OUT" world.thregren.jubeatviewer.LocalServerTest
+          java -cp "$OUT" ServerSmoke
+
+      # HttpRangeTest 是 stdin→stdout 的测试台（不是自校验 main），用 tools/test_range.py
+      # 里 Python/Node/PHP 共用的 RANGE_CASES / SAFE_CASES 用例表喂进去逐行比对。
+      - name: 用共享用例表驱动 HttpRangeTest（Range + 路径穿越）
+        run: |
+          python3 - <<'PY'
+          import importlib.util, os, subprocess, sys
+
+          out = os.environ["OUT"]
+          spec = importlib.util.spec_from_file_location("jv_test_range", "tools/test_range.py")
+          tr = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(tr)
+
+          def run(args, lines):
+              cmd = ["java", "-cp", out] + args
+              data = "".join(l + "\n" for l in lines)
+              p = subprocess.run(cmd, input=data, capture_output=True, encoding="utf-8")
+              if p.returncode != 0:
+                  sys.stderr.write(p.stdout + p.stderr)
+                  sys.exit("java 失败: " + " ".join(args))
+              return p.stdout.splitlines()
+
+          rng = run(["HttpRangeTest"], [f"{s}\t{h}" for s, h, _ in tr.RANGE_CASES])
+          want = ["-" if w is None else f"{w[0]}\t{w[1]}" for _, _, w in tr.RANGE_CASES]
+          if rng != want:
+              bad = [(a, b) for a, b in zip(rng, want) if a != b]
+              sys.exit("Range 与共享用例表不一致: " + repr(bad))
+
+          safe = run(["HttpRangeTest", "safe", tr.SAFE_ROOT], [p for p, _ in tr.SAFE_CASES])
+          want2 = ["-" if w is None else w for _, w in tr.SAFE_CASES]
+          if safe != want2:
+              bad2 = [(a, b) for a, b in zip(safe, want2) if a != b]
+              sys.exit("resolveSafe 与共享用例表不一致: " + repr(bad2))
+          print(f"HttpRangeTest: Range {len(tr.RANGE_CASES)} 例 + resolveSafe {len(tr.SAFE_CASES)} 例 与共享用例表一致")
+          PY

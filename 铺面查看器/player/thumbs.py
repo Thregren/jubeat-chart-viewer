@@ -7,11 +7,14 @@
 """
 from __future__ import annotations
 
+import logging
 import shutil
 import os
 import subprocess
 import tempfile
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _backend: str | None = None
 
@@ -25,7 +28,14 @@ def backend() -> str:
         from PIL import Image  # noqa: F401
 
         _backend = "pillow"
-    except Exception:
+    except ImportError:
+        # 没装 Pillow 才是「后端不可用」，属正常降级，不当异常记。
+        _backend = "sips" if shutil.which("sips") else "none"
+    except Exception as exc:
+        # 装了却在 import 阶段崩了：不把它当成「后端不可用」，记下真实异常类型，
+        # 降级行为保持不变（server.py 仍会回退原图，但日志里不再是一片静默）。
+        log.warning("thumbs: 探测 Pillow 后端异常（%s: %s），降级到 sips/none",
+                    type(exc).__name__, exc, exc_info=True)
         _backend = "sips" if shutil.which("sips") else "none"
     return _backend
 
@@ -56,7 +66,11 @@ def _with_sips(src: Path, dest: Path, size: int, quality: int) -> bool:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tmp), str(dest))
         return True
-    except Exception:
+    except Exception as exc:
+        # sips 超时 / 崩溃 / 目录不可写：保留回退原图，但把异常类型与文件路径记下来，
+        # 别让 server.py:355-358 悄悄降级且零日志。
+        log.warning("thumbs: sips 生成缩略图失败（%s: %s）src=%s dest=%s",
+                    type(exc).__name__, exc, src, dest, exc_info=True)
         return False
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
@@ -80,7 +94,11 @@ def make(src: Path, dest: Path, size: int, quality: int) -> bool:
         if success and tmp.is_file() and tmp.stat().st_size:
             os.replace(tmp, dest)
             return True
-    except Exception:
+    except Exception as exc:
+        # Pillow 解码崩溃 / 缓存目录不可写 / 原子发布失败：保留降级（回原图），
+        # 但记录真实异常类型与涉及的文件路径。
+        log.warning("thumbs: 生成缩略图失败（%s: %s）src=%s dest=%s",
+                    type(exc).__name__, exc, src, dest, exc_info=True)
         return False
     finally:
         if tmp is not None:
@@ -92,11 +110,22 @@ def make(src: Path, dest: Path, size: int, quality: int) -> bool:
 
 
 def profile() -> str:
-    """Include backend implementation version in thumbnail cache signatures."""
+    """Include backend implementation version in thumbnail cache signatures.
+
+    This runs on every thumbnail request, so it must never raise: a broken or
+    mocked backend would otherwise turn a graceful "fall back to the original
+    cover" into a 500. Only the signature changes, the fallback stays intact.
+    """
     kind = backend()
     if kind == "pillow":
-        import PIL
-        return kind + ":" + PIL.__version__
+        try:
+            import PIL
+            return kind + ":" + PIL.__version__
+        except Exception:
+            return kind + ":unknown"
     if kind == "sips":
-        return kind + ":" + subprocess.check_output(["sips", "--version"], text=True).strip()
+        try:
+            return kind + ":" + subprocess.check_output(["sips", "--version"], text=True).strip()
+        except Exception:
+            return kind
     return kind

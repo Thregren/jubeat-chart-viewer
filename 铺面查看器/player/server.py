@@ -348,7 +348,12 @@ class Handler(BaseHTTPRequestHandler):
                                      self._hdr({"Cache-Control": "public, max-age=604800"}))
         size = config.THUMB_SIZE
         quality = config.THUMB_QUALITY
-        thumb = config.THUMB_CACHE_DIR / f"{media.cache_key(song['id'], member, str(size), str(quality))}.jpg"
+        # 把后端实现版本也钉进缓存 key（tools/site_builder.py:262 的签名早就包含
+        # thumbs.profile()）：换了 Pillow 版本 / 切到 sips 后旧缩略图不能继续复用。
+        # 代价是旧 key 的缓存文件一次性失效；member_is_fresh 只用传入的路径，逻辑不变。
+        thumb = config.THUMB_CACHE_DIR / (
+            f"{media.cache_key(song['id'], member, str(size), str(quality), thumbs.profile())}.jpg"
+        )
         if not media.member_is_fresh(thumb, zip_path):
             with media.lock_for(str(thumb)):
                 if not media.member_is_fresh(thumb, zip_path):

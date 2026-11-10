@@ -274,9 +274,33 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on("window-all-closed", async () => {
-  // close() 失败（端口已经关了 / 句柄泄漏）不该拦住退出：兜一下，别让
-  // 「关不掉的 Promise」把 quit 卡住。
-  if (server) await server.close().catch(() => {});
+/** 统一回收本地静态服务，幂等、可重入、同步置空。
+ *
+ * 之前只在 window-all-closed 里 close，但 macOS 的 Cmd+Q / 菜单「退出」(role:quit)
+ * 在窗口仍打开时直接走 before-quit/will-quit，不经过 window-all-closed —— 端口和
+ * connections 一直不回收；而且 close 之后没把 server 置 null，activate 重新开站点时
+ * openSite 会对同一个已关闭实例二次 close()。
+ *
+ * 现在 before-quit 与 window-all-closed 共用这一处：
+ *  - 先把 server 置 null（同步）：这是幂等的关键，重入 / 并发 quit 事件都不会对同一
+ *    实例二次 close；activate 重新 createWindow→openSite 看到 null 会起一个全新的服务。
+ *  - close() 内部会同步「停止监听 + destroy 所有 socket」，端口与句柄的回收不依赖那个
+ *    异步 done 回调，所以这里不等 Promise（will-quit 里本来也等不了）。
+ *  - 用 catch 兜住「端口已关 / 句柄泄漏」，别让未处理的拒绝卡住退出。 */
+function shutdownServer() {
+  if (!server) return;
+  const current = server;
+  server = null;
+  try {
+    Promise.resolve(current.close()).catch(() => {});
+  } catch {
+    /* close() 同步抛错也不拦退出；引用已置空，不会二次 close */
+  }
+}
+
+app.on("before-quit", shutdownServer);
+
+app.on("window-all-closed", () => {
+  shutdownServer();
   if (process.platform !== "darwin") app.quit();
 });

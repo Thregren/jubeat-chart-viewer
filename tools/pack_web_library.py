@@ -2,7 +2,6 @@
 """精简目录库打包：统一客户端资源 ZIP，以及供 COS 中转的独立分卷 ZIP。"""
 from __future__ import annotations
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import sys
@@ -10,13 +9,8 @@ import zipfile
 REPO=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(REPO/'铺面查看器/player'))
 from directory_library import load_directory,asset_path
-
-def sha256_file(path):
-    digest=hashlib.sha256()
-    with path.open('rb') as stream:
-        for chunk in iter(lambda:stream.read(1024*1024),b''):
-            digest.update(chunk)
-    return digest.hexdigest()
+from version import read_version
+from asset_hash import sha256_file
 
 def pack(root,output,version,volume_mib=256):
     root,output=Path(root).resolve(),Path(output).resolve()
@@ -36,14 +30,17 @@ def pack(root,output,version,volume_mib=256):
     rows=[]
     def archive(name,names,kind):
         dest=output/name;temp=dest.with_name(dest.name+'.partial')
-        with zipfile.ZipFile(temp,'w',allowZip64=True) as z:
-            for rel in sorted(names):
-                source=asset_path(root,rel)
-                z.write(source,rel,compress_type=zipfile.ZIP_DEFLATED if source.suffix in ('.json','.js','.css','.html','.txt','.md') else zipfile.ZIP_STORED)
-        with zipfile.ZipFile(temp) as z:
-            bad=z.testzip()
-            if bad:raise ValueError('CRC错误：'+bad)
-        temp.replace(dest)
+        try:
+            with zipfile.ZipFile(temp,'w',allowZip64=True) as z:
+                for rel in sorted(names):
+                    source=asset_path(root,rel)
+                    z.write(source,rel,compress_type=zipfile.ZIP_DEFLATED if source.suffix in ('.json','.js','.css','.html','.txt','.md') else zipfile.ZIP_STORED)
+            with zipfile.ZipFile(temp) as z:
+                bad=z.testzip()
+                if bad:raise ValueError('CRC错误：'+bad)
+            temp.replace(dest)
+        finally:
+            temp.unlink(missing_ok=True)
         sha=sha256_file(dest)
         row=dict(name=name,kind=kind,bytes=dest.stat().st_size,sha256=sha,files=len(names),crcVerified=True);rows.append(row)
         print('完成',name,dest.stat().st_size,flush=True)
@@ -60,4 +57,4 @@ def pack(root,output,version,volume_mib=256):
     (output/'SHA256SUMS').write_text(''.join(x['sha256']+'  '+x['name']+'\n' for x in rows))
     print('全部打包完成',len(rows),'份',flush=True);return manifest
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--library',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--version',required=True);p.add_argument('--volume-mib',type=int,default=256);a=p.parse_args();pack(a.library,a.output,a.version,a.volume_mib)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--library',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--version',default=read_version());p.add_argument('--volume-mib',type=int,default=256);a=p.parse_args();pack(a.library,a.output,a.version,a.volume_mib)

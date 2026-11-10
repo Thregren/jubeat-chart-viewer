@@ -110,7 +110,7 @@ html.rec #app { display: none !important; }
   font-size: calc(20px * var(--rec-scale, 1));
 }
 
-#recCard .stat value {
+#recCard .stat .stat-value {
   font-size: calc(36px * var(--rec-scale, 1));
   font-weight: 700;
 }

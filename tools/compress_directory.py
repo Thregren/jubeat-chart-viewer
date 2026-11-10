@@ -69,10 +69,13 @@ def convert(source, out, master, report, jobs=4):
             prior=state['done'].get(s['id'],{}).get(key,{})
             if prior.get('source')!=fingerprint or not dest.is_file() or dest.stat().st_size!=prior.get('bytes'):
                 tmp=dest.with_name(dest.name+'.partial')
-                cmd=['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-threads','1','-i',str(src),'-map','0:a:0','-threads','1','-c:a','libopus','-b:a','80k','-vbr','on','-compression_level','10','-application','audio','-frame_duration','20','-map_metadata','-1','-f','ogg',str(tmp)]
-                p=subprocess.run(cmd,capture_output=True,timeout=900)
-                if p.returncode:raise RuntimeError('转码失败 '+s['id']+': '+p.stderr.decode(errors='replace')[:600])
-                tmp.replace(dest)
+                try:
+                    cmd=['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-threads','1','-i',str(src),'-map','0:a:0','-threads','1','-c:a','libopus','-b:a','80k','-vbr','on','-compression_level','10','-application','audio','-frame_duration','20','-map_metadata','-1','-f','ogg',str(tmp)]
+                    p=subprocess.run(cmd,capture_output=True,timeout=900)
+                    if p.returncode:raise RuntimeError('转码失败 '+s['id']+': '+p.stderr.decode(errors='replace')[:600])
+                    tmp.replace(dest)
+                finally:
+                    tmp.unlink(missing_ok=True)
             info=probe(dest);stream=info['streams'][0]
             if stream['codec_name']!='opus' or stream['sample_rate']!='48000':raise ValueError('编码格式不符：'+str(dest))
             record[key]=dict(source=fingerprint,bytes=dest.stat().st_size,duration=float(info['format']['duration']),sampleRate=int(stream['sample_rate']),channels=int(stream['channels']),codec='opus')

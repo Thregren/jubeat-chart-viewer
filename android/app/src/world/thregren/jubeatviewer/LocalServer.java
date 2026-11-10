@@ -228,14 +228,35 @@ public final class LocalServer {
         return null;
     }
 
+    /**
+     * 缓存策略按资源类型对齐 Python 开发服务器 server.py，四类资源在四端必须一致
+     * （由 tools/test_cache_headers.py 静态守着）：
+     *   audio / data/charts / se → 1 天，cover / thumb → 7 天，markers → 300 秒，
+     *   其余（入口、索引、静态脚本）→ no-cache 每次回来校验。
+     */
+    private static String cacheControl(String rel) {
+        if (rel.startsWith("media/audio/") || rel.startsWith("media/se/")) {
+            return "public, max-age=86400";        // audio: 1 天
+        }
+        if (rel.startsWith("media/cover/") || rel.startsWith("media/thumb/")) {
+            return "public, max-age=604800";       // cover-thumb: 7 天
+        }
+        if (rel.startsWith("data/charts/")) {
+            return "public, max-age=86400";        // data-charts: 1 天
+        }
+        if (rel.startsWith("markers/")) {
+            return "public, max-age=300";          // markers: 300 秒
+        }
+        return "no-cache";
+    }
+
     private void sendFile(OutputStream out, File f, String rel, String rangeHeader, boolean headOnly)
             throws IOException {
         long size = f.length();
-        boolean media = rel.startsWith("media/");
         Map<String, String> h = new LinkedHashMap<String, String>();
         h.put("Content-Type", mime(rel));
         h.put("Accept-Ranges", "bytes");
-        h.put("Cache-Control", media ? "public, max-age=604800" : "no-cache");
+        h.put("Cache-Control", cacheControl(rel));
         h.put("X-Content-Type-Options", "nosniff");
         h.put("Referrer-Policy", "no-referrer");
         h.put("X-Frame-Options", "SAMEORIGIN");

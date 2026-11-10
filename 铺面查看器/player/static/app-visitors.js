@@ -6,6 +6,9 @@
   const value=document.getElementById('chartLoadValue'),today=document.getElementById('todayChartLoadValue');
   let currentSong=null,currentChart=null;
   const sentOnce=new Set();
+  // 上一次已下发的热门列表签名：/api/visitors 每个里程碑都会回一条，
+  // 列表没变就别再触发 setPopularSongs → 重建封面预取。
+  let popularSignature=null;
   // 播放里程碑已推进到的档位（0=未开始 … 4=complete）：只在跨过阈值时调用 event()，
   // 避免每帧都构造 event() 的 data / key 字符串；换歌换谱时随 sentOnce 一起清零。
   let playStage=0;
@@ -26,12 +29,17 @@
       if(today)today.textContent=Number.isSafeInteger(data.today_chart_loads)&&data.today_chart_loads>=0?data.today_chart_loads.toLocaleString('zh-CN'):'—';
       if(Array.isArray(data.popular_songs)) {
         const seen=new Set();
-        A.popularSongs=data.popular_songs.filter(row=>{
+        const rows=data.popular_songs.filter(row=>{
           if(!row||typeof row.song!=='string'||!row.song||seen.has(row.song))return false;
           seen.add(row.song);
           return true;
         }).slice(0,30);
-        A.setPopularSongs?.(A.popularSongs);
+        const signature=rows.map(row=>row.song).join('\0');
+        if(signature!==popularSignature){
+          popularSignature=signature;
+          A.popularSongs=rows;
+          A.setPopularSongs?.(A.popularSongs);
+        }
       }
       badge.hidden=false;return 'ok';
     } finally {clearTimeout(timer);}

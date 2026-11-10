@@ -61,14 +61,29 @@ function jubeat_is_compressible(string $path): bool
     return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), $ok, true);
 }
 
-/** 缓存策略：素材类长缓存，入口与索引每次都回来问一声 */
+/**
+ * 缓存策略：按资源类型对齐 Python 开发服务器 server.py 的四类语义。
+ * audio / data:charts / se → 1 天，cover / thumb → 7 天，markers → 300 秒，
+ * 入口与索引（static / library.json / markers.json …）→ no-cache 每次回来校验。
+ * 四类资源的 max-age 由 tools/test_cache_headers.py 在四端静态钉住，必须一致。
+ * 内容哈希文件名单独走一年 immutable（沿用既有规则）。
+ */
 function jubeat_cache_control(string $rel): string
 {
     if (preg_match('#(?:/_hashed/[a-f0-9]{20}|\.[a-f0-9]{20})\.#', $rel)) {
         return 'public, max-age=31536000, immutable';
     }
-    if (preg_match('#^(media|markers|static)/#', $rel)) {
-        return str_starts_with($rel, 'markers/') ? 'public, max-age=604800' : 'no-cache';
+    if (str_starts_with($rel, 'media/audio/') || str_starts_with($rel, 'media/se/')) {
+        return 'public, max-age=86400';        // audio: 1 天
+    }
+    if (str_starts_with($rel, 'media/cover/') || str_starts_with($rel, 'media/thumb/')) {
+        return 'public, max-age=604800';       // cover-thumb: 7 天
+    }
+    if (str_starts_with($rel, 'data/charts/')) {
+        return 'public, max-age=86400';        // data-charts: 1 天
+    }
+    if (str_starts_with($rel, 'markers/')) {
+        return 'public, max-age=300';          // markers: 300 秒
     }
     return 'no-cache';
 }
@@ -173,17 +188,17 @@ function jubeat_parse_range(string $header, int $size): ?array
     return [$start, min($end, $size - 1)];
 }
 
-/** 流式 gzip：分块压缩后直接写出去，不把整个文件读进内存（以前是 file_get_contents + gzencode） */
-function jubeat_stream_gzip(string $path, bool $headOnly): bool
+/**
+ * 流式 gzip：分块压缩后直接写出去，不把整个文件读进内存（以前是 file_get_contents + gzencode）。
+ * 句柄由 jubeat_send 统一打开/关闭，头与 body 共用同一 inode，不在这里 fopen/fclose。
+ */
+function jubeat_stream_gzip($fp, bool $headOnly): bool
 {
     $ctx = deflate_init(ZLIB_ENCODING_GZIP, ['level' => 6]);
     if ($ctx === false) {
         return false;
     }
-    $fp = fopen($path, 'rb');
-    if ($fp === false) {
-        return false;
-    }
+    rewind($fp);
     $out = '';
     while (!feof($fp)) {
         $buf = fread($fp, JUBEAT_CHUNK);
@@ -198,7 +213,6 @@ function jubeat_stream_gzip(string $path, bool $headOnly): bool
             flush();
         }
     }
-    fclose($fp);
     $out .= deflate_add($ctx, '', ZLIB_FINISH);
     if (!$headOnly && $out !== '') {
         echo $out;
@@ -207,106 +221,137 @@ function jubeat_stream_gzip(string $path, bool $headOnly): bool
     return true;
 }
 
-/** 流式发文件（分块写，不把大文件读进内存） */
-function jubeat_stream(string $path, int $start, int $end, bool $headOnly): void
+/**
+ * 流式发文件（分块写，不把大文件读进内存）。
+ * 句柄由 jubeat_send 统一打开/关闭：头里的 Content-Length / ETag 与这里的 body
+ * 描述同一个已打开 inode，不再第二次 fopen($path) 产生 TOCTOU 窗口。
+ */
+function jubeat_stream($fp, int $start, int $end, bool $headOnly): void
 {
     if ($headOnly) { return; }
-    $fp = fopen($path, 'rb');
-    if ($fp === false) {
-        return;
-    }
-    if ($start > 0) {
-        fseek($fp, $start);
-    }
+    fseek($fp, $start);
     $left = $end - $start + 1;
     while ($left > 0 && !feof($fp) && !connection_aborted()) {
         $buf = fread($fp, (int) min(JUBEAT_CHUNK, $left));
         if ($buf === false) {
             break;
         }
-        if (!$headOnly) {
-            echo $buf;
-            flush();
-        }
+        echo $buf;
+        flush();
         $left -= strlen($buf);
     }
-    fclose($fp);
 }
 
 /**
  * 发一个文件：处理缓存校验、gzip、Range。$headers 只需要传 if-none-match / if-modified-since。
  *
  * $method 传 GET / HEAD。
+ *
+ * 先 fopen 一次并 fstat：Content-Length / ETag / Last-Modified 与响应体全部取自
+ * 同一个已打开句柄（和 Python media.stream_file 用 os.fstat(fh.fileno()) 同理）。
+ * 以前 filesize()/filemtime() 算头、jubeat_stream() 又独立 fopen($path) 发 body，
+ * 两次路径解析之间若文件被原子替换，会发出「头描述旧文件、body 是新文件」的错位响应。
  */
 function jubeat_send(string $path, string $rel, string $method, array $headers, bool $allowGzip = true): void
 {
-    $size = (int) filesize($path);
-    $mtime = (int) filemtime($path);
-    $etag = '"' . dechex($mtime) . '-' . dechex($size) . '"';
-    $headOnly = $method === 'HEAD';
-    $rangeHeader = (string) ($headers['range'] ?? '');
-
-    header('Accept-Ranges: bytes');
-    header('ETag: ' . $etag);
-    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
-    header('Cache-Control: ' . jubeat_cache_control($rel));
-
-    // 带 Range 的请求不做 304（Safari 有时会拿旧的缓存块）
-    $noneMatch = trim((string) ($headers['if-none-match'] ?? ''));
-    $notModified = $noneMatch !== ''
-        ? in_array($etag, array_map('trim', explode(',', $noneMatch)), true)
-        : (($headers['if-modified-since'] ?? '') !== ''
-            && strtotime((string) $headers['if-modified-since']) >= $mtime);
-    if ($rangeHeader === '' && $notModified) {
-        http_response_code(304);
+    $fp = @fopen($path, 'rb');
+    if ($fp === false) {
+        jubeat_fail(404, '404 Not Found');
         return;
     }
-
-    header('Content-Type: ' . jubeat_mime($path));
-
-    if ($rangeHeader !== '') {
-        $range = jubeat_parse_range($rangeHeader, $size);
-        // 解析不出（多个区间 / 越界 / 语法错）就当没收到 Range，按整文件发
-        if ($range !== null) {
-            [$start, $end] = $range;
-            http_response_code(206);
-            header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
-            header('Content-Length: ' . ($end - $start + 1));
-            jubeat_stream($path, $start, $end, $headOnly);
+    try {
+        $stat = fstat($fp);
+        if ($stat === false) {
+            jubeat_fail(500, '500 Internal Server Error');
             return;
         }
-    }
+        $size = (int) $stat['size'];
+        $mtime = (int) $stat['mtime'];
+        $ino = (int) $stat['ino'];
+        // 强校验子纳入 inode：同一秒内被原子替换、且字节数恰好不变的文件也会失效，
+        // 纯 mtime+size 会漏这种情况，把浏览器用旧 304 钉在旧内容上。
+        $etag = '"' . dechex($ino) . '-' . dechex($mtime) . '-' . dechex($size) . '"';
+        $headOnly = $method === 'HEAD';
+        $rangeHeader = (string) ($headers['range'] ?? '');
 
-    // 文本类走 gzip（只对整文件请求）。
-    // GET：流式压缩，内存里只留一个 256 KB 分片（以前 file_get_contents + gzencode
-    //      会把原文和压缩结果同时堆着，8 MB 上限时约 16 MB/请求）。
-    // HEAD：压一遍只为算 Content-Length（同样有 8 MB 上限）。
-    if ($allowGzip && $size <= JUBEAT_GZIP_MAX && $size > 0 && jubeat_is_compressible($path)
-        && stripos((string) ($headers['accept-encoding'] ?? ''), 'gzip') !== false) {
-        if ($headOnly) {
-            $raw = (string) file_get_contents($path);
-            $gz = gzencode($raw, 6);
-            if ($gz !== false && strlen($gz) < strlen($raw)) {
+        header('Accept-Ranges: bytes');
+        header('ETag: ' . $etag);
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
+        header('Cache-Control: ' . jubeat_cache_control($rel));
+
+        // If-None-Match 优先于 If-Modified-Since（RFC 9110）。支持逗号分隔的多值、
+        // W/"..." 弱前缀与通配符 *，和 Python library.py 的弱 ETag 契约对齐。
+        $noneMatch = trim((string) ($headers['if-none-match'] ?? ''));
+        $notModified = false;
+        if ($noneMatch !== '') {
+            foreach (explode(',', $noneMatch) as $candidate) {
+                $candidate = trim($candidate);
+                if (str_starts_with($candidate, 'W/')) {
+                    $candidate = trim(substr($candidate, 2));
+                }
+                if ($candidate === '*' || $candidate === $etag) {
+                    $notModified = true;
+                    break;
+                }
+            }
+        } elseif (($headers['if-modified-since'] ?? '') !== '') {
+            $notModified = strtotime((string) $headers['if-modified-since']) >= $mtime;
+        }
+        // 带 Range 的请求不做 304（Safari 有时会拿旧的缓存块）
+        if ($rangeHeader === '' && $notModified) {
+            http_response_code(304);
+            return;
+        }
+
+        header('Content-Type: ' . jubeat_mime($path));
+
+        if ($rangeHeader !== '') {
+            $range = jubeat_parse_range($rangeHeader, $size);
+            // 解析不出（多个区间 / 越界 / 语法错）就当没收到 Range，按整文件发
+            if ($range !== null) {
+                [$start, $end] = $range;
+                http_response_code(206);
+                header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
+                header('Content-Length: ' . ($end - $start + 1));
+                jubeat_stream($fp, $start, $end, $headOnly);
+                return;
+            }
+        }
+
+        // 文本类走 gzip（只对整文件请求）。
+        // GET：流式压缩，内存里只留一个 256 KB 分片（以前 file_get_contents + gzencode
+        //      会把原文和压缩结果同时堆着，8 MB 上限时约 16 MB/请求）。
+        // HEAD：压一遍只为算 Content-Length（同样有 8 MB 上限）。
+        if ($allowGzip && $size <= JUBEAT_GZIP_MAX && $size > 0 && jubeat_is_compressible($path)
+            && stripos((string) ($headers['accept-encoding'] ?? ''), 'gzip') !== false) {
+            if ($headOnly) {
+                rewind($fp);
+                $raw = (string) stream_get_contents($fp);
+                $gz = gzencode($raw, 6);
+                if ($gz !== false && strlen($gz) < strlen($raw)) {
+                    header('Content-Encoding: gzip');
+                    header('Vary: Accept-Encoding');
+                    header('Content-Length: ' . strlen($gz));
+                    return;
+                }
+            } else {
                 header('Content-Encoding: gzip');
                 header('Vary: Accept-Encoding');
-                header('Content-Length: ' . strlen($gz));
-                return;
+                // 流式压缩报不出长度：让 PHP-FPM 用 chunked（HTTP/1.1）
+                if (jubeat_stream_gzip($fp, false)) {
+                    return;
+                }
+                header_remove('Content-Encoding');
+                header_remove('Vary');
             }
-        } else {
-            header('Content-Encoding: gzip');
-            header('Vary: Accept-Encoding');
-            // 流式压缩报不出长度：让 PHP-FPM 用 chunked（HTTP/1.1）
-            if (jubeat_stream_gzip($path, false)) {
-                return;
-            }
-            header_remove('Content-Encoding');
-            header_remove('Vary');
         }
-    }
 
-    http_response_code(200);
-    header('Content-Length: ' . $size);
-    jubeat_stream($path, 0, max(0, $size - 1), $headOnly);
+        http_response_code(200);
+        header('Content-Length: ' . $size);
+        jubeat_stream($fp, 0, max(0, $size - 1), $headOnly);
+    } finally {
+        fclose($fp);
+    }
 }
 
 /** 入口：解析请求 → 发文件 / 404 */

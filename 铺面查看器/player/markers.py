@@ -18,7 +18,7 @@ import threading
 import sys
 from typing import Any
 
-from config import MARKERS_ROOT
+import config
 from media import safe_join
 from source_revision import source_revision
 
@@ -128,13 +128,17 @@ def _normalize(raw: dict) -> dict:
 
 
 def manifest() -> dict:
-    manifest_path = MARKERS_ROOT / "manifest.json"
+    # 运行时才取 config.MARKERS_ROOT：保持 config 的惰性解析（import 时不扫盘），
+    # 也让 JUBEAT_MARKERS / 对 config 的 monkeypatch 在调用时生效。缓存的 root
+    # 比较也用这个动态值，root 变了缓存就会自然失效。
+    root = config.MARKERS_ROOT
+    manifest_path = root / "manifest.json"
     try:
         stamp = source_revision(manifest_path)
     except OSError:
         stamp = 0
     with _lock:
-        if _cache.get("root") == str(MARKERS_ROOT) and _cache.get("stamp") == stamp:
+        if _cache.get("root") == str(root) and _cache.get("stamp") == stamp:
             return _cache["data"]
 
     data: dict = {"format": "", "designs": [], "error": None}
@@ -151,13 +155,13 @@ def manifest() -> dict:
         data["error"] = "manifest.json 里没有一个可用设计"
 
     with _lock:
-        _cache.update(root=str(MARKERS_ROOT), stamp=stamp, data=data)
+        _cache.update(root=str(root), stamp=stamp, data=data)
     return data
 
 
 def asset_path(rel: str):
     """marker 素材文件路径（带穿越检查 + macOS 重名副本过滤）。"""
-    dest = safe_join(MARKERS_ROOT, rel)
+    dest = safe_join(config.MARKERS_ROOT, rel)
     if " 2." in dest.name:  # macOS 复制产生的重名副本
         raise FileNotFoundError(rel)
     if not dest.is_file():

@@ -8,6 +8,18 @@
   const filters = [els.versionFilter, els.sortSelect, els.holdFilter];
   let active = false, saved = null, cards = [];
   const name = d => `#${String(d.num).padStart(2, '0')} ${d.name || d.id}`;
+  const NONE_DESIGN = {id: '', name: '无（仅面板灯）', num: 0};
+  // 每款设计的归一化搜索串只算一次：markerCfg.designs 里的对象引用稳定，
+  // 用 WeakMap 缓存，避免每次输入都对全库重跑 normalizeSearch。
+  const searchKeys = new WeakMap();
+  const searchKey = (d) => {
+    let key = searchKeys.get(d);
+    if (key === undefined) {
+      key = A.normalizeSearch([d.num, d.name, d.name_zh, d.name_ja, d.id, d.release].join(' '));
+      searchKeys.set(d, key);
+    }
+    return key;
+  };
   function sync() {
     for (const button of list.querySelectorAll('[data-marker-id]')) {
       const selected = button.dataset.markerId === els.markerSelect.value;
@@ -20,8 +32,8 @@
     for (const card of cards) card.dispose?.();
     cards = []; list.replaceChildren();
     const query = A.normalizeSearch(els.search.value.trim());
-    const designs = [{id: '', name: '无（仅面板灯）', num: 0}, ...markerCfg.designs];
-    const found = designs.filter(d => !query || A.normalizeSearch([d.num, d.name, d.name_zh, d.name_ja, d.id, d.release].join(' ')).includes(query));
+    const designs = [NONE_DESIGN, ...markerCfg.designs];
+    const found = designs.filter(d => !query || searchKey(d).includes(query));
     els.listCount.textContent = markerCfg.loaded ? `${found.length} / ${designs.length} 款 Marker` : 'Marker 加载中…';
     if (!markerCfg.loaded || !found.length) {
       const li = document.createElement('li'); li.className = 'empty-list';

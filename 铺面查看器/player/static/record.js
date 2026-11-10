@@ -76,13 +76,20 @@
   function waitImage(img, timeoutMs = 4000) {
     if (!img || !img.getAttribute("src")) return Promise.resolve();
     if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-    return Promise.race([
-      new Promise((resolve) => {
-        img.addEventListener("load", resolve, { once: true });
-        img.addEventListener("error", resolve, { once: true });
-      }),
-      sleep(timeoutMs),
-    ]);
+    return new Promise((resolve) => {
+      // load / error / 超时三条路竞争同一个 done；谁先到都顺手把监听器和
+      // timer 收掉，避免超时后还挂着监听器、timer 也不回收。
+      let timer;
+      const done = () => {
+        clearTimeout(timer);
+        img.removeEventListener("load", done);
+        img.removeEventListener("error", done);
+        resolve();
+      };
+      img.addEventListener("load", done);
+      img.addEventListener("error", done);
+      timer = setTimeout(done, timeoutMs);
+    });
   }
 
   /** 读信息栏文本：统计值以播放器渲染出来的为准 */
@@ -214,8 +221,6 @@
         notes: statText("statNotes"),
         holds: statText("statHolds"),
         time: statText("statTime"),
-        captionLeft: statText("captionLeft"),
-        captionRight: statText("captionRight"),
       },
     };
   }

@@ -74,6 +74,28 @@ const BASE_HEADERS = {
 };
 
 /**
+ * 缓存策略按资源类型对齐 Python 开发服务器 server.py，四类资源在四端必须一致
+ * （由 tools/test_cache_headers.py 静态守着）：
+ *   audio / data/charts / se → 1 天，cover / thumb → 7 天，markers → 300 秒，
+ *   其余（入口、索引、静态脚本）→ no-cache 每次回来校验。
+ */
+function cacheControl(rel) {
+  if (rel.startsWith("/media/audio/") || rel.startsWith("/media/se/")) {
+    return "public, max-age=86400";        // audio: 1 天
+  }
+  if (rel.startsWith("/media/cover/") || rel.startsWith("/media/thumb/")) {
+    return "public, max-age=604800";       // cover-thumb: 7 天
+  }
+  if (rel.startsWith("/data/charts/")) {
+    return "public, max-age=86400";        // data-charts: 1 天
+  }
+  if (rel.startsWith("/markers/")) {
+    return "public, max-age=300";          // markers: 300 秒
+  }
+  return "no-cache";
+}
+
+/**
  * 把请求路径安全地拼到 root 下；越界返回 null。
  *
  * 这里以前是 `target.startsWith(root)`：看着像包含检查，其实是个字符串前缀比较，
@@ -150,7 +172,7 @@ function serve(rootDir) {
         ...BASE_HEADERS,
         "Content-Type": type,
         "Accept-Ranges": "bytes",
-        "Cache-Control": rel.startsWith("/media/") ? "public, max-age=604800" : "no-cache",
+        "Cache-Control": cacheControl(rel),
       };
       const range = parseRange(req.headers.range, stat.size);
       if (!range) {

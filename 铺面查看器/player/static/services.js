@@ -13,7 +13,11 @@
       Object.defineProperty(this, name, {value: owner, enumerable: true});
       return owner;
     }
-    dispose() { for (const owner of [...this.owners.values()].reverse()) owner.dispose?.(); }
+    dispose() {
+      for (const owner of [...this.owners.values()].reverse()) {
+        try { owner.dispose?.(); } catch (err) { console.warn('service dispose failed', err); }
+      }
+    }
   }
   class SettingsStore {
     constructor(bridge, storage) { this.bridge = bridge; this.storage = storage; }
@@ -28,7 +32,14 @@
             if (legacy != null) bridge.setItem(key, legacy);
             return legacy;
           }
-          if (value === null) bridge.removeItem(key); else bridge.setItem(key, String(value));
+          if (value === null) {
+            bridge.removeItem(key);
+            // Removal must clear both stores: a value written during recording
+            // mode lives only in web storage and would otherwise survive.
+          } else {
+            bridge.setItem(key, String(value));
+            return;  // bridge 写成功即结束，与读分支对称；只有 bridge 抛错时才回退到 web storage
+          }
         }
       } catch (_) { /* An unavailable native bridge falls back to web storage. */ }
       try {
@@ -51,7 +62,7 @@
       const value = this.cache.get(key); this.cache.delete(key); this.cache.set(key, value); return value;
     }
     put(key, value) {
-      const bytes = value.bytes || JSON.stringify(value.chart).length * 4;
+      const bytes = value.bytes ?? JSON.stringify(value.chart).length * 4;
       this.bytes -= this.sizes.get(key) || 0; this.cache.delete(key);
       this.cache.set(key, value); this.sizes.set(key, bytes); this.bytes += bytes;
       while (this.cache.size > 40 || this.bytes > 24 * 1024 * 1024) {

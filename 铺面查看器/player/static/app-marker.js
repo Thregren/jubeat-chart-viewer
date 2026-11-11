@@ -487,12 +487,17 @@
     const bezelPad = bezel
       ? Math.max(0, bezel.getBoundingClientRect().height - els.panel.getBoundingClientRect().height)
       : 0;
-    const availW = Math.max(120, stage.clientWidth - padH);
-    const availH = Math.max(120, stage.clientHeight - padV - bezelPad - 2);
-    // 上限只是别让面板在超大屏上无限膨胀；窄屏（手机/平板竖屏）给得宽松些，
-    // iPad 竖屏可用高有 700+，卡在 430 会白白浪费高度（面板是正方形的，宽也会一起长大）。
+    const proportional = !document.body.classList.contains("private-play-active");
+    const availW = proportional
+      ? Math.max(0, (stage.clientWidth - padH - 2) / 1.05)
+      : Math.max(120, stage.clientWidth - padH);
+    const availH = proportional
+      ? Math.max(0, (stage.clientHeight - padV - 2) / 1.05)
+      : Math.max(120, stage.clientHeight - padV - bezelPad - 2);
+    // 普通移动端优先使用全部可用宽度；高度不足时仍由 availH 约束。
     const isNarrow = typeof A.isNarrow === "function" ? A.isNarrow() : false;
-    const size = Math.min(availW, availH, isNarrow ? 720 : 560);
+    const size = Math.min(availW, availH, isNarrow ? (proportional ? Infinity : 720) : 560);
+    if (proportional && bezel) bezel.style.setProperty("--panel-size", size + "px");
     els.panel.style.width = size + "px";
   }
 
@@ -552,8 +557,8 @@
   //     箭头从 tailTip 出发、朝 index 走，箭尖朝 index。
   //   · 提前 0.5s（HOLD_PRE）先亮起「走廊」：终点格的整格提亮 + 那枚 V、起点格上
   //     一枚很淡的箭头，以及两点之间那条淡蓝光束；到 t 一起转亮，箭头才开始滑。
-  //   · 箭头 = 一枚正好一格大的 V（chevron：平边在后、箭尖在前），全程不缩放，在
-  //     [t, endT] 里沿走廊匀速滑过 N 格。progress=0 时正好盖住起点格、=1 时压在
+  //   · 提前显示时箭头宽高为半格，平边贴住起点格后沿；判定时开始平滑放大到整格，
+  //     同时在 [t, endT] 里沿走廊匀速滑过 N 格。progress=1 时压在
   //     终点格上。实测平边（箭头那条后边）从起点格后沿走到终点格后沿(= N*格距)：
   //     345px / 2.4615s = 140.2px/s，严格线性（1/2/3 格与上/下/左/右四个方向都验过）。
   //   · 方向：竖直长押的 V 朝上/下，水平长押的 V 朝左/右（终点格那枚也一样）——
@@ -569,6 +574,7 @@
   // 69.6（底色 56）→ 换算成不透明度只有正式版的 ≈ 1/5。
   const HOLD_PRE_BEAM = 0.56;
   const HOLD_PRE_ARROW = 0.22;
+  const HOLD_ARROW_GROW = 0.12; // 判定后 120ms 平滑放大到整格
 
   // 顺序数字的出现时机：官方只在「拍点前 0.10s」才把数字画出来 —— 逐帧量了 7 条 note
   // （festo 实机视频），「数字第一次可见 → 爆花第一帧」恒定 3 帧 = 100ms，一次没差。
@@ -576,6 +582,7 @@
   // 所以数字就取「拍点前 0.10s」。以前整段接近动画（默认 0.8× 下 0.71s）都在画数字，
   // 看起来就是「数字提前一大截出现」，和实机差得远。
   const NUM_LEAD = 0.10;
+  const NUM_TAIL_TRIM = 1 / 30; // 序号比命中动画提前约一帧结束
 
   /** 终点格（被按住那格）的填充色：跟着「同押光晕」的主色走
    *  （实机里长押格的颜色也随乐段变，这里用它做可配置的替代） */
@@ -837,8 +844,14 @@
     ctx.rotate(f.angle);
 
     const headNear = N * pitch;      // 终点格后沿：beam 到此为止
-    const backY = prog * headNear;   // 平边：progress=0 时正好压在起点格后沿
-    const apexY = backY + along;     // 箭尖
+    const growProgress = Math.min(1, Math.max(0, (chartT - t0) / HOLD_ARROW_GROW));
+    const growEase = growProgress * growProgress * (3 - 2 * growProgress);
+    const arrowScale = 0.5 + 0.5 * growEase;
+    const arrowW = w * arrowScale;
+    const arrowH = along * arrowScale;
+    // 平边始终贴住行进位置；放大时从平边向箭尖方向展开。
+    const backY = prog * headNear;
+    const apexY = backY + arrowH;
     // 正式开画前（提前量那 0.5s）：走廊光束与终点格先半亮起来，移动箭头本身很淡地
     // 停在起点格上；到了 t 一起转成全亮，箭头才开始往前走。
     const lightBeam = started ? 1 : HOLD_PRE_BEAM;
@@ -867,12 +880,12 @@
     }
 
     // —— 固定的终点 V 与箭头本体共用一次变换保存 ——
-    // progress = 0 时移动箭头正好盖住起点格。
+    // progress = 0 时移动箭头的平边贴住起点格后沿。
     ctx.save();
     ctx.translate(0, headNear);
     drawV(w, along, tint, lightBeam);
     ctx.translate(0, backY - headNear);
-    drawV(w, along, null, lightArrow);
+    drawV(arrowW, arrowH, null, lightArrow);
     ctx.restore();
 
     ctx.restore();
@@ -1313,13 +1326,13 @@
     return palette;
   }
 
-  function drawOrderNumber(note, rect, markerOpacity = 1, cache = orderNumberCache()) {
+  function drawOrderNumber(note, rect, markerOpacity = 1, cache = orderNumberCache(), allowChord = true, allowNumber = true) {
     if (!rect) return;
     const text = String(note.seq || 0);
-    const showNum = !!(els.showNumbers && els.showNumbers.checked);
+    const showNum = allowNumber && !!(els.showNumbers && els.showNumbers.checked);
     // 同押高亮和「音符序号」是两个开关：只开高亮、不显示数字也要能看（以前两者
     // 绑在一起，关掉数字连高亮一起没了）。
-    const chord = !A.mode?.suppressChords && markerOpacity > 0 && (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
+    const chord = allowChord && !A.mode?.suppressChords && markerOpacity > 0 && (note.groupSize || 1) > 1 && (!els.showChordGlow || els.showChordGlow.checked);
     if (!showNum && !chord) return;
     const layout = numberLayout(rect, text, cache);
     const { font, size, x: localX, y: localY, gx: localGx, gy: localGy, glowSize, corner } = layout;
@@ -1470,7 +1483,7 @@
    * 中间那段只有「会移动的箭头」陪着你（drawHoldArrows）。
    */
   // 逐帧复用的三个容器：drawMarkers 每个渲染帧都跑一遍，别每帧新建 Map / 数组。
-  // 注意 numbers 里每颗 note 的 [note, rect, opacity] 三元组仍在循环内每帧新建，
+  // 注意 numbers 里的条目仍在循环内每帧新建，
   // 复用同一个数组对象会把上一帧的 note / rect / opacity 串到这一帧。
   const counts = new Map();
   const numbers = [];
@@ -1506,9 +1519,8 @@
     const animationRate = (window.JubeatRuntime?.markerRate?.(Number(els.rate?.value), !!els.markerNormalSpeed?.checked) || 1);
     const earlySec = (early * animationRate) / 1000;
     const lateSec = (Math.min(late, hFrames * hPer) * animationRate) / 1000;
-    // v0.6.56: 动画窗口按倍速放大时，长押尾判的回溯窗口也必须一起放大，
-    // 否则 2× 下正在收尾的长押会被查询窗口裁掉（marker 凭空消失）。
-    const holdBack = ((state._parsed && state._parsed.maxHold) || 0) * animationRate;
+    // 长押时长本身已是谱面时间，不能随动画速度缩短，否则慢速播放时会提前隐藏。
+    const holdBack = (state._parsed && state._parsed.maxHold) || 0;
     counts.clear();
     numbers.length = 0;
     frames.length = 0;
@@ -1524,12 +1536,15 @@
       const rel = chartT - n.t;
       const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / animationRate;
 
-      // 顺序数字：官方是「拍点前 0.10s」才出现（见 NUM_LEAD），跟上这一段的命中动画
-      // 一起收尾；长押按住期间一直留着，松开时再跟着爆一次。这一段不属于 marker
-      // 素材，所以放在窗口早退之前，设成「无（仅面板灯）」时也就自然不画了。
+      // 默认从接近动画的第一帧显示；开启开关后使用拍点前 0.10s 规则。
+      // 长押期间持续显示；数字略早于尾判动画结束，高亮仍维持原来的完整周期。
       const numLead = NUM_LEAD * animationRate;
-      const numEnd = (dur != null ? dur : 0) + lateSec;
-      const number = rel >= -numLead && rel < numEnd ? [n, rect, 0] : null;
+      const numStart = els.numPerfectOnly?.checked ? -numLead : earlySec;
+      const chordEnd = (dur != null ? dur : 0) + lateSec;
+      const numEnd = (dur != null ? dur : 0) + Math.max(0, lateSec - NUM_TAIL_TRIM * animationRate);
+      const showNumber = rel >= numStart && rel < numEnd;
+      const showChord = rel >= -numLead && rel < chordEnd;
+      const number = showNumber || showChord ? [n, rect, 0, showChord, showNumber] : null;
       if (number) numbers.push(number);
 
       if (u < early || u >= late) continue;
@@ -1564,7 +1579,7 @@
 
     drawFrameImages(frames);
     drawHoldCountdowns(chartT);
-    for (const [n, rect, opacity] of numbers) drawOrderNumber(n, rect, opacity);
+    for (const [n, rect, opacity, allowChord, allowNumber] of numbers) drawOrderNumber(n, rect, opacity, undefined, allowChord, allowNumber);
   }
 
   /** 首批落点预告：与同押 frame 共用颜色、粗细、内缩和圆角。 */

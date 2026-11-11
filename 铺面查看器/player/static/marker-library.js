@@ -34,14 +34,14 @@
     const query = A.normalizeSearch(els.search.value.trim());
     const designs = [NONE_DESIGN, ...markerCfg.designs];
     const found = designs.filter(d => !query || searchKey(d).includes(query));
-    els.listCount.textContent = markerCfg.loaded ? `${found.length} / ${designs.length} 款 Marker` : 'Marker 加载中…';
+    els.listCount.textContent = markerCfg.loaded ? `${found.length} 款` : '加载中…';
     if (!markerCfg.loaded || !found.length) {
       const li = document.createElement('li'); li.className = 'empty-list';
       li.textContent = markerCfg.loadError ? 'Marker 清单加载失败，请重试。' : markerCfg.loaded ? '没有匹配的 Marker。' : 'Marker 清单加载中…';
       if (markerCfg.loadError) {
         const retry = document.createElement('button'); retry.className = 'ghost-btn'; retry.textContent = '重试';
         retry.type = 'button'; retry.addEventListener('click', () => A.loadMarkers()); li.append(retry);
-        els.listCount.textContent = 'Marker 加载失败';
+        els.listCount.textContent = '加载失败';
       }
       list.append(li); return;
     }

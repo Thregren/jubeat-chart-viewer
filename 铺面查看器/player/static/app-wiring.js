@@ -128,7 +128,7 @@
       els.metroSound.addEventListener("change", () => {
         store(STORAGE.metroSound, els.metroSound.value);
         A.prepareSfx({ unlock: true, retry: true });
-        if (els.metroSound.value) playMetro(true); // 试听
+        if (els.metroSound.value) A.previewSfx(); // 试听；采样音等待加载完成
       });
       els.metroVolume.addEventListener("change", () => {
         store(STORAGE.metroVolume, els.metroVolume.value);
@@ -143,6 +143,9 @@
       });
       els.showNumbers.addEventListener("change", () => {
         store(STORAGE.showNumbers, els.showNumbers.checked ? "1" : "0");
+      });
+      els.numPerfectOnly.addEventListener("change", () => {
+        if (!window.__recActive) store(STORAGE.numPerfectOnly, els.numPerfectOnly.checked ? "1" : "0");
       });
       // Keep the same values and preference keys when presets replace sliders.
       for (const [control, label, property, key, clamp, fallback] of [
@@ -224,6 +227,7 @@
         showCombo: store(STORAGE.showCombo),
         firstMarker: store(STORAGE.firstMarker),
         showNumbers: store(STORAGE.showNumbers),
+        numPerfectOnly: store(STORAGE.numPerfectOnly),
         numScale: store(STORAGE.numScale),
         numAlpha: store(STORAGE.numAlpha),
         numGlowAlpha: store(STORAGE.numGlowAlpha),
@@ -284,6 +288,7 @@
         if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
       }
+      els.numPerfectOnly.checked = !window.__recActive && saved.numPerfectOnly === "1";
       els.firstMarker.checked = saved.firstMarker !== "0";
       if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
       numCfg.style = normalizeChordStyle(saved.chordGlowStyle);
@@ -433,6 +438,15 @@
       clearTimeout(searchTimer);
       searchTimer = setTimeout(renderList, 120); // 本地筛选，不用打服务器
     });
+    const clearSearch = document.getElementById("btnClearSearch");
+    clearSearch?.addEventListener("pointerdown", event => event.preventDefault());
+    clearSearch?.addEventListener("click", () => {
+      els.search.value = "";
+      els.search.dispatchEvent(new Event("input", { bubbles: true }));
+      A.cancelLibrarySearch();
+      renderList();
+      els.search.focus({ preventScroll: true });
+    });
     els.versionFilter.addEventListener("change", renderList);
     els.autoPreview.addEventListener("change", () => {
       store(STORAGE.autoPreview, els.autoPreview.checked ? "1" : "0");
@@ -521,7 +535,8 @@
       if (e.target?.closest?.('#btnMarkerLibrary, #markerList')) return;
       const tag = (e.target && e.target.tagName) || "";
       if (e.defaultPrevented || e.target.isContentEditable || tag === 'SUMMARY'
-          || (e.code === 'Space' && e.target.closest?.('button,a'))) return;
+          || (e.code === 'Space' && e.target.closest?.('button,a')
+              && !e.target.closest?.('#songList .song-item'))) return;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
         if (e.code === "Space" && e.target === els.search) return;
         if (e.target !== els.offset && e.target !== els.search) return;
@@ -529,7 +544,7 @@
       }
       if (e.code === "Space") {
         e.preventDefault();
-        togglePlay();
+        if (!e.repeat) togglePlay();
       } else if (e.key === "r" || e.key === "R") {
         restart();
       } else if (e.key === "a" || e.key === "A") {
@@ -573,6 +588,54 @@
     if (window.ResizeObserver && els.densityWrap) {
       const ro2 = new ResizeObserver(() => {if(!A.mode?.ownsFrame)layoutDensity();});
       ro2.observe(els.densityWrap);
+    }
+    // 桌面封面跟随信息高度；移动端优先留出完整面板，再适度分配剩余空间。
+    const header = document.querySelector('.stage .now-playing');
+    const mainInfo = header?.querySelector('.np-main');
+    const sideInfo = header?.querySelector('.np-side');
+    const stage = header?.closest('.stage');
+    const mobileBar = stage?.querySelector('.mobile-bar');
+    const panelStage = stage?.querySelector('.panel-stage');
+    const transport = stage?.querySelector('.transport');
+    const overview = transport?.querySelector('.chart-overview');
+    const timeline = overview?.querySelector('.timeline-wrap');
+    if (window.ResizeObserver && header && mainInfo && sideInfo && stage && mobileBar && panelStage && transport && overview && timeline) {
+      let frame = 0;
+      const updateHeader = () => {
+        frame = 0;
+        if (document.body.classList.contains('private-play-active')) return;
+        const headerStyle = getComputedStyle(header);
+        const contentHeight = Math.max(0, header.getBoundingClientRect().height
+          - parseFloat(headerStyle.paddingTop) - parseFloat(headerStyle.paddingBottom));
+        if (window.matchMedia('(max-width: 900px)').matches) {
+          const panelStyle = getComputedStyle(panelStage);
+          const maxPanel = panelStage.clientWidth - parseFloat(panelStyle.paddingLeft) - parseFloat(panelStyle.paddingRight);
+          const timelineHeight = (timeline.classList.contains('timeline-flattened') ? 136 : 112) + 8;
+          const occupied = overview.classList.contains('timeline-roomy') && !timeline.hidden
+            ? timeline.getBoundingClientRect().height + 8 : 0;
+          const baseTransportHeight = transport.offsetHeight - occupied;
+          const extra = Math.max(0, stage.clientHeight - mobileBar.offsetHeight - baseTransportHeight - contentHeight - maxPanel);
+          const headerGap = Math.min(44, Math.max(20, extra * .2));
+          const boardGap = Math.min(48, Math.max(12, extra * .23));
+          overview.classList.toggle('timeline-roomy', extra - headerGap - boardGap - 8 >= timelineHeight);
+          for (const [name, value] of [['--mobile-header-gap', headerGap], ['--mobile-board-gap', boardGap]]) {
+            const previous = parseFloat(stage.style.getPropertyValue(name));
+            if (!Number.isFinite(previous) || Math.abs(previous - value) > .25) stage.style.setProperty(name, `${value}px`);
+          }
+          return;
+        }
+        const size = Math.min(contentHeight, header.clientWidth * .4);
+        const previous = parseFloat(header.style.getPropertyValue('--np-cover-size'));
+        if (size > 0 && (!Number.isFinite(previous) || Math.abs(previous - size) > .25))
+          header.style.setProperty('--np-cover-size', `${size}px`);
+      };
+      const scheduleHeader = () => { if (!frame) frame = requestAnimationFrame(updateHeader); };
+      const headerObserver = new ResizeObserver(scheduleHeader);
+      [header, mainInfo, sideInfo, stage, mobileBar, panelStage, transport, overview, timeline].forEach(el => headerObserver.observe(el));
+      window.addEventListener('resize', scheduleHeader);
+      document.getElementById('timelineFlatten')?.addEventListener('change', scheduleHeader);
+      document.getElementById('btnTimeline')?.addEventListener('change', scheduleHeader);
+      scheduleHeader();
     }
   }
 

@@ -2,14 +2,14 @@
 
 在网页或离线客户端里浏览 jubeat 谱面，用 4×4 面板和逐帧 Marker 核对节奏、同押与长押，适合看谱、练谱和制作谱面确认视频。
 
-**[在线使用](https://ub.thregren.world/)** · **[下载轻量客户端](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** · **[完整曲库与客户端网盘下载](https://pan.quark.cn/s/e9c12157e039)**
+**[在线使用](https://ub.thregren.world/)** · **[下载轻量客户端](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.0)** · **[完整曲库与客户端网盘下载](https://pan.quark.cn/s/e9c12157e039)**
 
 ## 主要功能
 
-- **找谱和看谱**：搜索曲名、版本、作曲者；按版本、长押和难度筛选排序；曲目列表按需渲染。
+- **找谱和看谱**：搜索曲名或艺术家，按版本、谱面类型和难度筛选排序；支持 7 日热门、搜索清除和一键重置，曲目列表按需渲染。
 - **Marker 与提示**：官方逐帧动画、单列图选、首 Marker「这里／开始」提示、同押面板框与双色高亮。
 - **界面主题**：切换 13 套按各版本特色重新设计的配色与图案，包括星空、涟漪、城市、热带植物、木纹和砖墙，4×4 面板和边框也会随主题变色；记住上次选择。
-- **节奏可视化**：音符顺序数字、断句和节奏分组配色、长押轨迹、总连击、物量条和可细分的横向节奏轴。
+- **节奏可视化**：音符顺序数字默认随 Marker 提前显示，也可设置为 Perfect 帧时显示；支持断句和节奏分组配色、长押轨迹、总连击、物量条和可细分的横向节奏轴。
 - **反复练习**：0.25×–2× 保持音调变速、声画偏移、A–B 段落循环、循环播放和多种按键音效。
 - **试听和分享**：独立原试听循环；歌曲分享页打开后自动定位歌曲和难度。
 - **手机与离线**：手机曲库抽屉（图选 Marker 后自动收起）、折叠设置、PWA 安装；桌面与 Android 客户端导入完整资源包后离线使用。
@@ -31,21 +31,21 @@
 
 直接打开 **[ub.thregren.world](https://ub.thregren.world/)** 即可使用。iPhone、iPad 和 Android 可通过浏览器的「添加到主屏幕／安装应用」使用 PWA。
 
-**[GitHub Release](https://github.com/Thregren/jubeat-chart-viewer/releases/latest)** 提供不含曲库的 v0.6.50 轻量程序、网站部署分卷和校验文件；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供客户端和独立完整曲库。
+**[v0.7.0 Release](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.0)** 提供不含曲库的轻量客户端和校验文件；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供客户端和独立完整曲库。
 
 | 平台 | 下载 |
 |---|---|
-| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-win-x64.zip) |
-| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-win-arm64.zip) |
-| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-mac-x64.zip) |
-| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-mac-arm64.zip) |
-| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-linux-x86_64.AppImage) |
-| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeatViewer-0.6.50-linux-arm64.AppImage) |
-| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.6.50/jubeat-viewer-0.6.50-android-min.apk) |
+| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-win-x64.zip) |
+| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-win-arm64.zip) |
+| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-mac-x64.zip) |
+| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-mac-arm64.zip) |
+| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-linux-x86_64.AppImage) |
+| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-linux-arm64.AppImage) |
+| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeat-viewer-0.7.0-android-min.apk) |
 
 离线使用：
 
-1. 下载适合平台的轻量程序，以及网盘中的 `jubeat-library-0.6.50.zip`。该独立曲库包包含 **2469 个歌曲／谱面版本条目、7373 张谱面**，并带有歌曲背景故事资料，可导入新版客户端。GitHub Release 中的 `web-0.6.50.partNNN.zip` 是网站部署用的独立分卷，不能拼接成完整曲库，也不能直接导入客户端。
+1. 下载适合平台的轻量程序，以及网盘中的 `jubeat-library-0.6.50.zip`。该独立曲库包包含 **2469 个歌曲／谱面版本条目、7373 张谱面**，并带有歌曲背景故事资料，可导入新版客户端。[v0.6.50 Release](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.6.50) 中的 `web-0.6.50.partNNN.zip` 是网站部署用的独立分卷，不能拼接成完整曲库，也不能直接导入客户端。
 2. 桌面端将整个曲库 ZIP 拖进窗口，或从文件菜单导入；Android 安装 APK 后选择「导入资源包」，导入同一个 ZIP。
 3. 校验并导入后即可离线看谱和播放。程序与曲库可分别更新；导入期间需要容纳旧库和新库。
 
@@ -54,6 +54,14 @@ macOS 程序未做商业签名，首次打开可在 Finder 中右键「打开」
 更多安装方法见 [客户端与压缩曲库](docs/压缩曲库与客户端.md)，曲库范围和按版本安装见 [目录曲库说明](docs/目录曲库.md)。
 
 ## 最近更新
+
+**v0.7.0**
+
+- 音符序号默认随 Marker 一同出现，新增「Perfect 帧时显示」开关，并略微缩短 Perfect 后的停留时间；长押箭头从贴底的半尺寸平滑放大。
+- 调整桌面与移动端歌曲信息、封面和 4×4 谱面布局，改善窄屏、横屏及不同高度下的面板比例；有足够空间时展开节奏轴不遮挡物量条。
+- 精简侧栏、放大歌曲列表封面，优化版本筛选与当前数量显示；重置可清除搜索和筛选并退出 7 日热门。
+- 改善移动端搜索体验，增加搜索清除按钮，修复 iPhone Safari 聚焦输入框时的意外放大；修复背景故事重新打开时未回到开头及移动端侧栏「关于」状态问题。
+- 歌曲列表中按空格控制谱面播放与暂停，移除「彩虹猫 Nyan」按键音效。
 
 **v0.6.55**
 

@@ -122,7 +122,9 @@
     button?.setAttribute('aria-expanded','true');
     if(typeof dialog.showModal==='function')dialog.showModal();
     else dialog.setAttribute('open','');
-    dialog.querySelector('.story-close')?.focus();
+    dialogBody.scrollTop=0;
+    dialog.scrollTop=0;
+    dialog.querySelector('.story-close')?.focus({preventScroll:true});
   }
 
   function closeDialog(restoreFocus=false){

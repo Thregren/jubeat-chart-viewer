@@ -63,6 +63,10 @@
   function setSidebarOpen(open) {
     const narrow = isNarrow();
     if (open) sidebarOpenedAt = performance.now();
+    if (narrow && !open) {
+      const about = els.sidebar.querySelector('.brand-about');
+      if (about) about.open = false;
+    }
     els.sidebar.classList.toggle("hidden", narrow ? !open : false);
     const scrim = document.querySelector(".scrim");
     if (scrim) scrim.hidden = !(narrow && open);
@@ -121,6 +125,7 @@
           els.versionFilter.appendChild(opt);
         }
         els.versionFilter.value = data.versions.includes(selectedVersion) ? selectedVersion : "";
+        A.libraryFilters?.sync();
       }
       renderList();
       A.visitors?.event('library_ready',{bucketMs:A.metrics.libraryMs});
@@ -199,7 +204,8 @@
     els.btnPopular.hidden = !popularRaw.length;
     els.btnPopular.disabled = !popularSongs.length;
     els.btnPopular.setAttribute('aria-pressed', popularMode ? 'true' : 'false');
-    els.btnPopular.textContent = popularMode ? '返回全部' : '7日热门歌曲';
+    els.btnPopular.textContent = popularMode ? '返回全部' : '7日热门';
+    A.libraryFilters?.sync();
   }
 
   function prefetchPopularCovers() {
@@ -294,7 +300,7 @@
   }
 
   let activeSongRowId = '';
-  const ROW_HEIGHT=80, OVERSCAN=8;
+  const ROW_HEIGHT=72, OVERSCAN=8;
   let virtualSongs=[],virtualRows=new Map(),listRaf=0,focusIndex=0;
   const scheduleList=()=>{if(!listRaf)listRaf=requestAnimationFrame(()=>{listRaf=0;paintListWindow();});};
   function spacer(height){const li=document.createElement('li');li.className='song-spacer';li.setAttribute('aria-hidden','true');li.style.height=height+'px';return li;}
@@ -334,7 +340,7 @@
     cancelAnimationFrame(listRaf);listRaf=0;for(const row of virtualRows.values())disposeCover(row);songButtonById.clear();virtualRows.clear();
     activeSongRowId=state.song?.id||'';virtualSongs=visibleSongs();focusIndex=0;
     ul.classList.add('virtual');ul.replaceChildren();ul.scrollTop=0;
-    els.listCount.textContent=popularMode ? `近 7 日热门 · ${virtualSongs.length} 首` : `${virtualSongs.length} / ${state.songs.length} 首`;
+    els.listCount.textContent=`${virtualSongs.length} 首`;
     if(!virtualSongs.length){const li=document.createElement('li');li.className='empty-list';li.textContent=state.songs.length?'没有匹配的曲目，换个关键词试试。':'曲库里没有曲目：请将版本包解压到含 data/library.json 的目录。';ul.appendChild(li);}
     else { ul.appendChild(spacer(virtualSongs.length * ROW_HEIGHT)); ul.scrollTop = Number.isFinite(scrollTop) ? scrollTop : 0; paintListWindow(); }
     A.metrics=A.metrics||{};A.metrics.listMs=performance.now()-started;
@@ -701,6 +707,8 @@
     sidebarJustOpened,
     loadLibrary,
     setPopularSongs,
+    leavePopularMode,
+    isPopularMode: () => popularMode,
     hasHold,
     renderList,
     selectSong,

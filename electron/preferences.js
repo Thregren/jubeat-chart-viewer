@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const KEYS = new Set([
   'renderQuality',
-  'markerNormalSpeed','marker','metroSound','metroVolume','showCombo','firstMarker','showNumbers',
+  'markerNormalSpeed','marker','metroSound','metroVolume','showCombo','firstMarker','showNumbers', 'numPerfectOnly',
   'numScale','numAlpha','numGlowAlpha','numCorner','longHoldCountdown','numColorMode','numColor','showChordGlow',
   'chordGlowStyle','phraseMult','phraseFloor','phraseMax','chordGlowPair','settingsVersion',
   'collapsed','sort','holdFilter','autoPreview','timelineFlatten',

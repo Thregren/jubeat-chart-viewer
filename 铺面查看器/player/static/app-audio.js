@@ -64,11 +64,11 @@
       load.retryAt = Date.now() + delay;
       seCache.set(name, null);
     };
-    (async () => {
+    load.promise = (async () => {
       const timer = setTimeout(() => { failed(5000); load.controller.abort(); }, 15000);
       let missing = true;
       try {
-        for (const ext of SE_EXT) {
+        for (const ext of name.startsWith("nyan-") ? ["mp3"] : SE_EXT) {
           try {
             const res = await fetch(A.resourcePath(`media/se/${name}.${ext}?v=${frontVersion()}`), {
               cache: previous ? "reload" : "force-cache", signal: load.controller.signal,
@@ -117,7 +117,7 @@
           if (audioCtx === ctx && ctx.state === "running" && state.playing) sfxReset();
         }).catch(() => {});
       }
-      const names = kind === "clap" ? ["clap"] : kind === "nyan" ? ["nyan"]
+      const names = kind === "clap" ? ["clap"] : kind === "nyan" ? ["nyan-v2-accent", "nyan-v2-normal"]
         : kind === "taiko" ? ["don", "ka"] : kind === "billy" ? ["billy-accent", "billy-normal"] : [];
       for (const name of names) seProbe(name, { retry });
     } catch (_) { /* Unsupported or denied audio must not stop music playback. */ }
@@ -156,7 +156,7 @@
       else if (kind === "clap") {
         if (!playSe("clap", t, gain, out) && SFX.soundClap) SFX.soundClap(audioCtx, t, gain, out);
       } else if (kind === "nyan") {
-        if (!playSe("nyan", t, gain, out) && SFX.soundNyan) SFX.soundNyan(audioCtx, t, gain, out);
+        playSe(accent ? "nyan-v2-accent" : "nyan-v2-normal", t, gain, out);
       } else if (kind === "taiko") {
         if (!playSe(accent ? "don" : "ka", t, gain, out) && SFX.soundTaiko) {
           SFX.soundTaiko(audioCtx, t, gain, accent, out);
@@ -172,6 +172,23 @@
     } catch (_) {
       /* ignore */
     }
+  }
+
+  // A newly selected sampled sound must wait for its sample to decode before previewing.
+  // Otherwise the selection preview can play a different synthesized sound.
+  let previewGeneration = 0;
+  function previewSfx() {
+    const generation = ++previewGeneration;
+    if (els.metroSound.value !== "nyan") { playMetro(true); return; }
+    const name = "nyan-v2-accent";
+    seProbe(name);
+    const playIfReady = () => {
+      if (generation === previewGeneration && els.metroSound.value === "nyan"
+          && seCache.get(name) && seCache.get(name) !== "loading") playMetro(true);
+    };
+    const pending = seLoads.get(name)?.promise;
+    if (seCache.get(name) === "loading" && pending) pending.then(playIfReady).catch(() => {});
+    else playIfReady();
   }
 
   /** 打点音：每个 note 命中时响（和 marker 到位时间完全一致），hold 的头拍也要响 */
@@ -324,6 +341,7 @@
     seState,
     prepareSfx,
     playMetro,
+    previewSfx,
     sfxReset,
     sfxTimerSync,
     setPlaying,

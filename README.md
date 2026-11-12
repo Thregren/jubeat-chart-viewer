@@ -2,11 +2,11 @@
 
 在网页或离线客户端里浏览 jubeat 谱面，用 4×4 面板和逐帧 Marker 核对节奏、同押与长押，适合看谱、练谱和制作谱面确认视频。
 
-**[在线使用](https://ub.thregren.world/)** · **[下载轻量客户端](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.0)** · **[完整曲库与客户端网盘下载](https://pan.quark.cn/s/e9c12157e039)**
+**[在线使用](https://ub.thregren.world/)** · **[下载轻量客户端](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.1)** · **[完整曲库与客户端网盘下载](https://pan.quark.cn/s/e9c12157e039)**
 
 ## 主要功能
 
-- **找谱和看谱**：搜索曲名或艺术家，按版本、谱面类型和难度筛选排序；支持 7 日热门、搜索清除和一键重置，曲目列表按需渲染。
+- **找谱和看谱**：搜索曲名或艺术家，按版本、谱面类型和难度筛选排序；版本支持带 Logo 的图选和搜索；支持 7 日热门、搜索清除和一键重置，曲目列表按需渲染。
 - **Marker 与提示**：官方逐帧动画、单列图选、首 Marker「这里／开始」提示、同押面板框与双色高亮。
 - **界面主题**：切换 13 套按各版本特色重新设计的配色与图案，包括星空、涟漪、城市、热带植物、木纹和砖墙，4×4 面板和边框也会随主题变色；记住上次选择。
 - **节奏可视化**：音符顺序数字默认随 Marker 提前显示，也可设置为 Perfect 帧时显示；支持断句和节奏分组配色、长押轨迹、总连击、物量条和可细分的横向节奏轴。
@@ -31,17 +31,17 @@
 
 直接打开 **[ub.thregren.world](https://ub.thregren.world/)** 即可使用。iPhone、iPad 和 Android 可通过浏览器的「添加到主屏幕／安装应用」使用 PWA。
 
-**[v0.7.0 Release](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.0)** 提供不含曲库的轻量客户端和校验文件；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供客户端和独立完整曲库。
+**[v0.7.1 Release](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.1)** 提供不含曲库的轻量客户端和校验文件；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供客户端和独立完整曲库。
 
 | 平台 | 下载 |
 |---|---|
-| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-win-x64.zip) |
-| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-win-arm64.zip) |
-| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-mac-x64.zip) |
-| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-mac-arm64.zip) |
-| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-linux-x86_64.AppImage) |
-| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeatViewer-0.7.0-linux-arm64.AppImage) |
-| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.0/jubeat-viewer-0.7.0-android-min.apk) |
+| Windows x64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.1/jubeatViewer-0.7.1-win-x64.zip) |
+| Windows ARM64 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.1/jubeatViewer-0.7.1-win-arm64.zip) |
+| macOS Intel | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.1/jubeatViewer-0.7.1-mac-x64.zip) |
+| macOS Apple 芯片 | [ZIP](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.1/jubeatViewer-0.7.1-mac-arm64.zip) |
+| Linux x86_64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.1/jubeatViewer-0.7.1-linux-x86_64.AppImage) |
+| Linux ARM64 | [AppImage](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.1/jubeatViewer-0.7.1-linux-arm64.AppImage) |
+| Android 5.0+ | [APK](https://github.com/Thregren/jubeat-chart-viewer/releases/download/v0.7.1/jubeat-viewer-0.7.1-android-min.apk) |
 
 离线使用：
 
@@ -54,6 +54,11 @@ macOS 程序未做商业签名，首次打开可在 Finder 中右键「打开」
 更多安装方法见 [客户端与压缩曲库](docs/压缩曲库与客户端.md)，曲库范围和按版本安装见 [目录曲库说明](docs/目录曲库.md)。
 
 ## 最近更新
+
+**v0.7.1**
+
+- 版本筛选改为图选列表，支持搜索版本；版本和 Marker 列表与歌曲列表统一尺寸，APPEND 版本沿用对应原版 Logo。
+- 优化桌面客户端前端资源更新和曲库导入，增强路径校验与导入恢复；完善桌面和 Android 本地服务的文件访问保护。
 
 **v0.7.0**
 

@@ -21,6 +21,9 @@ public final class LocalServerTest {
  public static void main(String[] args) throws Exception {
   Path root=Files.createTempDirectory("jubeat-local-server-");Files.write(root.resolve("index.html"),"ok".getBytes("UTF-8"));
   Path markdown=root.resolve("data/background/story.md");Files.createDirectories(markdown.getParent());Files.write(markdown,"# story".getBytes("UTF-8"));
+  Path outside=Files.createTempFile("jubeat-external-", ".txt");Files.write(outside,"private".getBytes("UTF-8"));
+  boolean symlinks=true;
+  try{Files.createSymbolicLink(root.resolve("outside"),outside);}catch(UnsupportedOperationException|IOException|SecurityException e){symlinks=false;}
   LocalServer server=new LocalServer(root.toFile());
   try{
    for(int i=0;i<3;i++){
@@ -31,6 +34,7 @@ public final class LocalServerTest {
     if(!request(url,host+"Origin: http://untrusted.example\r\n").contains("403"))throw new AssertionError("foreign origin");
     if(!request(url,host+"Origin: http://127.0.0.1:"+url.getPort()+"\r\n").contains("200"))throw new AssertionError("same origin");
     if(!request(url,host+host).contains("400"))throw new AssertionError("duplicate host");
+    if(symlinks&&!response(url,"/outside",host).contains("403 Forbidden"))throw new AssertionError("symlink escape");
     String markdownResponse=response(url,"/data/background/story.md",host).toLowerCase(java.util.Locale.ROOT);
     if(!markdownResponse.contains("200 ok")||!markdownResponse.contains("content-type: text/markdown; charset=utf-8"))throw new AssertionError("markdown MIME");
     HttpURLConnection connection=(HttpURLConnection)url.openConnection();
@@ -42,6 +46,7 @@ public final class LocalServerTest {
    }
   }finally{
    server.stop();
+   Files.deleteIfExists(outside);
    try(java.util.stream.Stream<Path> paths=Files.walk(root)){
     paths.sorted(java.util.Comparator.reverseOrder()).forEach(path->{try{Files.delete(path);}catch(IOException e){throw new RuntimeException(e);}});
    }

@@ -20,7 +20,7 @@ set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 APP="$HERE/app"
-OUT="$HERE/out"
+OUT="${ANDROID_BUILD_OUT:-$HERE/out}"
 WORK="$OUT/work"
 DIST="$OUT/dist"
 

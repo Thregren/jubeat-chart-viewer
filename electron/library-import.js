@@ -5,6 +5,7 @@ const path = require('node:path');
 const { Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { crc32 } = require('node:zlib');
+const { randomBytes } = require('node:crypto');
 const yauzl = require('yauzl');
 const MAX_TOTAL=8*1024**3, MAX_FILE=128*1024**2, MAX_FILES=100000;
 const TOPS=new Set(['data','media','songs','markers']);
@@ -20,7 +21,17 @@ function location(root,name) {
 async function json(root,name) {
   const file=location(root,name),st=await fsp.lstat(file);
   if(!st.isFile()||st.size>8*1024**2)throw Error('曲库索引无效或过大');
-  return JSON.parse(await fsp.readFile(file,'utf8'));
+  const actual=await fsp.realpath(file);
+  const relative=path.relative(root,actual);
+  if(relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative))throw Error('曲库索引越界');
+  return JSON.parse(await fsp.readFile(actual,'utf8'));
+}
+async function writeJournal(journal,record) {
+  const temp=journal+'.tmp-'+randomBytes(8).toString('hex');
+  try {
+    await fsp.writeFile(temp,JSON.stringify(record),{flag:'wx',mode:0o600});
+    await fsp.rename(temp,journal);
+  } finally {await fsp.rm(temp,{force:true});}
 }
 async function validate(root) {
   root=await fsp.realpath(root);
@@ -35,9 +46,15 @@ async function validate(root) {
       if(!song||typeof song.id!=='string'||seen.has(song.id)||!Array.isArray(song.charts)||song.charts.length>32||!song.assets||typeof song.assets!=='object')throw Error('曲目清单无效');
       safeName(song.id);seen.add(song.id);
       if(seen.size>50000)throw Error('曲目过多');
-      for(const name of Object.values(song.assets)){
-        const dest=location(root,name),actual=await fsp.realpath(dest);
-        if(!actual.startsWith(path.resolve(root)+path.sep)||!(await fsp.stat(actual)).isFile())throw Error('曲库资源缺失或越界：'+name);
+      const assets=Object.values(song.assets);
+      for(let i=0;i<assets.length;i+=8){
+        // Wait for every read to finish before reporting an error so recovery can safely remove the staging directory.
+        const results=await Promise.allSettled(assets.slice(i,i+8).map(async name=>{
+          const dest=location(root,name),actual=await fsp.realpath(dest);
+          if(!actual.startsWith(path.resolve(root)+path.sep)||!(await fsp.stat(actual)).isFile())throw Error('曲库资源缺失或越界：'+name);
+        }));
+        const failed=results.find(result=>result.status==='rejected');
+        if(failed)throw failed.reason;
       }
       for(const c of song.charts){if(!c||!song.assets['chart:'+c.code])throw Error('缺少谱面资源');charts++;}
     }
@@ -100,9 +117,9 @@ async function install(archive,target,{beforeCommit=async()=>{},progress=()=>{}}
   try{
     await extract(archive,stage,progress);const result=await validate(stage);
     await beforeCommit();
-    const record={stage,backup,status:'prepared'};await fsp.writeFile(journal,JSON.stringify(record));
+    const record={stage,backup,status:'prepared'};await writeJournal(journal,record);
     if(fs.existsSync(target))await fsp.rename(target,backup);
-    await fsp.rename(stage,target);record.status='committed';await fsp.writeFile(journal,JSON.stringify(record));
+    await fsp.rename(stage,target);record.status='committed';await writeJournal(journal,record);
     await recover(target);return result;
   }catch(error){await recover(target);await fsp.rm(stage,{recursive:true,force:true});throw error;}
 }

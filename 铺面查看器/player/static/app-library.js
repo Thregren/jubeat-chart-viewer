@@ -248,6 +248,7 @@
 
   function togglePopularMode() {
     if (!popularSongs.length) return;
+    if (A.versionLibrary?.active) A.versionLibrary.setActive(false);
     if (!popularMode && A.markerLibrary?.active) A.markerLibrary.setActive(false);
     popularMode = !popularMode;
     syncPopularButton();
@@ -335,6 +336,7 @@
   }
   function renderList(scrollTop = 0){
     A.libraryFilters?.sync();
+    if (A.versionLibrary?.active) { A.versionLibrary.refresh(); return; }
     if (A.markerLibrary?.active) { A.markerLibrary.refresh(); return; }
     const started=performance.now(),ul=els.songList;
     cancelAnimationFrame(listRaf);listRaf=0;for(const row of virtualRows.values())disposeCover(row);songButtonById.clear();virtualRows.clear();

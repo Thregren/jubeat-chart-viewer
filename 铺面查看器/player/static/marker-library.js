@@ -74,6 +74,7 @@
   }
   function setActive(on) {
     if (on === active) return;
+    if (on) A.versionLibrary?.setActive(false);
     A.cancelLibrarySearch?.();
     if (on) {
       saved = {query: els.search.value, placeholder: els.search.placeholder, title: els.search.title,

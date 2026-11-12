@@ -25,8 +25,10 @@ function stageFrontend(dir) {
     const fromStat=fs.statSync(from);
     let toStat=null;
     try{toStat=fs.statSync(to);}catch{}   // 目标还不存在 → 复制
-    if(toStat&&toStat.size===fromStat.size&&toStat.mtimeMs===fromStat.mtimeMs)return;
+    // utimes is only microsecond-precise on some filesystems.
+    if(toStat&&toStat.isFile()&&toStat.size===fromStat.size&&Math.abs(toStat.mtimeMs-fromStat.mtimeMs)<1)return;
     fs.copyFileSync(from,to);
+    fs.utimesSync(to,fromStat.atime,fromStat.mtime);
   };
   copyIfChanged(path.join(src,'index.html'),path.join(dir,'index.html'));
   for(const name of fs.readdirSync(sourceStatic)){

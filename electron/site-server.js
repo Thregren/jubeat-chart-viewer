@@ -14,12 +14,19 @@ const MIME = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
+  ".ico": "image/x-icon",
   ".webp": "image/webp",
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
   ".ogg": "audio/ogg",
+  ".oga": "audio/ogg",
+  ".caf": "audio/x-caf",
+  ".webm": "audio/webm",
+  ".m4a": "audio/mp4",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 
 /**
@@ -148,6 +155,12 @@ function serve(rootDir) {
       rel = decodeURIComponent(new URL(req.url, "http://127.0.0.1").pathname);
     } catch {
       res.writeHead(400).end("bad request");
+      return;
+    }
+    // fs.realpath throws synchronously on NUL instead of reporting an error to
+    // its callback; reject it before any filesystem operation.
+    if (rel.includes("\0")) {
+      res.writeHead(400, BASE_HEADERS).end("bad request");
       return;
     }
     if (rel === "/" || rel === "") rel = "/index.html";

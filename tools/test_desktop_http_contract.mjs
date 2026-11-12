@@ -13,3 +13,16 @@ test('desktop host/origin/method checks preserve media HEAD and range',{timeout:
   assert.equal((await request('POST')).code,405);
  }finally{await server.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('malformed NUL paths are rejected without stopping the server and media types are usable',{timeout:10000},async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'viewer-http-path-'));
+ fs.writeFileSync(path.join(dir,'index.html'),'ok');
+ for(const file of ['clip.caf','clip.webm','clip.m4a','font.woff2'])fs.writeFileSync(path.join(dir,file),'fixture');
+ const server=await serve(dir);
+ try{
+  assert.equal((await fetch(server.url+'%00')).status,400);
+  assert.equal((await fetch(server.url)).status,200);
+  for(const [file,type] of [['clip.caf','audio/x-caf'],['clip.webm','audio/webm'],['clip.m4a','audio/mp4'],['font.woff2','font/woff2']])
+   assert.equal((await fetch(server.url+file)).headers.get('content-type'),type);
+ }finally{await server.close();fs.rmSync(dir,{recursive:true,force:true});}
+});

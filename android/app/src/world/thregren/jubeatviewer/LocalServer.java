@@ -202,6 +202,16 @@ public final class LocalServer {
             return;
         }
         File f = rel.equals(".") ? root : new File(root, rel);
+        // Lexical normalization alone cannot detect a symlink inside the
+        // library that points outside it. Match the desktop server's boundary.
+        String rootPath = root.getCanonicalPath();
+        String filePath = f.getCanonicalPath();
+        String prefix = rootPath.endsWith(File.separator) ? rootPath : rootPath + File.separator;
+        if (!filePath.equals(rootPath) && !filePath.startsWith(prefix)) {
+            plain(out, 403, "Forbidden", "forbidden");
+            return;
+        }
+        f = new File(filePath);
         if (!f.isFile()) {
             plain(out, 404, "Not Found", "404");
             return;

@@ -7,16 +7,16 @@
         content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.7.0" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.0" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.0" />
+  <link rel="manifest" href="static/manifest.json?v=0.7.1" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.1" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.1" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.7.0&ui=filters-20261030" />
-  <link rel="stylesheet" href="static/theme-early.css?v=0.7.0" />
-  <link rel="stylesheet" href="static/theme-late.css?v=0.7.0" />
-  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.0" />
-  <link rel="stylesheet" href="static/record.css?v=0.7.0" />
+  <link rel="stylesheet" href="static/style.css?v=0.7.1&ui=version-picker-20261112" />
+  <link rel="stylesheet" href="static/theme-early.css?v=0.7.1" />
+  <link rel="stylesheet" href="static/theme-late.css?v=0.7.1" />
+  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.1" />
+  <link rel="stylesheet" href="static/record.css?v=0.7.1" />
 </head>
 <body>
   <div id="app">
@@ -33,7 +33,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.0</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.1</span>
           </h1>
           <p class="brand-credit">由 Thregren 开发</p>
         </div>
@@ -63,9 +63,9 @@
       </div>
 
       <div class="library-filter-row" id="libraryFilters" role="group" aria-label="筛选与排序">
-        <label><select id="versionFilter" aria-label="机台版本">
+        <label class="version-filter-control"><select id="versionFilter" aria-label="机台版本" tabindex="-1" aria-hidden="true">
           <option value="">全部版本</option>
-        </select></label>
+        </select><button id="btnVersionLibrary" type="button" aria-label="选择机台版本" aria-controls="versionList" aria-expanded="false">全部版本</button></label>
         <label><select id="holdFilter" aria-label="长押筛选">
           <option value="">全部谱面</option>
           <option value="hold">只要长押</option>
@@ -87,6 +87,7 @@
 
       <ul id="songList" class="song-list" aria-label="曲目列表"></ul>
       <ul id="markerList" class="marker-list" aria-label="Marker 图选列表" hidden></ul>
+      <ul id="versionList" class="marker-list version-list" aria-label="版本图选列表" hidden></ul>
     </aside>
 
     <main class="stage">
@@ -383,34 +384,35 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.7.0"></script>
-  <script src="static/song-links.js?v=0.7.0"></script>
-  <script src="static/background-stories-data.js?v=0.7.0"></script>
-  <script src="static/background-stories.js?v=0.7.0"></script>
-  <script src="static/core.js?v=0.7.0"></script>
-  <script src="static/runtime.js?v=0.7.0"></script>
-  <script src="static/services.js?v=0.7.0"></script>
+  <script src="static/sfx.js?v=0.7.1"></script>
+  <script src="static/song-links.js?v=0.7.1"></script>
+  <script src="static/background-stories-data.js?v=0.7.1"></script>
+  <script src="static/background-stories.js?v=0.7.1"></script>
+  <script src="static/core.js?v=0.7.1"></script>
+  <script src="static/runtime.js?v=0.7.1"></script>
+  <script src="static/services.js?v=0.7.1"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.7.0"></script>
+  <script src="static/record.js?v=0.7.1"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.7.0"></script>
-<script src="static/app-base.js?v=0.7.0"></script>
-  <script src="static/app-audio.js?v=0.7.0"></script>
-  <script src="static/first-marker.js?v=0.7.0"></script>
-  <script src="static/app-marker.js?v=0.7.0&ui=hold-countdown-20261102"></script>
-  <script src="static/app-density.js?v=0.7.0"></script>
-  <script src="static/rhythm-timeline.js?v=0.7.0"></script>
-  <script src="static/app-timeline.js?v=0.7.0"></script>
-  <script src="static/directory.js?v=0.7.0"></script>
-  <script src="static/list-images.js?v=0.7.0"></script>
-  <script src="static/visitor-queue.js?v=0.7.0"></script>
-  <script src="static/app-visitors.js?v=0.7.0&ui=chart-loads-20261102"></script>
-  <script src="static/app-library.js?v=0.7.0&ui=chart-loads-20261102"></script>
-  <script src="static/library-filters.js?v=0.7.0&ui=filters-20261030"></script>
-  <script src="static/marker-library.js?v=0.7.0&ui=filters-20261030"></script>
-  <script src="static/app-player.js?v=0.7.0"></script>
-  <script src="static/app-render.js?v=0.7.0"></script>
-  <script src="static/app-wiring.js?v=0.7.0&ui=background-stories-20261101"></script>
-  <script src="static/app.js?v=0.7.0"></script>
+  <script src="static/version-data.js?v=0.7.1"></script>
+<script src="static/app-base.js?v=0.7.1"></script>
+  <script src="static/app-audio.js?v=0.7.1"></script>
+  <script src="static/first-marker.js?v=0.7.1"></script>
+  <script src="static/app-marker.js?v=0.7.1&ui=hold-countdown-20261102"></script>
+  <script src="static/app-density.js?v=0.7.1"></script>
+  <script src="static/rhythm-timeline.js?v=0.7.1"></script>
+  <script src="static/app-timeline.js?v=0.7.1"></script>
+  <script src="static/directory.js?v=0.7.1"></script>
+  <script src="static/list-images.js?v=0.7.1"></script>
+  <script src="static/visitor-queue.js?v=0.7.1"></script>
+  <script src="static/app-visitors.js?v=0.7.1&ui=chart-loads-20261102"></script>
+  <script src="static/app-library.js?v=0.7.1&ui=version-picker-20261112"></script>
+  <script src="static/library-filters.js?v=0.7.1&ui=version-picker-20261112"></script>
+  <script src="static/marker-library.js?v=0.7.1&ui=version-picker-20261112"></script>
+  <script src="static/version-library.js?v=0.7.1&ui=version-picker-20261112-2"></script>
+  <script src="static/app-player.js?v=0.7.1"></script>
+  <script src="static/app-render.js?v=0.7.1"></script>
+  <script src="static/app-wiring.js?v=0.7.1&ui=background-stories-20261101"></script>
+  <script src="static/app.js?v=0.7.1"></script>
 </body>
 </html>

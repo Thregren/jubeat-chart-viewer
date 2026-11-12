@@ -43,6 +43,50 @@ test('interrupted replacement journal restores previous library',async()=>{
   assert.equal(await fs.readFile(path.join(target,'old'),'utf8'),'saved');await assert.rejects(fs.stat(path.join(target,'new')));
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+test('directory validation rejects an index reached through an external symlink',async(t)=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'viewer-import-index-'));try{
+  const site=path.join(root,'site'),external=path.join(root,'external');
+  await fs.mkdir(path.join(site,'data'),{recursive:true});await fs.mkdir(external);
+  await fs.writeFile(path.join(site,'data/library.json'),JSON.stringify(main));
+  await fs.writeFile(path.join(external,'v.json'),JSON.stringify({format:'jubeat-directory-v1',songs:[song]}));
+  try{await fs.symlink(external,path.join(site,'data/versions'),'dir');}
+  catch(e){if(['EPERM','ENOTSUP'].includes(e.code)){t.skip('symlink creation unavailable');return;}throw e;}
+  await assert.rejects(I.validate(site),/曲库索引越界/);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test('directory asset validation uses bounded concurrency',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'viewer-import-parallel-')),original=fs.realpath;
+ try{
+  const assets=Object.fromEntries(Array.from({length:20},(_,i)=>['asset'+i,`songs/file${i}.ogg`]));
+  assets['chart:EXT']='songs/file0.ogg';
+  await fs.mkdir(path.join(root,'data'),{recursive:true});await fs.mkdir(path.join(root,'songs'));
+  await Promise.all(Array.from({length:20},(_,i)=>fs.writeFile(path.join(root,'songs',`file${i}.ogg`),'x')));
+  await fs.writeFile(path.join(root,'data/library.json'),JSON.stringify({format:'jubeat-directory-v1',versionIndexes:[],songs:[{id:'one',charts:[{code:'EXT'}],assets}]}));
+  let active=0,peak=0;
+  fs.realpath=async name=>{
+   if(!String(name).includes(path.sep+'songs'+path.sep))return original(name);
+   active++;peak=Math.max(peak,active);
+   try{await new Promise(resolve=>setTimeout(resolve,5));return await original(name);}finally{active--;}
+  };
+  assert.deepEqual(await I.validate(root),{songs:1,charts:1});
+  assert(peak>1&&peak<=8,`expected bounded concurrent reads, got ${peak}`);
+ }finally{fs.realpath=original;await fs.rm(root,{recursive:true,force:true});}
+});
+test('failed journal commit restores the previous library',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'viewer-import-journal-'));const original=fs.rename;
+ try{
+  const archive=path.join(root,'library.zip'),target=path.join(root,'site');zip(archive,entries());
+  await fs.mkdir(target);await fs.writeFile(path.join(target,'old'),'keep');
+  let updates=0;
+  fs.rename=async(from,to)=>{
+   if(String(from).startsWith(target+'.import.json.tmp-')&&to===target+'.import.json'&&++updates===2)throw Error('simulated interruption');
+   return original(from,to);
+  };
+  await assert.rejects(I.install(archive,target),/simulated interruption/);
+  assert.equal(await fs.readFile(path.join(target,'old'),'utf8'),'keep');
+  await assert.rejects(fs.stat(target+'.import.json'));
+ }finally{fs.rename=original;await fs.rm(root,{recursive:true,force:true});}
+});
 test('damaged recovery journals never remove paths outside the import stage',async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'viewer-recover-path-'));try{
   const target=path.join(root,'site'),backup=target+'.previous',outside=path.join(root,'keep');

@@ -4,6 +4,24 @@
 #
 # 目标是：静态文件（含音源）全部由 nginx 直发 —— 有 Range、有缓存、不占 PHP，
 # index.php 只是兜底，正常浏览根本不会被调用。
+#
+# ⚠️ nginx 的 add_header 是「有子无父」：只要某个 location 里出现任意一条 add_header，
+#    server 块里的所有 add_header 在那个 location 内就全部失效。静态文件由 nginx 直发时
+#    index.php 根本不会跑，安全头就只剩下面这一段；所以这里刻意**不用** location 级
+#    add_header，缓存一律走 expires（expires 只写 Cache-Control/Expires，不打断继承）。
+
+# —— 安全响应头：server 级写一次，全站（含 nginx 直发的音源）都带上 ——
+# 完整版见仓库 deploy/security-headers.conf；放在宝塔上可以直接改成
+#     include /www/server/panel/vhost/nginx/jubeat-security-headers.conf;
+# 但纯 PHP 主机没有那个文件，所以这里内联一份，逐条同序。
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self' blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'; upgrade-insecure-requests" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+
+# —— 点文件一律 404 ——
+# 必须放在其它正则 location 之前：正则 location 按出现顺序匹配，第一条命中即止。
+location ~ /\.(?!well-known/) { return 404; }
 
 index index.html index.php;
 
@@ -14,13 +32,12 @@ location / {
 # 音源 / 封面 / marker 素材：直发 + 长缓存
 location ~* \.(ogg|oga|mp3|wav|jpg|jpeg|png|webp|gif|ico|woff2?|ttf)$ {
     expires 7d;
-    add_header Cache-Control "public";
     access_log off;
 }
 
 # 谱面 / 索引 json：每次都回来问一句（改谱之后立即生效），并且 gzip
 location ~* ^/data/.*\.json$ {
-    add_header Cache-Control "no-cache";
+    expires -1;                 # → Cache-Control: no-cache
     gzip on;
     gzip_min_length 1024;
     gzip_types application/json;

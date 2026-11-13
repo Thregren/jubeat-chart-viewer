@@ -1,70 +1,22 @@
-"""曲库索引：扫描 .mcz、缓存索引、按 id 取歌、读取谱面。"""
+"""曲库索引：读取开放目录曲库（`data/library.json`）、按 id 取歌、下发公开索引。
+
+旧版 `.mcz` 扫描链路已下线：索引的唯一来源是构建产物的目录曲库索引，
+运行时不打开任何压缩包，也没有索引缓存文件（索引本身就是缓存）。
+"""
 from __future__ import annotations
 
-import concurrent.futures
 import gzip
-import json
 import hashlib
-import math
-import os
-import re
-import sys
+import json
 import threading
 import time
 import unicodedata
-import zipfile
 from pathlib import Path
 
 import config
-from media import read_member, read_zip_member, safe_join, write_atomic, zip_name, MAX_ARCHIVE_ENTRIES
-from source_revision import source_revision
+from directory_library import asset_path, load_directory
 
-DIFF_RE = re.compile(r"_([A-Z]{3})\s*Lv([0-9]+(?:\.[0-9]+)?)", re.I)
-DIFF_ORDER = {"BSC": 0, "BAS": 0, "ADV": 1, "EXT": 2}
-
-# 少数老谱面（jubeat / ripples / ripples-append / knit / copious 的版权曲）成员名里
-# 根本没写 `Lv`：`全力少年_BSC.mc` 而不是 `全力少年_BSC Lv2.mc`，meta.level 也是空的。
-# 这类文件以前整首会被丢掉（解析不出难度 → 没有 charts → scan_song 返回 None），
-# 曲库里 1479 首只索引出 1431 首。现在用结尾的难度码认出来，等级查 official_levels.json。
-CODE_TAIL_RE = re.compile(r"(?:^|_)(BSC|BAS|ADV|EXT)\s*\.mc$", re.I)
-OFFICIAL_LEVELS_FILE = Path(__file__).resolve().parent / "official_levels.json"
-
-_fallback_lock = threading.Lock()
-_fallback_levels: dict[str, dict[str, str]] | None = None
-
-
-def official_levels() -> dict[str, dict[str, str]]:
-    """成员名没写等级的谱面查这张兜底表：NFC 归一化后的「版本目录/曲名」→ {难度: 等级}。
-
-    数据来源写在文件里（_source）：atwiki 的全曲表，含官方已下架、游戏数据里已经没有的曲子。
-    表读不到（打包漏带、文件写坏）就当空表：这类谱面照常收录，只是等级显示为空，
-    宁可少一个数字，也不要因为一个数据文件整首歌消失。
-    """
-    global _fallback_levels
-    if _fallback_levels is not None:
-        return _fallback_levels
-    with _fallback_lock:
-        if _fallback_levels is not None:
-            return _fallback_levels
-        table: dict[str, dict[str, str]] = {}
-        try:
-            raw = json.loads(OFFICIAL_LEVELS_FILE.read_text(encoding="utf-8"))
-            for key, levels in raw.items():
-                if not isinstance(levels, dict) or key.startswith("_"):
-                    continue
-                table[stem_key(key)] = {str(k).upper(): str(v) for k, v in levels.items()}
-        except FileNotFoundError:
-            pass
-        except Exception as exc:
-            print(f"[index] 等级兜底表不可用（忽略）：{exc}", file=sys.stderr)
-        _fallback_levels = table
-        return table
-
-
-def parse_chart_code(filename: str) -> str | None:
-    """从成员名末尾认出难度码（`..._BSC.mc` / `NEU__EXT.mc`），用于没写 Lv 的老谱面。"""
-    m = CODE_TAIL_RE.search(filename)
-    return m.group(1).upper() if m else None
+INDEX_FILE = "data/library.json"
 
 
 def stem_key(text: str) -> str:
@@ -78,31 +30,16 @@ def stem_key(text: str) -> str:
     return unicodedata.normalize("NFC", text)
 
 
-def _song_id(rel_id: str) -> str:
-    """曲目 id（相对路径，含 .mcz 后缀）→ 去后缀的键，跟 build_site.stem_of 一致。"""
-    return rel_id[:-4] if rel_id.lower().endswith(".mcz") else rel_id
-
-
-def parse_chart_name(filename: str) -> tuple[str, str, float] | None:
-    m = DIFF_RE.search(filename)
-    if not m:
-        return None
-    code = m.group(1).upper()
-    try:
-        level = float(m.group(2))
-    except ValueError:
-        level = 0.0
-    return code, m.group(2), level
-
-
-def published_index(songs: list[dict], generated: int | None = None, versions: list[str] | None = None) -> dict:
+def published_index(songs: list[dict], generated: int | None = None, versions: list[str] | None = None,
+                    extras: dict | None = None) -> dict:
     """公网 `data/library.json` 的形状：只留前端真正读的字段。
 
-    scan_song() 的完整索引还带 path / filename / audio / size /
-    charts.file / charts.levelNum / charts.label —— 加起来约占 library.json 的 40%：
-    前端要么根本不读（path / audio / size），要么能现算（label = code Lv level、
-    levelNum = Number(level)）。charts.file 只在开发服务器内部按 .mcz 成员名读谱面用，
-    不下发。static 站和开发服务器都走这同一个形状。
+    目录曲库的原始条目还带 metadataEvidence / missing 之类的构建期信息，加起来
+    占索引相当一部分体积，而前端要么不读、要么能现算（label = code Lv level、
+    levelNum = Number(level)）。static 站和开发服务器都走这同一个形状。
+
+    extras 用来原样带上 `format` / `versionIndexes`：按版本拆分的曲库，曲目都在
+    各版本索引里，顶层 songs 是空的 —— 前端要靠 versionIndexes 才知道去哪儿取。
     """
     result = {
         "version": config.INDEX_VERSION,
@@ -123,6 +60,8 @@ def published_index(songs: list[dict], generated: int | None = None, versions: l
             for s in songs
         ],
     }
+    if extras:
+        result.update({k: v for k, v in extras.items() if k not in result})
 
     for original, public in zip(songs, result['songs']):
         for key in ('assets', 'missing', 'resourceOnly', 'identity', 'titleKnown', 'category', 'source'):
@@ -147,180 +86,8 @@ def _published_chart(chart: dict) -> dict:
     return out
 
 
-def _song_meta_of(data: dict) -> tuple[str, str]:
-    """从 .mc 的 meta.song 里取曲名 / 作曲。
-
-    以前是拿谱面开头 8 KB 做正则抠 title / artist：一旦某个字段排在第 8 KB 之后
-    （长谱面的 extra / 靠后的 note 数组会把 meta 顶出去），曲名就悄悄退回文件名。
-    现在 note 数本来就要整份 json.loads，meta.song 顺手就有，正则那套可以退休了。
-    """
-    meta = data.get("meta") or {}
-    song = meta.get("song") if isinstance(meta, dict) else None
-    if not isinstance(song, dict):
-        return "", ""
-    title = song.get("title")
-    artist = song.get("artist")
-    return (str(title).strip() if title else "", str(artist).strip() if artist else "")
-
-
-def scan_song(mcz_path: Path, root: Path) -> dict | None:
-    """读一个 .mcz 的元信息（不加载完整谱面）。"""
-    try:
-        rel = mcz_path.relative_to(root).as_posix()
-        # 等级兜底表只在这首歌真的缺等级时才查（绝大多数曲子成员名里就有 Lv）
-        fallback: dict[str, str] | None = None
-        with zipfile.ZipFile(mcz_path) as zf:
-            if len(zf.infolist()) > MAX_ARCHIVE_ENTRIES:
-                raise ValueError("Archive has too many entries")
-            names = [zip_name(i) for i in zf.infolist() if not i.is_dir()]
-            charts = []
-            title = ""
-            artist = ""
-            for name in names:
-                base = os.path.basename(name)
-                if not name.lower().endswith(".mc"):
-                    continue
-                parsed = parse_chart_name(base)
-                if parsed:
-                    code, level_str, level = parsed
-                else:
-                    code = parse_chart_code(base)
-                    if not code:
-                        continue
-                    if fallback is None:
-                        fallback = official_levels().get(stem_key(_song_id(rel)), {})
-                    level_str = fallback.get(code, "")
-                    try:
-                        level = float(level_str)
-                    except ValueError:
-                        level = 0.0
-                entry = {"file": name, "code": code, "level": level_str,
-                         "levelNum": level,
-                         "label": f"{code} Lv{level_str}" if level_str else code}
-                # 物量 / 长押数：排序和物量显示都要用，顺手读一次完整谱面。
-                # 物量口径和实机一致 = 单点 ×1 + 长押 ×2（头判、尾判各一颗），
-                # 所以 notes 要把长押的尾巴也加进去。以前只数头判，长押多的谱面
-                # （袖手旁棺、iris 这种整首都是长押的）按物量排序时会少掉一半。
-                try:
-                    data = json.loads(read_zip_member(zf, name).decode("utf-8"))
-                    notes = [n for n in (data.get("note") or []) if n.get("index") is not None]
-                    holds = sum(1 for n in notes if n.get("endbeat") is not None)
-                    entry["notes"] = len(notes) + holds
-                    entry["holds"] = holds
-                    entry["notesKnown"] = True
-                    if not title:
-                        title, artist = _song_meta_of(data)
-                except Exception:
-                    entry["notes"] = 0
-                    entry["holds"] = 0
-                    entry["notesKnown"] = False
-                charts.append(entry)
-            if not charts:
-                return None
-            charts.sort(key=lambda c: (DIFF_ORDER.get(c["code"], 9), c["levelNum"], c["code"]))
-
-            audio = next((n for n in names if os.path.basename(n).lower() == "bgm.ogg"), None)
-            if audio is None:
-                audio = next((n for n in names if n.lower().endswith((".ogg", ".mp3", ".wav"))), None)
-            covers = [n for n in names
-                      if n.lower().endswith((".png", ".jpg", ".jpeg"))
-                      and os.path.basename(n).lower().startswith("jkt")]
-            if not covers:
-                covers = [n for n in names if n.lower().endswith((".png", ".jpg", ".jpeg"))]
-
-            return {
-                "id": rel,
-                "path": rel,
-                "filename": mcz_path.name,
-                "title": title or mcz_path.stem,
-                "artist": artist,
-                "version": mcz_path.parent.name,
-                "audio": audio,
-                "cover": covers[0] if covers else None,
-                "charts": charts,
-                "size": mcz_path.stat().st_size,
-            }
-    except Exception as exc:
-        print(f"[index] skip {mcz_path.name}: {exc}", file=sys.stderr)
-        return None
-
-
-def mcz_paths(root: Path) -> list[Path]:
-    """曲库里的 .mcz 列表。
-
-    跳过 `._xxx.mcz` —— 外置盘（exFAT）上 macOS 会给每个文件写一个 `._同名` 的
-    元数据边车文件，它也以 .mcz 结尾，混进索引里就是一堆打不开的条目。
-    """
-    if not root.is_dir():
-        return []
-    return sorted(p for p in root.rglob("*.mcz") if not p.name.startswith("._"))
-
-
-def fingerprint(paths: list[Path]) -> dict:
-    """索引缓存指纹：每个文件的路径、大小、纳秒级 mtime 与 ctime 的 SHA256。
-
-    老缓存只比「索引结构版本 + 曲库路径」：往 music/ 里丢一首新歌再重启，缓存照样命中，
-    新歌在界面上就是不出现（得手动点「重新读取」）。加上指纹后，增删改任意一首都会失效。
-    这里只 stat，不解压，代价是毫秒级。
-    """
-    digest = hashlib.sha256()
-    for path in sorted(paths):
-        try:
-            revision = source_revision(path)
-        except OSError:
-            continue
-        digest.update(json.dumps([str(path), revision],
-                                 ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        digest.update(b"\0")
-    return {"sha256": digest.hexdigest()}
-
-
-
-def valid_cached_song(song) -> bool:
-    """Validate fields consumed by both public projection and archive lookup.
-
-    Invalid cache data is rescanned rather than installed as a permanently
-    broken library. Optional legacy fields retain their existing defaults.
-    """
-    if not isinstance(song, dict) or not all(isinstance(song.get(k), str)
-                                             for k in ("id", "title", "version")):
-        return False
-    song_id = song["id"]
-    if not song_id or song_id.startswith(("/", "\\")) or ".." in song_id.replace("\\", "/").split("/"):
-        return False
-    for key in ("artist", "path", "filename"):
-        if key in song and not isinstance(song[key], str):
-            return False
-    for key in ("audio", "cover"):
-        if song.get(key) is not None and not isinstance(song[key], str):
-            return False
-    charts = song.get("charts")
-    if not isinstance(charts, list) or len(charts) > MAX_ARCHIVE_ENTRIES:
-        return False
-    for chart in charts:
-        if not isinstance(chart, dict):
-            return False
-        if (not isinstance(chart.get("code"), str) or not re.fullmatch(r"[A-Z]{3}", chart["code"])
-                or not isinstance(chart.get("level"), str)
-                or not isinstance(chart.get("file"), str) or not chart["file"]):
-            return False
-        for key in ("notes", "holds"):
-            value = chart.get(key, 0)
-            if type(value) is not int or value < 0:
-                return False
-        if "notesKnown" in chart and not isinstance(chart["notesKnown"], bool):
-            return False
-        if "levelNum" in chart:
-            value = chart["levelNum"]
-            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
-                return False
-        if "label" in chart and not isinstance(chart["label"], str):
-            return False
-    return True
-
-
 class Library:
-    """曲库索引 + 查询。索引结果缓存到 cache/library_index.json。"""
+    """曲库索引 + 查询。索引直接来自目录曲库，不做二次扫描或缓存文件。"""
 
     def __init__(self, root: Path | None = None):
         self._explicit_root = root is not None
@@ -330,8 +97,11 @@ class Library:
         self.by_id: dict[str, dict] = {}
         self.by_stem: dict[str, dict] = {}
         self.versions: list[str] = []
+        self.assets: set[str] = set()
+        # 按版本拆分的曲库：{相对路径} 里放的是各版本索引，需要开发服务器原样下发
+        self.version_indexes: list[str] = []
         self._lock = threading.RLock()
-        # 扫描串行化：第一个请求慢慢扫，后来的请求在锁外等，不会各自再扫一遍
+        # 读取串行化：第一个请求慢慢读，后来的请求在锁外等，不会各自再读一遍
         self._scan_lock = threading.Lock()
         self._loaded = False
         self._revision = 0
@@ -339,112 +109,44 @@ class Library:
 
     @property
     def root(self) -> Path:
-        """曲库目录。惰性解析（config.LIBRARY 要用时才扫盘）。"""
+        """曲库目录。惰性解析（config.LIBRARY 要用时才读盘）。"""
         if self._root is None:
             self._root = config.LIBRARY
         return self._root
 
     # —— 索引 ——
     def load(self, force: bool = False) -> None:
-        if (self.root / 'data/library.json').is_file():
-            if self._loaded and not force: return
-            from directory_library import load_directory
-            with self._scan_lock:
-                data, self.directory_assets = load_directory(self.root)
-                self._install(data['songs'], data['versions'])
-            return
-        if not getattr(self, '_explicit_root', False) and os.environ.get('JUBEAT_LEGACY_MCZ') != '1':
-            raise ValueError('需要开放目录曲库的 data/library.json；不会自动读取旧MCZ或旧缓存')
-
         """确保索引就绪。已就绪就是一次属性读，没有任何锁竞争。
 
-        注意扫描**不在** self._lock 里：以前整段 rglob + 解压都在锁内，首次索引
-        几十秒里所有走 load() 的请求（含 /api/health）都排队等同一把锁。
+        注意读取**不在** self._lock 里：以前整段扫描都在锁内，首次索引期间
+        所有走 load() 的请求（含 /api/health）都排队等同一把锁。
         """
         if self._loaded and not force:
             return
-        revision = self._revision
         with self._scan_lock:
-            if self._loaded and (not force or revision != self._revision):
+            if self._loaded and not force:
                 return
-            paths = mcz_paths(self.root)
-            cached = None if force else self._read_cache(paths)
-            self._install(cached if cached is not None else self._scan(paths))
+            index = self.root / INDEX_FILE
+            if not index.is_file():
+                raise ValueError('曲库缺少 data/library.json（需要开放目录曲库）')
+            data, assets = load_directory(self.root)
+            self._install(data['songs'], data['versions'], assets,
+                          version_indexes=data.get('versionIndexes') or [])
 
-    def _read_cache(self, paths: list[Path]) -> list[dict] | None:
-        try:
-            raw = json.loads(config.INDEX_CACHE.read_text(encoding="utf-8"))
-        except Exception:
-            return None
-        # 缓存文件合法 JSON 但内容不是对象（被别的程序覆盖成 []、"x"、null…）：
-        # 当没缓存处理、老老实实重扫，别让 .get 抛出把请求打成 500。
-        if not isinstance(raw, dict):
-            return None
-        if raw.get("version") != config.INDEX_VERSION or raw.get("scanSchema") != 1:
-            return None
-        if raw.get("levelsFingerprint") != fingerprint([OFFICIAL_LEVELS_FILE]):
-            return None
-        if raw.get("library") != str(self.root):
-            return None
-        if raw.get("fingerprint") != fingerprint(paths):
-            return None
-        songs = raw.get("songs")
-        if not isinstance(songs, list) or not all(valid_cached_song(song) for song in songs):
-            return None
-        return songs
-
-    def _scan(self, paths: list[Path]) -> list[dict]:
-        print(f"[index] scanning {self.root} …", file=sys.stderr)
-        songs: list[dict] = []
-        before = fingerprint(paths)
-        try:
-            previous = json.loads(config.INDEX_CACHE.read_text(encoding="utf-8"))
-            reusable = previous.get("members", {}) if (previous.get("library") == str(self.root)
-                and previous.get("version") == config.INDEX_VERSION and previous.get("scanSchema") == 1
-                and previous.get("levelsFingerprint") == fingerprint([OFFICIAL_LEVELS_FILE])) else {}
-        except (OSError, ValueError, AttributeError):
-            reusable = {}
-        if not isinstance(reusable, dict):
-            reusable = {}
-        members = {}
-        def scan(path):
-            key = path.relative_to(self.root).as_posix()
-            stamp = fingerprint([path])
-            old = reusable.get(key)
-            cached = old.get("song") if isinstance(old, dict) else None
-            reusable_song = isinstance(old, dict) and old.get("stamp") == stamp and (cached is None or valid_cached_song(cached))
-            meta = cached if reusable_song else scan_song(path, self.root)
-            return key, {"stamp": stamp, "song": meta}
-        if paths:
-            workers = min(8, max(1, (os.cpu_count() or 2)))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-                for key, member in pool.map(scan, paths):
-                    members[key] = member
-                    if member["song"]:
-                        songs.append(member["song"])
-        songs.sort(key=lambda s: (s["title"].lower(), s["version"]))
-        if before != fingerprint(mcz_paths(self.root)):
-            raise RuntimeError("索引扫描期间曲库发生变化，请重新读取")
-        try:
-            write_atomic(config.INDEX_CACHE, json.dumps(
-                {"version": config.INDEX_VERSION, "library": str(self.root),
-                 "fingerprint": before, "songs": songs, "members": members, "scanSchema": 1,
-                 "levelsFingerprint": fingerprint([OFFICIAL_LEVELS_FILE])},
-                ensure_ascii=False).encode("utf-8"))
-        except OSError as exc:
-            print(f"[index] 缓存写入失败: {exc}", file=sys.stderr)
-        print(f"[index] {len(songs)} songs cached", file=sys.stderr)
-        return songs
-
-    def _install(self, songs: list[dict], versions: list[str] | None = None) -> None:
+    def _install(self, songs: list[dict], versions: list[str] | None = None,
+                 assets: set[str] | None = None, version_indexes: list[str] | None = None) -> None:
         # 一次性算好再整体换上：读侧（by_id / by_stem）永远看到同一份完整索引
         by_id = {s["id"]: s for s in songs}
-        # 静态站点按 <曲目（去掉 .mcz）> 组织文件，开发服务器也按这个 key 反查
-        by_stem = {stem_key(s["id"][:-4] if s["id"].lower().endswith(".mcz") else s["id"]): s
-                   for s in songs}
+        # 静态站点按 <曲目 id> 组织资源，开发服务器也按这个 key 反查
+        by_stem = {stem_key(s["id"]): s for s in songs}
         versions = sorted({s["version"] for s in songs}) if versions is None else versions
+        version_indexes = list(version_indexes or [])
         generated = int(time.time())
-        body = json.dumps(published_index(songs, generated=generated, versions=versions), ensure_ascii=False,
+        extras = {"format": "jubeat-directory-v1"} if version_indexes else None
+        if extras:
+            extras["versionIndexes"] = version_indexes
+        body = json.dumps(published_index(songs, generated=generated, versions=versions,
+                                          extras=extras), ensure_ascii=False,
                           separators=(",", ":")).encode("utf-8")
         # A weak validator describes the JSON representation independently of
         # transfer compression. The immutable tuple is swapped with the index.
@@ -456,6 +158,8 @@ class Library:
             self.by_id = by_id
             self.by_stem = by_stem
             self.versions = versions
+            self.assets = assets if assets is not None else set()
+            self.version_indexes = version_indexes
             self._public_response = public_response
             self._loaded = True
             self._revision += 1
@@ -467,19 +171,6 @@ class Library:
         return self._public_response
 
     # —— 查询 ——
-    def query(self, q: str = "", version: str = "") -> list[dict]:
-        songs = self.songs
-        if version:
-            songs = [s for s in songs if s["version"] == version]
-        if q:
-            ql = q.lower()
-            songs = [s for s in songs
-                     if ql in s["title"].lower()
-                     or ql in s["artist"].lower()
-                     or ql in s["filename"].lower()
-                     or ql in s["version"].lower()]
-        return songs
-
     def get(self, song_id: str) -> dict | None:
         return self.by_id.get(song_id)
 
@@ -487,9 +178,17 @@ class Library:
         return self.by_stem.get(stem_key(stem))
 
     # —— 文件 ——
-    def mcz_path(self, song_id: str) -> Path:
-        return safe_join(self.root, song_id)
+    def asset_path(self, name: str) -> Path:
+        """曲库内相对路径 → 绝对路径（校验形状，并解符号链接确认没跑出曲库根）。"""
+        return asset_path(self.root, name)
 
-    def chart(self, song_id: str, chart_file: str) -> dict:
-        data = read_member(self.mcz_path(song_id), chart_file)
-        return json.loads(data.decode("utf-8"))
+    def asset_file(self, song: dict, key: str) -> Path | None:
+        """曲目资源（`audio` / `cover` / `thumb` / `chart:EXT`）→ 绝对路径。
+
+        路径形状在 load_directory 里已校验过，这里仍走 asset_path()：
+        打开文件前要解一次符号链接，确认没有跑出曲库根。
+        """
+        name = (song.get("assets") or {}).get(key)
+        if not name:
+            return None
+        return asset_path(self.root, name)

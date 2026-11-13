@@ -30,7 +30,9 @@ def inspect(base):
         status,asset,_=request(match[1].decode(),'HEAD');check('immutable frontend',status==200 and 'immutable' in asset.get('cache-control',''))
     status,_,body=request('static/release.json')
     check('small release metadata',status==200 and len(body)<4096 and isinstance(json.loads(body).get('version'),str))
-    for relative in ['.git/config','.env','.visitor-private/','.visitor-private/secret','.visitor-private/visitors.sqlite','%2evisitor-private/secret']:
+    # .asset-history.json / .build-sources.json leak every published file hash and the
+    # transcode profile; they land in the site root and `rsync -av` copies them along.
+    for relative in ['.git/config','.env','.asset-history.json','.build-sources.json','.visitor-private/','.visitor-private/secret','.visitor-private/visitors.sqlite','%2evisitor-private/secret']:
         check('protected '+relative,request(relative,'HEAD')[0]==404)
     status,stats,body=request('api/visitors')
     statistics=json.loads(body)

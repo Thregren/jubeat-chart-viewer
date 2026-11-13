@@ -109,6 +109,15 @@ def main() -> int:
             check("根路径 200 + text/html", st == 200 and "text/html" in hd.get("content-type", ""), f"{st}")
             check("根路径内容正确", body == html)
             check("Accept-Ranges 存在", hd.get("accept-ranges") == "bytes")
+            csp = hd.get("content-security-policy", "")
+            check("CSP 与其它端同一串（script-src 'self' / object-src 'none'）",
+                  "script-src 'self'" in csp and "object-src 'none'" in csp
+                  and "media-src 'self' blob:" in csp and "unsafe-inline" not in csp, csp)
+            # `php -S` 是明文 http：发了 upgrade-insecure-requests 会把自己升级成
+            # https://127.0.0.1 而后全站 404，所以只有 HTTPS 请求才带这一条。
+            check("明文预览不发 upgrade-insecure-requests",
+                  "upgrade-insecure-requests" not in csp, csp)
+            check("X-Content-Type-Options: nosniff", hd.get("x-content-type-options") == "nosniff")
 
             st, hd, body = request(port, "/static/app.js")
             check("js 200 + text/javascript", st == 200 and "javascript" in hd.get("content-type", ""), str(st))

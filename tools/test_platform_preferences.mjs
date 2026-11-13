@@ -30,6 +30,28 @@ test('every viewer preference is explicitly supported by desktop and Android',()
  assert.equal(keys.length,KEYS.size);for(const key of keys){assert(KEYS.has(key));assert(java.includes('"'+key.slice(7)+'"'));}
 });
 
+test('desktop bridge serves startup reads from one batch call, writes stay per key',()=>{
+ const {SettingsStore}=createRequire(import.meta.url)('../jubeat_viewer/player/static/services.js');
+ let getAll=0,getItem=0,setItem=0,removeItem=0;
+ const values=new Map([['jubeat.marker','tm0001'],['jubeat.sort','title']]);
+ const bridge={
+  getAll(){getAll++;return Object.fromEntries(values);},
+  getItem(k){getItem++;return values.get(k)??null;},
+  setItem(k,v){setItem++;values.set(k,v);},
+  removeItem(k){removeItem++;values.delete(k);},
+ };
+ const local=new Map();
+ const web={getItem:k=>local.get(k)??null,setItem:(k,v)=>local.set(k,v),removeItem:k=>local.delete(k)};
+ const settings=new SettingsStore(()=>bridge,()=>web);
+ // 二十多个键都从同一份快照里读，一次 IPC 都不再产生。
+ for(let i=0;i<29;i++) assert.equal(settings.access('jubeat.marker'),'tm0001');
+ assert.equal(getAll,1);assert.equal(getItem,0);
+ settings.access('jubeat.sort','album');
+ assert.equal(setItem,1);assert.equal(settings.access('jubeat.sort'),'album');assert.equal(getAll,1);
+ // 快照必须跟着写一起更新，不能读到旧值。
+ settings.access('jubeat.sort',null);assert.equal(removeItem,1);assert.equal(settings.access('jubeat.sort'),null);
+});
+
 test('viewer storage migrates legacy values but recording presets stay local',()=>{
  const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-base.js',import.meta.url),'utf8');
  const code=source.slice(source.indexOf('  function store('),source.indexOf('  // —— utils'));

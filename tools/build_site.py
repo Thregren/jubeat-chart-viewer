@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""默认构建开放目录曲库；旧MCZ导入仅允许显式 --legacy-mcz。"""
-import sys
-import os
+"""构建开放目录曲库站点。
+
+入口名保留 `build_site.py`（文档、脚本、测试都用这个名字调用），实际实现是
+`build_directory.py`：读 `data/library.json` + 显式资源路径，原样复制音源，
+不打开任何压缩包、不转码。旧版 `.mcz` 通道（`--legacy-mcz`）已下线。
+"""
+from build_directory import main
+
 if __name__ == '__main__':
-    if '--legacy-mcz' in sys.argv:
-        sys.argv.remove('--legacy-mcz')
-        if not os.environ.get('JUBEAT_LIBRARY', '').strip():
-            raise SystemExit('旧导入必须显式指定 JUBEAT_LIBRARY；默认不读取任何旧曲库')
-        from site_builder import main
-    else:
-        from build_directory import main
     raise SystemExit(main())

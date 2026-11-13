@@ -4,13 +4,14 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const Runtime = createRequire(import.meta.url)('../jubeat_viewer/player/static/runtime.js');
+const Core = createRequire(import.meta.url)('../jubeat_viewer/player/static/core.js');
 const source = fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js', import.meta.url), 'utf8');
 
 test('rapid Marker changes discard skipped queue entries and can reload the same design', async () => {
   const requested = [], timers = new Map(); let timerId = 0;
   const setTimer = fn => { timers.set(++timerId, fn); return timerId; };
   const designs = ['a', 'b'].map(id => ({id, dir:id, prefix:id, ma:8, h:{}}));
-  const A = {services:{register(){}}, els:{markerSelect:{},markerHint:{}}, state:{},
+  const A = {QUERY:new URLSearchParams(''),Core,services:{register(){}}, els:{markerSelect:{},markerHint:{}}, state:{},
     markerCfg:{designs,design:null,images:new Map()}, PATHS:{markersBase:'markers/'},
     encPath:String, STORAGE:{marker:'marker'},store(){},requestPaint(){}};
   const window = {JubeatApp:A, JubeatRuntime:{...Runtime,

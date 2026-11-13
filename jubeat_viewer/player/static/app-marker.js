@@ -10,8 +10,8 @@
   const A = (window.JubeatApp = window.JubeatApp || {});
 
   // —— 更早那层提供的接口 ——
-  const { el, els, state, DEFAULT_MARKER_DESIGN, markerCfg, numCfg,
-     STORAGE, PATHS, encPath, GLOW_PAIRS, store, toast, normalizeHexColor } = A;
+  const { Core, QUERY, el, els, state, DEFAULT_MARKER_DESIGN, markerCfg, numCfg,
+     STORAGE, PATHS, encPath, GLOW_PAIRS, store, toast, normalizeHexColor, hexRgb } = A;
 
   // ================= marker 动画 =================
   //
@@ -31,6 +31,28 @@
   // Canvas 的通用 monospace 在 Windows 上常落到 Courier New（衬线体）。
   // 序号和倒计时需要明确的跨平台无衬线回退。
   const CANVAS_SANS_FONT = 'system-ui, "Segoe UI", Roboto, "Noto Sans SC", Arial, sans-serif';
+  const CANVAS_MONO_FONT = 'Menlo, "SF Mono", monospace';
+
+  /**
+   * 字号 → font 串的缓存 + 赋值守卫。
+   *
+   * `ctx.font = ...` 每次赋值都要让 canvas 重新解析一遍字体串（很贵），而长押倒计时、
+   * 首批预告、总连击这些文字每帧都在画、字号却基本不变。所以：
+   *   1) 同一个字号只拼一次模板字符串；
+   *   2) 赋值前先比对 ctx.font（同 drawOrderNumber 的差值守卫），没变就不碰。
+   */
+  const fontStrings = new Map();
+  function useFont(size, family = CANVAS_SANS_FONT) {
+    const key = `${size}|${family}`;
+    let font = fontStrings.get(key);
+    if (!font) {
+      font = `700 ${size}px ${family}`;
+      if (fontStrings.size >= 64) fontStrings.clear();
+      fontStrings.set(key, font);
+    }
+    if (ctx.font !== font) ctx.font = font;
+    return font;
+  }
   let canvasW = 0;
   let canvasH = 0;
   let refreshFrame = 0;
@@ -518,16 +540,13 @@
 
   /** notes with a marker animation window covering [lo, hi] (seconds) */
   function* notesInWindow(lo, hi, notes = state.notes) {
-    let a = 0;
-    let b = notes.length;
-    while (a < b) {
-      const mid = (a + b) >> 1;
-      if (notes[mid].t < lo) a = mid + 1;
-      else b = mid;
-    }
+    // 窗口起点那一颗（t == lo）也要画，所以用 firstAtOrAfter（t ≥ lo），不是 firstAfter。
+    // 二分本身在 core.js（有 node 单测），不再在这里内联第三份。
     // Stream the window without a temporary array. Long holds can widen the
     // search interval beyond 400 notes; a cap here would hide valid markers.
-    for (let i = a; i < notes.length && notes[i].t <= hi; i++) yield notes[i];
+    for (let i = Core.firstAtOrAfter(notes, lo); i < notes.length && notes[i].t <= hi; i++) {
+      yield notes[i];
+    }
   }
 
   let holdSource = null;
@@ -584,6 +603,14 @@
   const NUM_LEAD = 0.10;
   const NUM_TAIL_TRIM = 1 / 30; // 序号比命中动画提前约一帧结束
 
+  /** 把 "r,g,b" 往白里混 mix（0~1）：长押终点格是「被按亮的格子」 */
+  function lightenRgb(rgb, mix = 0.55) {
+    return String(rgb)
+      .split(",")
+      .map((v) => Math.round(Number(v) + (255 - Number(v)) * mix))
+      .join(",");
+  }
+
   /** 终点格（被按住那格）的填充色：跟着「同押光晕」的主色走
    *  （实机里长押格的颜色也随乐段变，这里用它做可配置的替代） */
   function holdTint() {
@@ -591,12 +618,11 @@
   }
 
   /** 终点格是「被按住的格子」：实机里整格提亮到约两倍底色、只留一点点染色。
-   *  我们的底色比实机深，所以把主色往白里调淡再用，避免整格糊成一块艳蓝。 */
-  function holdTintLight(mix = 0.55) {
-    return holdTint()
-      .split(",")
-      .map((v) => Math.round(Number(v) + (255 - Number(v)) * mix))
-      .join(",");
+   *  我们的底色比实机深，所以把主色往白里调淡再用，避免整格糊成一块艳蓝。
+   *  结果随配色对一起缓存（glowPair 里算），不必每帧 split / join。 */
+  function holdTintLight() {
+    glowPair();
+    return holdTintCache[0];
   }
 
   /** 长押两端在 4×4 面板上的格位；斜向（本家没这种东西）返回 null */
@@ -804,8 +830,17 @@
    * 走廊光束：横截面 = 很细的亮芯 + 两侧极窄的缓降。
    * 实测（格宽 101px）芯的半高宽 FWHM ≈4px（≈0.04 格），±0.03 格处 ≈0.56、
    * ±0.06 格处 ≈0.12、±0.09 格外就没了；峰值就是实机那个淡蓝白 rgb(195,221,255)。
+   *
+   * 形状只由半宽和整体亮度决定（亮度只有「正式 1」和「预卷 0.56」两档），所以按这两
+   * 个键缓存：以前每条长押、每一帧都要重建一次渐变（12 个 rgba 字符串 + 12 次
+   * addColorStop）。画布尺寸变了键自然跟着变，缓存有上限，旧条目会被挤掉。
    */
+  const beamGradients = new Map();
+  const BEAM_CACHE_LIMIT = 8;
   function beamGradient(hw, alpha) {
+    const key = `${hw.toFixed(2)}|${alpha}`;
+    const cached = beamGradients.get(key);
+    if (cached) return cached;
     const line = (a) => `rgba(196,221,255,${a * alpha})`;
     const grad = ctx.createLinearGradient(-hw, 0, hw, 0);
     grad.addColorStop(0.000, line(0));
@@ -820,6 +855,8 @@
     grad.addColorStop(0.545, line(0.12));
     grad.addColorStop(0.570, line(0));
     grad.addColorStop(1.000, line(0));
+    if (beamGradients.size >= BEAM_CACHE_LIMIT) beamGradients.delete(beamGradients.keys().next().value);
+    beamGradients.set(key, grad);
     return grad;
   }
 
@@ -954,7 +991,7 @@
         rect.w - inset * 2, rect.h - inset * 2,
         Math.max(4, rect.w * 0.12));
       ctx.clip();
-      ctx.font = `700 ${layout.size}px ${CANVAS_SANS_FONT}`;
+      useFont(layout.size);
       ctx.textAlign = layout.align;
       ctx.textBaseline = layout.baseline;
       ctx.lineJoin = "round";
@@ -982,18 +1019,28 @@
   }
 
   /** 同一帧的 marker 都只裁在各自的格子里；把所有圆角格子并成一条裁切路径，
-   *  再依次贴图，就不会为每一颗音符反复 save/clip/restore。 */
-  function drawFrameImages(items) {
+   *  再依次贴图，就不会为每一颗音符反复 save/clip/restore。
+   *  items 是 drawMarkers 的对象池，只有前 count 项有效（不再 filter 出一份副本：
+   *  每帧都复制一次上千个小对象，正是要消掉的那笔开销）。 */
+  function drawFrameImages(items, count) {
     if (!ctx) return;
-    const visible = items.filter(({ image, rect }) => ready(image) && rect);
-    if (!visible.length) return;
+    let any = false;
+    for (let i = 0; i < count; i++) {
+      const item = items[i];
+      if (item.rect && ready(item.image)) { any = true; break; }
+    }
+    if (!any) return;
     ctx.save();
     ctx.beginPath();
-    for (const { rect } of visible) {
+    for (let i = 0; i < count; i++) {
+      const { image, rect } = items[i];
+      if (!rect || !ready(image)) continue;
       roundRectSubpath(ctx, rect.x, rect.y, rect.w, rect.h, padClipRadius(rect));
     }
     ctx.clip();
-    for (const { image, rect, alpha } of visible) {
+    for (let i = 0; i < count; i++) {
+      const { image, rect, alpha } = items[i];
+      if (!rect || !ready(image)) continue;
       ctx.globalAlpha = alpha;
       if (image._crop) {
         ctx.drawImage(image._source, ...image._crop.slice(0, 4),
@@ -1005,24 +1052,41 @@
     ctx.restore();
   }
 
-  /** 当前选中的光晕配色对 */
+  /** 当前选中的光晕配色对（每帧都要问，见下面的缓存） */
+  let glowPairValue = null;
+  let glowPairCached = null;            // 第一次 glowPair() 时按 select 的当前值填上
+  const glowRgbCache = ["", ""];        // slot → "r,g,b"
+  const holdTintCache = ["", ""];       // slot → 往白里调淡后的 "r,g,b"
+
+  /**
+   * 当前选中的光晕配色对。
+   *
+   * 每帧、每颗同押 note、每条长押都要问一次，而它的来源只有 <select> 的值 ——
+   * 所以按「上次读到的 value」判脏：值没变就直接返回缓存，变了才重算颜色串
+   * （顺带把 rgb / 长押格调色的结果一起算好，那些以前是每帧跑正则 + split/join）。
+   * 用 value 判脏而不是监听 change，是为了把程序化赋值（恢复设置）也覆盖上。
+   */
   function glowPair() {
-    const i = Number(els.chordGlowPair && els.chordGlowPair.value);
-    const idx = Number.isFinite(i) ? Math.max(0, Math.min(GLOW_PAIRS.length - 1, i)) : 0;
-    return GLOW_PAIRS[idx];
+    const raw = String(els.chordGlowPair ? els.chordGlowPair.value : "");
+    if (raw !== glowPairValue) {
+      glowPairValue = raw;
+      const i = Number(raw);
+      glowPairCached = GLOW_PAIRS[Number.isFinite(i) ? Math.max(0, Math.min(GLOW_PAIRS.length - 1, i)) : 0];
+      for (let slot = 0; slot < 2; slot++) {
+        glowRgbCache[slot] = hexRgb(slot ? glowPairCached.alt : glowPairCached.main);
+        holdTintCache[slot] = lightenRgb(glowRgbCache[slot]);
+      }
+    }
+    return glowPairCached;
   }
 
-  function hexRgb(hex) {
-    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
-    if (!m) return "58,160,255";
-    const n = parseInt(m[1], 16);
-    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
-  }
-
-  /** 同押光晕的颜色（slot 0 = 主色，1 = 副色），返回 "r,g,b" 便于拼 rgba */
+  /**
+   * 同押光晕的颜色（slot 0 = 主色，1 = 副色），返回 "r,g,b" 便于拼 rgba。
+   * 只随配色对变化，所以直接用 glowPair() 算好的缓存。
+   */
   function glowRgb(slot = 0) {
-    const pair = glowPair();
-    return hexRgb(slot ? pair.alt : pair.main);
+    glowPair();
+    return glowRgbCache[slot ? 1 : 0];
   }
 
   // 同押光晕「呼吸」用的时钟：播放时跟着真实时间走，**暂停就钉住不动**。
@@ -1037,7 +1101,7 @@
 
   // 缓存按谱面对象刷新；拖动、暂停和重编号不会改变节奏分组。
   let rhythmNotes = null, noteRhythmColors = null;
-  const recording = typeof location !== "undefined" && new URLSearchParams(location.search).get("rec") === "1";
+  const recording = QUERY.get("rec") === "1";
   function numColorHex(note) {
     if(A.mode?.rhythmColor)return normalizeHexColor(A.mode.rhythmColor(note)||numCfg.color);
     if (!recording && numCfg.colorMode === "rhythm") {
@@ -1246,6 +1310,67 @@
     return layers;
   }
 
+  // —— 同押光晕 / 波纹的离屏贴图 ——
+  //
+  // 以前每个同押 note、每一帧都要 createRadialGradient（3 个色标）+ 两圈 arc + stroke。
+  // 形状只由「格子尺寸 + 呼吸相位」决定，颜色只由配色对决定，而呼吸相位是全局的
+  // （一帧里所有同押共用同一个值）—— 所以这些都可以烘焙一次、帧内只 drawImage。
+  // 每颗 note 各自的贴图透明度留在 globalAlpha 上乘：原实现是把 ga 乘进每个色标，
+  // 这里是「色标 × globalAlpha」，结果一致（差别只有 8bit 往返的 ≤1/255 舍入）。
+  // 相位按 1/16 档量化（呼吸一周 560ms，相邻档 < 2ms），视觉上看不出差别。
+  const chordGlowSprites = new Map();
+  const CHORD_GLOW_CACHE_LIMIT = 96;
+
+  /** 把一段画法烘焙成小贴图；离屏 2D 不可用（老 WebView）时返回 null，调用方直接画。 */
+  function chordGlowSprite(key, cssW, cssH, paint) {
+    const dpr = canvasW > 0 ? canvas.width / canvasW : 1;
+    const fullKey = `${key}|${dpr}`;
+    const cached = chordGlowSprites.get(fullKey);
+    if (cached) return cached;
+    try {
+      const w = Math.max(1, Math.ceil(cssW));
+      const h = Math.max(1, Math.ceil(cssH));
+      const sprite = document.createElement("canvas");
+      sprite.width = Math.max(1, Math.round(w * dpr));
+      sprite.height = Math.max(1, Math.round(h * dpr));
+      const target = sprite.getContext("2d");
+      if (!target || typeof target.createRadialGradient !== "function") return null;
+      target.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paint(target, w, h);
+      sprite._cssW = w;
+      sprite._cssH = h;
+      if (chordGlowSprites.size >= CHORD_GLOW_CACHE_LIMIT) {
+        chordGlowSprites.delete(chordGlowSprites.keys().next().value);
+      }
+      chordGlowSprites.set(fullKey, sprite);
+      return sprite;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /** 数字背后那团光晕：中心最亮，±0.45 处一档，边缘淡到 0（色标不含每颗 note 的透明度）。 */
+  function paintHalo(target, cx, cy, glowSize, glow, haloR, rgb) {
+    const grad = target.createRadialGradient(cx, cy, glowSize * 0.1, cx, cy, haloR);
+    grad.addColorStop(0, `rgba(${rgb}, ${0.34 + 0.5 * glow})`);
+    grad.addColorStop(0.45, `rgba(${rgb}, ${0.16 + 0.3 * glow})`);
+    grad.addColorStop(1, `rgba(${rgb}, 0)`);
+    target.fillStyle = grad;
+    target.beginPath();
+    target.arc(cx, cy, haloR, 0, Math.PI * 2);
+    target.fill();
+  }
+
+  /** 一圈外扩光环（不透明绘制；逐帧的淡出由调用方的 globalAlpha 负责）。 */
+  function paintRing(target, cx, cy, radius, lineWidth, rgb) {
+    target.lineCap = "round";
+    target.strokeStyle = `rgb(${rgb})`;
+    target.lineWidth = lineWidth;
+    target.beginPath();
+    target.arc(cx, cy, radius, 0, Math.PI * 2);
+    target.stroke();
+  }
+
   let numberCacheNotes = null;
   let numberCacheKey = "";
   let numberCache = null;
@@ -1372,27 +1497,38 @@
       const style = chordStyle();
 
       if (style !== "frame") {
-        // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0
-        const haloR = glowSize * (0.72 + 0.12 * glow);
-        const grad = ctx.createRadialGradient(gx, gy, glowSize * 0.1, gx, gy, haloR);
-        grad.addColorStop(0, `rgba(${rgb}, ${(0.34 + 0.5 * glow) * ga})`);
-        grad.addColorStop(0.45, `rgba(${rgb}, ${(0.16 + 0.3 * glow) * ga})`);
-        grad.addColorStop(1, `rgba(${rgb}, 0)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(gx, gy, haloR, 0, Math.PI * 2);
-        ctx.fill();
+        // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0。
+        // 呼吸相位按 1/16 量化（60fps 下 560ms 一个周期 ≈ 34 帧，16 档 = 每档 2 帧）：
+        // 贴图必须是「纯函数(这个 key)」，半径 / 色标都用量化后的值算，否则同一个 key
+        // 会被先遇到的那一帧烘焙掉。量化误差上界：色标 alpha ±0.03、半径 ±0.4%
+        // （0.12·glowSize/32）—— 在一团本来就模糊的径向渐变上看不出差。
+        const glowQ = Math.round(glow * 16) / 16;
+        const haloR = glowSize * (0.72 + 0.12 * glowQ);
+        // 光晕形状只由（格子尺寸 / 呼吸相位）决定，颜色只由配色对决定，一帧里所有
+        // 同押共用同一个相位 —— 所以烘焙成贴图，帧内只 drawImage（见 paintHalo 上方）。
+        const halo = chordGlowSprite(
+          `halo|${rgb}|${glowSize.toFixed(2)}|${Math.round(glowQ * 16)}`,
+          haloR * 2 + 2, haloR * 2 + 2,
+          (target, w) => paintHalo(target, w / 2, w / 2, glowSize, glowQ, haloR, rgb));
+        // 每颗 note 的贴图淡入淡出只体现在 globalAlpha 上（原来它是乘进每个色标的，
+        // 等效：贴图里存的色标已经含 glow 权重，这里再乘 numCfg.alpha × ga）
+        ctx.globalAlpha = numCfg.alpha * ga;
+        if (halo) {
+          ctx.drawImage(halo, gx - halo._cssW / 2, gy - halo._cssH / 2, halo._cssW, halo._cssH);
+        } else {
+          paintHalo(ctx, gx, gy, glowSize, glowQ, haloR, rgb);   // 离屏画布不可用：照旧直接画
+        }
+        ctx.globalAlpha = numCfg.alpha;
 
         // 2) 两圈外扩光环（相位差半圈，看起来是连续往外推的波纹）
+        // 这里不烘焙贴图：半径逐帧连续变化，量化成贴图会让圆弧一跳一跳（1/16 档
+        // 就是一档 ~35ms、半径跳 ~1css px），达不到「外观完全不变」。而一条描边圆弧
+        // 本身很便宜（没有渐变要算），真正贵的是上面的径向渐变，所以只烘焙光晕。
         ctx.lineCap = "round";
         for (const offset of [0, 0.5]) {
           const p = (phase + offset) % 1;
           ctx.globalAlpha = numCfg.alpha * ga * Math.pow(1 - p, 1.5) * 0.85;
-          ctx.strokeStyle = `rgb(${rgb})`;
-          ctx.lineWidth = Math.max(2.5, size * 0.1);
-          ctx.beginPath();
-          ctx.arc(gx, gy, glowSize * (0.46 + 0.38 * p), 0, Math.PI * 2);
-          ctx.stroke();
+          paintRing(ctx, gx, gy, glowSize * (0.46 + 0.38 * p), Math.max(2.5, size * 0.1), rgb);
         }
         ctx.globalAlpha = numCfg.alpha;   // 别把「序号透明度」冲掉
 
@@ -1482,12 +1618,23 @@
    * 长押：按下（t）与松开（endT）各播一次同一套 H4 动画，都画在被按住的那一格；
    * 中间那段只有「会移动的箭头」陪着你（drawHoldArrows）。
    */
-  // 逐帧复用的三个容器：drawMarkers 每个渲染帧都跑一遍，别每帧新建 Map / 数组。
-  // 注意 numbers 里的条目仍在循环内每帧新建，
-  // 复用同一个数组对象会把上一帧的 note / rect / opacity 串到这一帧。
+  // 逐帧复用的容器：drawMarkers 每个渲染帧都跑一遍，别每帧新建 Map / 数组。
+  // numbers / frames 是「定长对象池 + 长度计数」：以前每颗 note 每帧都 push 一个新
+  // 数组 / 新对象（密集谱面一帧几百个），现在只覆盖池里已有的槽位，用 *_count 当
+  // 有效长度。用到的字段每次写入前都整体重置，所以不会把上一帧的脏值带过来。
   const counts = new Map();
   const numbers = [];
+  let numberCount = 0;
   const frames = [];
+  let frameCount = 0;
+
+  function numberSlot(i) {
+    return numbers[i] || (numbers[i] = [null, null, 0, false, false]);
+  }
+
+  function frameSlot(i) {
+    return frames[i] || (frames[i] = { image: null, rect: null, alpha: 1 });
+  }
 
   function drawMarkers(chartT) {
     if(A.mode?.ownsFrame&&A.mode.draw?.(chartT))return;
@@ -1522,8 +1669,8 @@
     // 长押时长本身已是谱面时间，不能随动画速度缩短，否则慢速播放时会提前隐藏。
     const holdBack = (state._parsed && state._parsed.maxHold) || 0;
     counts.clear();
-    numbers.length = 0;
-    frames.length = 0;
+    numberCount = 0;
+    frameCount = 0;
     // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
     // 数字是压在按键动画之上的覆盖层。挤在同一趟循环里先画的话，后面那些 marker
     // 会把先画的数字盖掉（同押的时候尤其明显）。
@@ -1544,8 +1691,16 @@
       const numEnd = (dur != null ? dur : 0) + Math.max(0, lateSec - NUM_TAIL_TRIM * animationRate);
       const showNumber = rel >= numStart && rel < numEnd;
       const showChord = rel >= -numLead && rel < chordEnd;
-      const number = showNumber || showChord ? [n, rect, 0, showChord, showNumber] : null;
-      if (number) numbers.push(number);
+      // 池里的槽位先整体重置（尤其是 opacity=0），再写这一帧真正要用的字段
+      let number = null;
+      if (showNumber || showChord) {
+        number = numberSlot(numberCount++);
+        number[0] = n;
+        number[1] = rect;
+        number[2] = 0;
+        number[3] = showChord;
+        number[4] = showNumber;
+      }
 
       if (u < early || u >= late) continue;
       const count = counts.get(n.index) || 0;
@@ -1573,13 +1728,19 @@
       counts.set(n.index, count + 1);
       const image = frameForChannel(design, channel, frame, total);
       const opacity = markerOpacity(image);
-      frames.push({ image, rect, alpha: opacity });
+      const slot = frameSlot(frameCount++);
+      slot.image = image;
+      slot.rect = rect;
+      slot.alpha = opacity;
       if (number) number[2] = opacity;
     }
 
-    drawFrameImages(frames);
+    drawFrameImages(frames, frameCount);
     drawHoldCountdowns(chartT);
-    for (const [n, rect, opacity, allowChord, allowNumber] of numbers) drawOrderNumber(n, rect, opacity, undefined, allowChord, allowNumber);
+    for (let i = 0; i < numberCount; i++) {
+      const [n, rect, opacity, allowChord, allowNumber] = numbers[i];
+      drawOrderNumber(n, rect, opacity, undefined, allowChord, allowNumber);
+    }
   }
 
   /** 首批落点预告：与同押 frame 共用颜色、粗细、内缩和圆角。 */
@@ -1640,7 +1801,7 @@
       const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
       ctx.shadowBlur = 3;
       ctx.shadowColor = "rgba(0,0,0,0.8)";
-      ctx.font = `700 ${size}px system-ui, sans-serif`;
+      useFont(size, 'system-ui, sans-serif');
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#f1f8ff";
@@ -1657,7 +1818,7 @@
     const size = Math.min(canvasW, canvasH) * 0.46;   // 只在布局变化时才会变
     if (size < 20) return;
     ctx.save();
-    ctx.font = `700 ${size}px Menlo, "SF Mono", monospace`;
+    useFont(size, CANVAS_MONO_FONT);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.globalAlpha = 0.38;
@@ -1671,6 +1832,7 @@
   A.services.register('markerResources',{dispose(){
     selectToken++;for(const img of markerCfg.images.values()){img._abort?.abort();img._source?.close?.();for(const frame of img._frames?.values() || [])frame.close?.();}
     markerCfg.images.clear();atlasViews.clear();atlasFrames.clear();lastDrawn.clear();
+    chordGlowSprites.clear();glyphLayers.clear();chordFrameLayers.clear();
   }});
   // —— 跨层可变状态 ——
   // 这几个必须是活绑定：别的层读到的是「此刻的值」，不是加载那一刻的快照。

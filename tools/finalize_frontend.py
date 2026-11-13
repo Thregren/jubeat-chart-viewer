@@ -4,22 +4,17 @@ from pathlib import Path
 import argparse
 import os
 import re
-import tempfile
+import sys
 from urllib.parse import unquote, urlsplit
+
+# 原子写只有 jubeat_viewer/player/media.py 一份。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'jubeat_viewer/player'))
 
 
 def write(path, text):
-    if path.read_text(encoding='utf-8') == text:
-        return
-    fd, name = tempfile.mkstemp(dir=path.parent, prefix='.frontend-')
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            stream.write(text)
-        os.chmod(name, path.stat().st_mode & 0o777)
-        os.replace(name, path)
-    finally:
-        if os.path.exists(name):
-            os.unlink(name)
+    """入口页写入：内容没变就不动；权限沿用目标文件原来的（mode=None）。"""
+    from media import write_atomic
+    write_atomic(path, text.encode('utf-8'), mode=None, skip_identical=True)
 
 
 class Tags(HTMLParser):

@@ -103,12 +103,26 @@ function jubeat_fail(int $code, string $message): void
 /**
  * 安全响应头。nginx 直接发静态文件时由 nginx 那份配置负责（deploy/security-headers.conf）；
  * 这个脚本自己发文件时（没配 nginx、或走目录兜底）也得有一份，否则两条路径的头不一致。
+ *
+ * CSP 与 deploy/security-headers.conf 逐条同序，唯一差别是 upgrade-insecure-requests：
+ * 纯 PHP 主机的本地预览跑在明文 http 上（见 README「三、本地快速预览」），无条件下这条
+ * 会把自己升级成 https://127.0.0.1 而后全站 404，所以只在请求本身是 HTTPS 时才发。
+ * 这条串被 tools/test_cache_headers.py 钉住，改一端就得改四方。
  */
 function jubeat_security_headers(): void
 {
     if (headers_sent()) {
         return;
     }
+    $https = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+        || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
+    $csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; "
+        . "media-src 'self' blob:; font-src 'self'; connect-src 'self'; "
+        . "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'";
+    if ($https) {
+        $csp .= "; upgrade-insecure-requests";
+    }
+    header('Content-Security-Policy: ' . $csp);
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: no-referrer');
     header('X-Frame-Options: SAMEORIGIN');

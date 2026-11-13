@@ -12,12 +12,13 @@ import time
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "jubeat_viewer/player"))
+from asset_hash import is_hashed
 from media import write_atomic
 
 HISTORY = '.asset-history.json'
 
 def hashed(rel):
-    return '_hashed' in Path(rel).parts or bool(re.search(r'\.[a-f0-9]{20}\.', rel))
+    return is_hashed(rel)
 
 def read_history(root):
     try:

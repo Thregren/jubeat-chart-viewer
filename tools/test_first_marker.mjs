@@ -29,7 +29,8 @@ for(const base of [-.4,0,.6]){
 let operations=[];
 const ctx={};
 for(const name of ['save','restore','beginPath','moveTo','lineTo','quadraticCurveTo','stroke','fillText'])ctx[name]=(...args)=>operations.push([name,...args]);
-const A={services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},firstMarker:{checked:true},rate:{value:'1'},markerNormalSpeed:{checked:true},chordGlowPair:{value:'0'}},state:{baseOffset:0,notes:[{t:3,index:4,glowSlot:0},{t:3,index:7,kind:'hold',endT:5}],padRects:Array.from({length:16},(_,i)=>({x:i%4*110,y:Math.floor(i/4)*110,w:100,h:100}))},markerCfg:{design:{},window:{early:-155},unitMs:3.3333},GLOW_PAIRS:[{main:'#38bdf8',alt:'#fb7185'}]};
+const Core=require(path.join(dir,'core.js'));
+const A={QUERY:new URLSearchParams(''),Core,hexRgb:(hex)=>{const n=parseInt(String(hex).replace('#',''),16);return `${(n>>16)&255},${(n>>8)&255},${n&255}`;},services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},firstMarker:{checked:true},rate:{value:'1'},markerNormalSpeed:{checked:true},chordGlowPair:{value:'0'}},state:{baseOffset:0,notes:[{t:3,index:4,glowSlot:0},{t:3,index:7,kind:'hold',endT:5}],padRects:Array.from({length:16},(_,i)=>({x:i%4*110,y:Math.floor(i/4)*110,w:100,h:100}))},markerCfg:{design:{},window:{early:-155},unitMs:3.3333},GLOW_PAIRS:[{main:'#38bdf8',alt:'#fb7185'}]};
 const window={JubeatApp:A,JubeatFirstMarker:model,JubeatRuntime:{Semaphore:class{},markerRate:()=>1,markerTiming:require(path.join(dir,'runtime.js')).markerTiming}};
 vm.runInNewContext(fs.readFileSync(path.join(dir,'app-marker.js'),'utf8'),{window,console});
 function draw(time,clock=null){operations=[];A.firstMarkerClock=clock;A.drawFirstMarker(time);return JSON.stringify(operations);}

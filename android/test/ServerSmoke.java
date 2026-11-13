@@ -25,6 +25,8 @@ import world.thregren.jubeatviewer.LocalServer;
 public final class ServerSmoke {
     private static int failures = 0;
     private static int checks = 0;
+    /** start() 返回地址里的 token 前缀（"/t/<token>/"）：手写请求要带上它。 */
+    private static String prefix = "/";
 
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("jv-server-smoke");
@@ -37,11 +39,21 @@ public final class ServerSmoke {
         write(root.resolve("media/audio/test.ogg"), ogg);
         write(root.resolve("media/audio/スペース 入り.ogg"), ogg);
         write(root.resolve("media/audio/plus+name.ogg"), ogg);
+        write(root.resolve("media/audio/legacy.caf"), ogg);
+        write(root.resolve("media/audio/vp9.webm"), ogg);
+        write(root.resolve("notes.txt"), "hello".getBytes(StandardCharsets.UTF_8));
 
         LocalServer srv = new LocalServer(root.toFile());
         String url = srv.start();
         int port = Integer.parseInt(url.replaceAll(".*:(\\d+)/.*", "$1"));
+        int marker = url.indexOf('/', "http://".length());
+        prefix = url.substring(marker);
         try {
+            check("start() 地址带 token 前缀", prefix.startsWith("/t/") && prefix.length() > 4 + 2);
+            // 同机进程扫到端口也算不出 token：不带前缀的路径一律 403
+            check("不带 token → 403", getRaw(port, "GET / HTTP/1.1").status == 403);
+            check("不带 token 读数据 → 403", getRaw(port, "GET /data/library.json HTTP/1.1").status == 403);
+            check("错 token → 403", getRaw(port, "GET /t/00000000000000000000000000000000/index.html HTTP/1.1").status == 403);
             // 首页
             Resp r = get(port, "GET / HTTP/1.1", null);
             check("GET / → 200", r.status == 200);
@@ -108,7 +120,23 @@ public final class ServerSmoke {
             check("坏百分号 → 400", get(port, "GET /a%zz HTTP/1.1", null).status == 400);
             check("截断的百分号 → 400", get(port, "GET /a%2 HTTP/1.1", null).status == 400);
             check("响应都带 nosniff", "nosniff".equals(r.header("x-content-type-options")));
+            check("响应都带 CSP", r.header("content-security-policy").startsWith("default-src 'self'"));
+            check("错误响应也带 CSP", get(port, "GET /nope.png HTTP/1.1", null)
+                    .header("content-security-policy").startsWith("default-src 'self'"));
             check("Connection: close", "close".equals(r.header("connection")));
+
+            // MIME 表要与桌面 site-server.js 键集合一致（#21）
+            check(".txt 是 text/plain", get(port, "GET /notes.txt HTTP/1.1", null)
+                    .header("content-type").startsWith("text/plain"));
+            check(".caf 是 audio/x-caf", get(port, "GET /media/audio/legacy.caf HTTP/1.1", null)
+                    .header("content-type").equals("audio/x-caf"));
+            check(".webm 是 audio/webm", get(port, "GET /media/audio/vp9.webm HTTP/1.1", null)
+                    .header("content-type").equals("audio/webm"));
+
+            // 请求头超限：回 431，不能像以前那样直接丢连接让客户端等超时
+            StringBuilder pad = new StringBuilder("X-Pad: ");
+            while (pad.length() < 70000) pad.append('a');
+            check("超大请求头 → 431", get(port, "GET /index.html HTTP/1.1", pad.toString()).status == 431);
         } finally {
             srv.stop();
             deleteTree(root);
@@ -176,7 +204,21 @@ public final class ServerSmoke {
         }
     }
 
+    /** 带 token 前缀发请求（路径仍按站点根写，这里补前缀）。 */
     private static Resp get(int port, String first, String extraHeader) throws IOException {
+        return getRaw(port, withPrefix(first), extraHeader);
+    }
+
+    /** 原样发请求，不补 token 前缀 —— 用来验证没有 token 时确实拿不到东西。 */
+    private static String withPrefix(String first) {
+        return first.replaceFirst("^(GET|HEAD|POST) /", "$1 " + prefix);
+    }
+
+    private static Resp getRaw(int port, String first) throws IOException {
+        return getRaw(port, first, null);
+    }
+
+    private static Resp getRaw(int port, String first, String extraHeader) throws IOException {
         StringBuilder req = new StringBuilder();
         req.append(first).append("\r\n");
         req.append("Host: 127.0.0.1:").append(port).append("\r\n");

@@ -26,8 +26,10 @@ from source_revision import source_revision
 
 
 def song():
-    return {"id": "v/song.mcz", "title": "song", "artist": "artist", "version": "v",
-            "charts": [{"code": "EXT", "file": "song_EXT Lv9.mc", "level": "9",
+    return {"id": "v/song", "title": "song", "artist": "artist", "version": "v",
+            "assets": {"audio": "songs/v/song/bgm.wav", "cover": "songs/v/song/cover.png",
+                       "chart:EXT": "songs/v/song/charts/EXT.json"},
+            "charts": [{"code": "EXT", "level": "9",
                         "notes": 1, "holds": 0, "levelNum": 9.0, "notesKnown": True}]}
 
 
@@ -35,29 +37,40 @@ class MediaIntegrity(unittest.TestCase):
     def test_thumbnail_route_refreshes_with_source_revision(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / "song.mcz"
-            def archive(data):
-                with zipfile.ZipFile(source, "w") as zipped:
-                    zipped.writestr("jkt.png", data)
-            archive(b"old cover")
-            stamp = source.stat().st_mtime_ns
+            cover = root / "cover.png"
+            cover.write_bytes(b"old cover")
+            stamp = cover.stat().st_mtime_ns
             handler = object.__new__(server.Handler)
-            entry = {"id": "song.mcz", "cover": "jkt.png"}
+            entry = {"id": "v/song", "assets": {"cover": "cover.png"}}
+            def resolve(song_entry, key):
+                return cover if key == "cover" else None
             def encode(src, dest, size, quality):
                 dest.write_bytes(src.read_bytes())
                 return True
-            with patch.object(server.config, "COVER_CACHE_DIR", root / "covers"), \
-                    patch.object(server.config, "THUMB_CACHE_DIR", root / "thumbs"), \
-                    patch.object(server.LIB, "mcz_path", return_value=source), \
+            with patch.object(server.config, "THUMB_CACHE_DIR", root / "thumbs"), \
+                    patch.object(server.LIB, "asset_file", side_effect=resolve), \
                     patch.object(thumbs, "backend", return_value="pillow"), \
                     patch.object(thumbs, "_with_pillow", side_effect=encode) as encoder, \
                     patch.object(media, "stream_file", side_effect=lambda h, p, *a: p.read_bytes()):
                 self.assertEqual(handler._serve_media("thumb", entry), b"old cover")
-                archive(b"new cover")
-                os.utime(source, ns=(stamp, stamp))
+                cover.write_bytes(b"new cover")
+                os.utime(cover, ns=(stamp, stamp))
                 self.assertEqual(handler._serve_media("thumb", entry), b"new cover")
                 self.assertEqual(handler._serve_media("thumb", entry), b"new cover")
                 self.assertEqual(encoder.call_count, 2)
+
+    def test_thumbnail_uses_provided_asset_without_encoding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cover = root / "cover.png"; cover.write_bytes(b"cover")
+            thumb = root / "thumb.jpg"; thumb.write_bytes(b"\xff\xd8thumb")
+            handler = object.__new__(server.Handler)
+            entry = {"id": "v/song", "assets": {"cover": "cover.png", "thumb": "thumb.jpg"}}
+            files = {"cover": cover, "thumb": thumb}
+            with patch.object(server.LIB, "asset_file", side_effect=lambda s, k: files.get(k)), \
+                    patch.object(thumbs, "_with_pillow", side_effect=AssertionError("re-encoded")), \
+                    patch.object(media, "stream_file", side_effect=lambda h, p, *a: p.read_bytes()):
+                self.assertEqual(handler._serve_media("thumb", entry), b"\xff\xd8thumb")
 
     def test_source_revision_changes_for_preserved_mtime_and_replacement(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -75,25 +88,6 @@ class MediaIntegrity(unittest.TestCase):
             os.replace(replacement, path)
             self.assertNotEqual(edited, source_revision(path))
 
-    def test_member_cache_refreshes_after_old_timestamp_update(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            source, dest = Path(tmp) / "song.mcz", Path(tmp) / "audio.ogg"
-            def archive(data):
-                with zipfile.ZipFile(source, "w") as archive:
-                    archive.writestr("bgm.ogg", data)
-            archive(b"old audio")
-            stamp = source.stat().st_mtime_ns
-            media.cached_member_file(source, "bgm.ogg", dest)
-            self.assertTrue(media.member_is_fresh(dest, source))
-            archive(b"new audio")
-            os.utime(source, ns=(stamp - 1_000_000, stamp - 1_000_000))
-            self.assertFalse(media.member_is_fresh(dest, source))
-            self.assertEqual(media.cached_member_file(source, "bgm.ogg", dest).read_bytes(), b"new audio")
-            with patch.object(media.zipfile, "ZipFile", side_effect=AssertionError("fresh cache opened ZIP")):
-                media.cached_member_file(source, "bgm.ogg", dest)
-            dest.write_bytes(b"broken")
-            self.assertFalse(media.member_is_fresh(dest, source))
-
     def test_unversioned_or_broken_metadata_is_not_fresh(self):
         with tempfile.TemporaryDirectory() as tmp:
             source, dest = Path(tmp) / "song", Path(tmp) / "cache"
@@ -102,18 +96,6 @@ class MediaIntegrity(unittest.TestCase):
             for payload in ("[]", "null", "{", '{"source":[]}'):
                 dest.with_name(dest.name + ".revision.json").write_text(payload)
                 self.assertFalse(media.member_is_fresh(dest, source))
-
-    def test_source_changed_during_extraction_does_not_publish(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            source, dest = Path(tmp) / "song.mcz", Path(tmp) / "audio.ogg"
-            with zipfile.ZipFile(source, "w") as archive:
-                archive.writestr("bgm.ogg", b"new audio")
-            dest.write_bytes(b"previous complete audio")
-            with patch.object(media, "source_revision", side_effect=["before", "after"]):
-                with self.assertRaises(OSError):
-                    media.cached_member_file(source, "bgm.ogg", dest)
-            self.assertEqual(dest.read_bytes(), b"previous complete audio")
-            self.assertEqual(list(Path(tmp).glob("*.tmp-*")), [])
 
     def test_thumbnail_is_published_only_after_encoder_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -195,36 +177,6 @@ class FileHandler:
 
 
 class IndexIntegrity(unittest.TestCase):
-    def test_invalid_chart_fields_are_not_accepted(self):
-        self.assertTrue(library.valid_cached_song(song()))
-        invalid_charts = [{}, {"code": "EXT", "level": "9", "file": "x", "notes": []},
-                          {"code": "EXT", "level": 9, "file": "x"},
-                          {"code": "EXT", "level": "9", "file": "x", "levelNum": float("nan")}]
-        for chart in invalid_charts:
-            entry = song(); entry["charts"] = [chart]
-            self.assertFalse(library.valid_cached_song(entry), repr(chart))
-
-    def test_bad_cached_chart_is_rescanned_including_member_cache(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            source = root / "music" / "v" / "song.mcz"
-            source.parent.mkdir(parents=True)
-            chart = {"meta": {"song": {"title": "song"}}, "note": [{"index": 0}]}
-            with zipfile.ZipFile(source, "w") as archive:
-                archive.writestr("song_EXT Lv9.mc", json.dumps(chart))
-            cache = root / "index.json"
-            with patch.object(library.config, "INDEX_CACHE", cache):
-                initial = library.Library(root / "music"); initial.load()
-                raw = json.loads(cache.read_text())
-                raw["songs"][0]["charts"] = [{}]
-                raw["members"]["v/song.mcz"]["song"]["charts"] = [{}]
-                cache.write_text(json.dumps(raw))
-                rebuilt = library.Library(root / "music")
-                with patch.object(library, "scan_song", wraps=library.scan_song) as scan:
-                    rebuilt.load()
-                    self.assertEqual(scan.call_count, 1)
-                self.assertEqual(rebuilt.songs[0]["charts"][0]["code"], "EXT")
-
     def test_public_response_is_reused_until_index_changes(self):
         lib = library.Library(Path("unused"))
         lib._install([song()])
@@ -310,6 +262,87 @@ class HttpIntegrity(unittest.TestCase):
             self.assertEqual(headers["Vary"], "Accept-Encoding")
             status, _, body = self.request("GET", "/data/library.json")
             self.assertEqual((status, body), (200, raw))
+
+
+class AssetRoutes(unittest.TestCase):
+    """目录曲库：谱面 / 音源 / 封面都按索引里的 assets 直接读文件。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.root = root
+        folder = root / "songs" / "v" / "song"
+        (folder / "charts").mkdir(parents=True)
+        (folder / "charts" / "EXT.json").write_text(json.dumps({"note": [{"index": 0}]}), encoding="utf-8")
+        (folder / "bgm.wav").write_bytes(b"RIFF" + b"\0" * 4096)
+        (folder / "cover.png").write_bytes(b"\x89PNG" + b"\0" * 256)
+        entry = {"id": "v/song", "title": "song", "artist": "artist", "version": "v",
+                 "charts": [{"code": "EXT", "level": "9", "notes": 1, "holds": 0}],
+                 "assets": {"audio": "songs/v/song/bgm.wav", "cover": "songs/v/song/cover.png",
+                            "chart:EXT": "songs/v/song/charts/EXT.json"}}
+        (root / "data").mkdir()
+        (root / "data" / "library.json").write_text(json.dumps({
+            "format": "jubeat-directory-v1", "songs": [entry], "versions": ["v"],
+            "versionIndexes": []}), encoding="utf-8")
+        self.lib = library.Library(root)
+        self.lib.load()
+        class QuietHandler(server.Handler):
+            def log_message(self, *args):
+                pass
+        self.httpd = server.BoundedHTTPServer(("127.0.0.1", 0), QuietHandler)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        self.patch_lib = patch.object(server, "LIB", self.lib)
+        self.patch_lib.start()
+        self.client = http.client.HTTPConnection(*self.httpd.server_address, timeout=3)
+
+    def tearDown(self):
+        self.client.close()
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join(3)
+        self.patch_lib.stop()
+        self.tmp.cleanup()
+
+    def request(self, path, headers=None, method="GET"):
+        self.client.request(method, path, headers=headers or {})
+        response = self.client.getresponse()
+        return response.status, dict(response.getheaders()), response.read()
+
+    def test_chart_audio_and_cover_come_from_declared_assets(self):
+        status, headers, body = self.request("/data/charts/v/song/EXT.json")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["note"], [{"index": 0}])
+        self.assertEqual(headers["Cache-Control"], "public, max-age=86400")
+
+        status, headers, body = self.request("/media/audio/v/song.wav")
+        self.assertEqual((status, len(body)), (200, 4100))
+        self.assertEqual(headers["Accept-Ranges"], "bytes")
+
+        status, headers, body = self.request("/media/audio/v/song.wav", {"Range": "bytes=0-3"})
+        self.assertEqual((status, body), (206, b"RIFF"))
+        self.assertEqual(headers["Content-Range"], "bytes 0-3/4100")
+
+        status, _, body = self.request("/media/cover/v/song.png")
+        self.assertEqual((status, body[:4]), (200, b"\x89PNG"))
+
+        status, _, body = self.request("/songs/v/song/bgm.wav")
+        self.assertEqual((status, len(body)), (200, 4100))
+
+    def test_undeclared_asset_is_not_served(self):
+        (self.root / "songs" / "v" / "song" / "secret.txt").write_text("nope", encoding="utf-8")
+        status, _, _ = self.request("/songs/v/song/secret.txt")
+        self.assertEqual(status, 404)
+        status, _, _ = self.request("/data/charts/v/song/BSC.json")
+        self.assertEqual(status, 404)
+
+    def test_security_headers_include_csp(self):
+        status, headers, _ = self.request("/data/library.json")
+        self.assertEqual(status, 200)
+        csp = headers.get("Content-Security-Policy", "")
+        self.assertIn("default-src 'self'", csp)
+        self.assertIn("object-src 'none'", csp)
+        self.assertNotIn("unsafe-inline", csp)
 
 
 if __name__ == "__main__":

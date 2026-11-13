@@ -22,6 +22,8 @@ class Preferences {
     } catch { /* Missing or invalid settings fall back to viewer defaults. */ }
   }
   getItem(key) { if (!allowed(key)) throw Error('Unknown preference'); return this.values[key] ?? null; }
+  /** 一次把全部偏好交出去：渲染进程启动时要读二十多个键，逐个 sendSync 等于二十多次主线程往返。 */
+  getAll() { return { ...this.values }; }
   setItem(key, value) {
     if (!allowed(key, value)) throw Error('Invalid preference');
     const next = { ...this.values }; if (value === null) delete next[key]; else next[key] = value;
@@ -48,6 +50,7 @@ function registerPreferences(ipcMain, preferences, getWindow, getUrl) {
       try {
         let value = null;
         if (request.op === 'get') value = preferences.getItem(request.key);
+        else if (request.op === 'all') value = preferences.getAll();
         else if (request.op === 'set') preferences.setItem(request.key, request.value);
         else if (request.op === 'remove') preferences.removeItem(request.key);
         else throw Error('Invalid operation');

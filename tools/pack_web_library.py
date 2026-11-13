@@ -30,19 +30,26 @@ def pack(root,output,version,volume_mib=256):
     rows=[]
     def archive(name,names,kind):
         dest=output/name;temp=dest.with_name(dest.name+'.partial')
+        expected=0
         try:
             with zipfile.ZipFile(temp,'w',allowZip64=True) as z:
                 for rel in sorted(names):
                     source=asset_path(root,rel)
+                    expected+=source.stat().st_size
                     z.write(source,rel,compress_type=zipfile.ZIP_DEFLATED if source.suffix in ('.json','.js','.css','.html','.txt','.md') else zipfile.ZIP_STORED)
+            # 不再 testzip()：那会把整包（曲库动辄 2 GB）重新解压一遍校验 CRC，
+            # 等于在同一份数据上再读一次盘、再解一次压。写入时 CRC 已经由 zipfile
+            # 逐条算好，下面按中央目录核对「条目数 + 解压后总字节」，再由紧跟的
+            # SHA-256 把整包读一遍——写坏/截断在那一关就会发现。
             with zipfile.ZipFile(temp) as z:
-                bad=z.testzip()
-                if bad:raise ValueError('CRC错误：'+bad)
+                infos=z.infolist()
+                if len(infos)!=len(names) or sum(i.file_size for i in infos)!=expected:
+                    raise ValueError('压缩包条目与预期不符：'+name)
             temp.replace(dest)
         finally:
             temp.unlink(missing_ok=True)
         sha=sha256_file(dest)
-        row=dict(name=name,kind=kind,bytes=dest.stat().st_size,sha256=sha,files=len(names),crcVerified=True);rows.append(row)
+        row=dict(name=name,kind=kind,bytes=dest.stat().st_size,sha256=sha,files=len(names),entriesVerified=True);rows.append(row)
         print('完成',name,dest.stat().st_size,flush=True)
     archive('jubeat-library-'+version+'.zip',resources,'client-library')
     limit=max(16,volume_mib)*1024**2;batch=[];size=0;number=1

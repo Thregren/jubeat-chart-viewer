@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.Manifest;
@@ -50,6 +52,10 @@ public final class MainActivity extends Activity {
     private static final int REQ_PICK = 1001;
     private static final int REQ_PERM = 1002;
 
+    /** 前端暂存指纹（versionCode + APK 更新时间）记在这里，和偏好设置分开放。 */
+    private static final String STAGE_PREFS = "site-stage";
+    private static final String STAGE_KEY = "frontend";
+
     private FrameLayout root;
     private File siteDir;
     private LocalServer server;
@@ -59,6 +65,11 @@ public final class MainActivity extends Activity {
     private volatile boolean destroyed;
     private Thread importThread;
     private volatile String serverUrl;
+    private volatile String serverOrigin;
+    /** 每次 refresh() 加一；后台暂存回来时对不上就丢弃结果。只在主线程读写。 */
+    private int refreshSeq;
+    /** 前端暂存串行化用；只被后台线程持有。 */
+    private final Object stageLock = new Object();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -72,9 +83,16 @@ public final class MainActivity extends Activity {
 
     // ------------------------------------------------------------ 主流程
 
-    /** 前端同步写进站点目录（几百 KB，很快），再决定显示 WebView 还是导入面板。 */
+    /**
+     * 决定显示 WebView 还是导入面板。
+     *
+     * 前端暂存（8.6 MB，其中 background-stories-data.js 占 6.8 MB）挪到后台线程：
+     * 以前在主线程做，冷启动要阻塞几百毫秒，低端机还有 ANR 风险。顺序是
+     * 「后台暂存完 → 回主线程 → 再起服务 loadUrl」，WebView 永远不会读到写了一半的文件。
+     */
     private void refresh() {
         if (importing) return;
+        final int seq = ++refreshSeq;
         if (web != null) {
             root.removeAllViews();
             web.destroy();
@@ -83,18 +101,53 @@ public final class MainActivity extends Activity {
         stopServer();
         siteDir = SiteStore.siteDir(this);
         ensureStorage();
-        try {
-            ArchiveImport.recoverPending(siteDir);
-            stageFrontend();
-        } catch (IOException e) {
-            showFatal("恢复或更新站点失败：" + e.getMessage() + "\n\n目录：" + siteDir);
-            return;
-        }
-        if (SiteStore.ready(siteDir)) {
-            showWeb();
-        } else {
-            showPanel(null);
-        }
+        final File dir = siteDir;
+        showPreparing();
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String failure = null;
+                // refresh() 可能连着来两次（比如权限回调紧跟着 onCreate）：
+                // 串行化，避免两条线程同时覆盖同一批文件；后到的那条看到指纹已就绪会直接跳过。
+                synchronized (stageLock) {
+                    try {
+                        ArchiveImport.recoverPending(dir);
+                        stageFrontend(dir);
+                    } catch (IOException e) {
+                        failure = e.getMessage() == null ? e.toString() : e.getMessage();
+                    }
+                }
+                final String message = failure;
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (destroyed || seq != refreshSeq) return;
+                        if (message != null) {
+                            showFatal("恢复或更新站点失败：" + message + "\n\n目录：" + dir);
+                            return;
+                        }
+                        if (SiteStore.ready(dir)) {
+                            showWeb();
+                        } else {
+                            showPanel(null);
+                        }
+                    }
+                });
+            }
+        }, "jubeat-stage");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** 暂存期间给个占位，别让首帧是一片空白。 */
+    private void showPreparing() {
+        root.removeAllViews();
+        TextView tv = new TextView(this);
+        tv.setText("正在准备界面…");
+        tv.setTextSize(15);
+        tv.setGravity(Gravity.CENTER);
+        root.addView(tv, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void showWeb() {
@@ -117,7 +170,10 @@ public final class MainActivity extends Activity {
                 // The app is a local site. Prevent foreign documents/subframes from seeing the bridge.
                 String url = request.getUrl().toString();
                 if (serverUrl != null && url.startsWith(serverUrl)) return null;
-                if (url.startsWith("blob:" + serverUrl)) return null;
+                // 音源会被包成 blob:http://127.0.0.1:<port>/… 复用（保音调变速），
+                // 它不带 token 前缀，所以按 origin 放行。
+                String origin = serverOrigin;
+                if (origin != null && url.startsWith("blob:" + origin + "/")) return null;
                 return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null,
                         new ByteArrayInputStream(new byte[0]));
             }
@@ -141,6 +197,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         try {
             serverUrl = getServer().start();
+            serverOrigin = getServer().origin();
             web.loadUrl(serverUrl);
         } catch (IOException e) {
             showFatal("本地服务起不来：" + e.getMessage());
@@ -363,15 +420,50 @@ public final class MainActivity extends Activity {
         if (req == REQ_PERM) refresh();
     }
 
-    /** 把 APK 里的前端铺到站点目录（每次启动都盖一遍，保证界面和 App 版本配套）。 */
-    private void stageFrontend() throws IOException {
+    /**
+     * 把 APK 里的前端铺到站点目录，保证界面和 App 版本配套。
+     *
+     * 指纹用 versionCode + APK 更新时间：前端是编译进 APK 的，界面一改必然出新包，
+     * 两个值任一个变就重铺。指纹对得上还要逐个确认文件真在（上次写到一半被杀掉时
+     * 指纹还没更新，靠文件检查兜住），否则重铺 —— 8.6 MB 的 I/O 不再每次启动都付。
+     *
+     * 只在后台线程调用（refresh() 起的那条），所以这里可以放心做大块 I/O。
+     */
+    private void stageFrontend(File dir) throws IOException {
         AssetManager am = getAssets();
-        copyAsset(am, "www/index.html", new File(siteDir, "index.html"));
         String[] names = am.list("www/static");
         if (names == null || names.length == 0) throw new IOException("安装包里的前端不全");
-        File dir = new File(siteDir, "static");
-        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("建目录失败：" + dir);
-        for (String n : names) copyAsset(am, "www/static/" + n, new File(dir, n));
+        File staticDir = new File(dir, "static");
+        String fingerprint = frontendFingerprint();
+        SharedPreferences prefs = getSharedPreferences(STAGE_PREFS, MODE_PRIVATE);
+        if (fingerprint != null && fingerprint.equals(prefs.getString(STAGE_KEY, null))
+                && new File(dir, "index.html").isFile() && complete(staticDir, names)) {
+            return;
+        }
+        if (!staticDir.isDirectory() && !staticDir.mkdirs()) throw new IOException("建目录失败：" + staticDir);
+        copyAsset(am, "www/index.html", new File(dir, "index.html"));
+        for (String n : names) copyAsset(am, "www/static/" + n, new File(staticDir, n));
+        // 全部写完才落指纹：中途失败下次还会重铺，不会留下「标记说新、文件是旧」的状态。
+        if (fingerprint != null) prefs.edit().putString(STAGE_KEY, fingerprint).apply();
+    }
+
+    /** versionCode + lastUpdateTime；问不到返回 null（那就每次都铺，宁可慢也别显示旧界面）。 */
+    private String frontendFingerprint() {
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            long code = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    ? info.getLongVersionCode() : info.versionCode;
+            return code + ":" + info.lastUpdateTime;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean complete(File dir, String[] names) {
+        for (String n : names) {
+            if (!new File(dir, n).isFile()) return false;
+        }
+        return true;
     }
 
     private static void copyAsset(AssetManager am, String name, File dest) throws IOException {

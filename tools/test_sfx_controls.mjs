@@ -56,7 +56,7 @@ function boot(missing, opts = {}) {
     },
   });
 
-  const calls = {prepareSfx: 0, previewSfx: []};
+  const calls = {prepareSfx: 0, previewSfx: [], setCollapsed: []};
   const writes = [];
   const saved = opts.saved || {};
   // 单参 = 读，双参 = 写；把键名做成有意义的字符串，而不是全 '' 的 Proxy
@@ -68,6 +68,8 @@ function boot(missing, opts = {}) {
   const STORAGE = new Proxy({}, {get: (_t, prop) => typeof prop === 'string' ? prop : undefined});
 
   const A = {
+    // app-wiring 从 app-base 的 QUERY 读启动参数（?t= / ?rec= …）
+    QUERY: new URLSearchParams(''),
     els, state: {}, markerCfg: {}, numCfg: {},
     services: {register() {}, renderer: {mode: 'auto'}},
     STORAGE,
@@ -77,7 +79,8 @@ function boot(missing, opts = {}) {
     fmtTime: () => '', playMetro() {}, sfxReset() {}, setPlaying() {}, selectMarker() {},
     layoutCanvas() {}, refreshCanvas() {}, glowPair: () => ({main: '', alt: ''}),
     density: {placeholder: false}, layoutDensity() {}, drawDensity() {}, densitySeekFromEvent: () => 0,
-    bucketInfo: () => '', tapAB() {}, clearAB() {}, updateABButton() {}, setCollapsed() {},
+    bucketInfo: () => '', tapAB() {}, clearAB() {}, updateABButton() {},
+    setCollapsed(v) {calls.setCollapsed.push(v);},
     setSidebarOpen() {}, loadLibrary() {}, renderList() {}, loadChart() {}, backend: {},
     bindLoadEvents() {}, startBufferAt() {}, sidebarJustOpened: () => false,
     keepAudioAlive() {}, audioNow: () => 0, currentMediaTime: () => 0, seekTo() {},
@@ -225,7 +228,7 @@ function baseBoot(absent) {
     addEventListener() {}, devicePixelRatio: 1,
   };
   vm.runInNewContext(base, {
-    window, document, console, URL, Promise, Date, TextEncoder, Intl,
+    window, document, console, URL, URLSearchParams, Promise, Date, TextEncoder, Intl,
     localStorage: {getItem: () => null, setItem() {}},
     location: {href: 'https://ub.thregren.world/', origin: 'https://ub.thregren.world'},
     navigator: {userAgent: ''},
@@ -248,4 +251,32 @@ test('分享页缺同押开关时启动自检不会白屏，els 里也不再关�
 test('其它必需控件缺失时启动自检仍然会报错', () => {
   const A = baseBoot(['songList']);
   assert.throws(() => A.assertEls(), /songList/);
+});
+
+test('壳回数字 / 布尔时恢复设置不得抛错（旧版 saved[key].trim() 会白屏）', () => {
+  // Electron preload 与安卓原生桥把偏好存成 JSON，同一个键可能回数字或布尔。
+  // 旧代码 saved[key].trim() 遇到数字直接 TypeError，被 app.js 的 catch 接住后
+  // 整页换成「启动失败」—— 真实的白屏。
+  const numeric = boot([], {saved: {
+    settingsVersion: 9,
+    numScale: 120, numAlpha: 80, numGlowAlpha: 55, metroVolume: 60,
+    autoPreview: 1, showCombo: 1, showNumbers: 1, numPerfectOnly: 1,
+    numCorner: 1, longHoldCountdown: 1, showChordGlow: 1, firstMarker: 0,
+    collapsed: 1,
+  }});
+  assert.doesNotThrow(() => numeric.A.bindEvents(), '数字型设置不得抛错');
+  // 数字必须走和 "120" 完全一样的换算（120% → 1.2），不能被当成脏值丢掉
+  assert.equal(numeric.A.numCfg.scale, 1.2);
+  assert.equal(numeric.A.numCfg.alpha, 0.8);
+  assert.equal(numeric.A.numCfg.glowAlpha, 0.55);
+  assert.deepEqual(numeric.calls.setCollapsed, [true], '数字 1 必须读成「展开」');
+
+  for (const flag of [true, false]) {
+    const h = boot([], {saved: {settingsVersion: 9, collapsed: flag,
+      showCombo: flag, showNumbers: flag, numCorner: flag,
+      longHoldCountdown: flag, chordSound: flag}});
+    assert.doesNotThrow(() => h.A.bindEvents(), `布尔型设置（${flag}）不得抛错`);
+    // 布尔按存储约定折成 "1"/"0"：直接 String(true) 会得到 "true"，「开着」被读成关
+    assert.deepEqual(h.calls.setCollapsed, [flag], `布尔 ${flag} 必须折成 ${flag ? '"1"' : '"0"'} 再比较`);
+  }
 });

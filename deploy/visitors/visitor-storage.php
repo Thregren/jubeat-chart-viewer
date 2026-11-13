@@ -77,6 +77,15 @@ function visitor_db(string $root): PDO {
             $db->exec('COMMIT');
         } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
     }
+    // The meta table is created by the version 2 migration. A database that was
+    // upgraded out of band can lack it, so check once per request and repair it
+    // instead of failing the whole endpoint.
+    try {
+        $hasMeta=(int)$db->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='meta'")->fetchColumn();
+        if (!$hasMeta) $db->exec('CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+    } catch (Throwable $error) {
+        error_log('[visitor-stats] meta bootstrap deferred: '.get_class($error));
+    }
     return $db;
 }
 function visitor_today(PDO $db, int $now): int {
@@ -143,6 +152,84 @@ function visitor_popular(PDO $db,int $now): array {
         ];
     }
     return $rows;
+}
+function visitor_day_key(int $now): string {
+    return (new DateTimeImmutable('@'.$now))->setTimezone(new DateTimeZone('Asia/Shanghai'))->format('Y-m-d');
+}
+function visitor_stats_ttl(): int {
+    // 0 disables the cache entirely (reads and writes), which the HTTP test
+    // needs to observe aggregate changes immediately.
+    $raw=getenv('VISITOR_STATS_CACHE_TTL');
+    if (!is_string($raw)||trim($raw)==='') return 45;
+    $ttl=filter_var(trim($raw),FILTER_VALIDATE_INT);
+    if ($ttl===false||$ttl<0) return 45;
+    return min($ttl,300);
+}
+function visitor_meta_read(PDO $db,string $key): ?array {
+    try {
+        $q=$db->prepare('SELECT value FROM meta WHERE key=?');$q->execute([$key]);
+        $value=$q->fetchColumn();
+        if (!is_string($value)||$value==='') return null;
+        $data=json_decode($value,true,8);
+        return is_array($data)?$data:null;
+    } catch (Throwable $error) {
+        // A cache read must never take the endpoint down.
+        error_log('[visitor-stats] cache read skipped: '.get_class($error));
+        return null;
+    }
+}
+function visitor_meta_write(PDO $db,string $key,array $value): void {
+    $encoded=json_encode($value,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
+    if (!is_string($encoded)||strlen($encoded)>65536) return;
+    try {
+        $q=$db->prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
+        $q->execute([$key,$encoded]);
+    } catch (Throwable $error) {
+        // Falls back to the live aggregate on the next request.
+        error_log('[visitor-stats] cache write skipped: '.get_class($error));
+    }
+}
+function visitor_cached_today(PDO $db,int $now): int {
+    $ttl=visitor_stats_ttl();$day=visitor_day_key($now);
+    if ($ttl>0) {
+        $cache=visitor_meta_read($db,'today:v1');
+        if (is_array($cache)&&isset($cache['at'],$cache['day'],$cache['value'])
+            &&is_int($cache['at'])&&is_int($cache['value'])&&$cache['value']>=0
+            &&$cache['day']===$day&&$cache['at']<=$now&&$now-$cache['at']<$ttl) return $cache['value'];
+    }
+    $value=visitor_today($db,$now);
+    if ($ttl>0) visitor_meta_write($db,'today:v1',['at'=>$now,'day'=>$day,'value'=>$value]);
+    return $value;
+}
+function visitor_cached_popular(PDO $db,int $now): array {
+    $ttl=visitor_stats_ttl();
+    if ($ttl>0) {
+        $cache=visitor_meta_read($db,'popular:v1');
+        if (is_array($cache)&&isset($cache['at'],$cache['value'])
+            &&is_int($cache['at'])&&is_array($cache['value'])
+            &&$cache['at']<=$now&&$now-$cache['at']<$ttl) {
+            $rows=[];$valid=true;
+            foreach ($cache['value'] as $row) {
+                if (!is_array($row)||!isset($row['song'],$row['title'],$row['selections'])
+                    ||!is_string($row['song'])||!is_string($row['title'])||!is_int($row['selections'])) {$valid=false;break;}
+                $rows[]=['song'=>$row['song'],'title'=>$row['title'],'selections'=>$row['selections']];
+            }
+            if ($valid) return $rows;
+        }
+    }
+    $rows=visitor_popular($db,$now);
+    if ($ttl>0) visitor_meta_write($db,'popular:v1',['at'=>$now,'value'=>$rows]);
+    return $rows;
+}
+function visitor_public_stats(PDO $db,int $now): array {
+    // Cumulative counters are a single indexed row, so they stay live.
+    $counts=$db->query('SELECT visitors,views FROM counters WHERE id=1')->fetch(PDO::FETCH_ASSOC);
+    return [
+        'visitors'=>(int)$counts['visitors'],
+        'today_visitors'=>visitor_cached_today($db,$now),
+        'views'=>(int)$counts['views'],
+        'popular_songs'=>visitor_cached_popular($db,$now),
+    ];
 }
 function visitor_backup(PDO $db,string $root,string $directory,int $keep): array {
     if ($keep<1||$keep>90) throw new RuntimeException('Invalid backup retention');

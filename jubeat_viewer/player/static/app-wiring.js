@@ -10,12 +10,12 @@
   const A = (window.JubeatApp = window.JubeatApp || {});
 
   // —— 更早那层提供的接口 ——
-  const { el, frontVersion, els, state, markerCfg, numCfg, clampNumScale,
+  const { QUERY, el, frontVersion, els, state, markerCfg, numCfg, clampNumScale,
      clampNumAlpha, clampNumGlowAlpha, normalizeHexColor, normalizeChordStyle,
      abLoop, STORAGE, GLOW_PAIRS, store, renumberCurrent,
      fmtTime, toast,
      playMetro, sfxReset, setPlaying, selectMarker,
-     layoutCanvas, refreshCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
+     layoutCanvas, glowPair, density, layoutDensity, drawDensity, densitySeekFromEvent,
      bucketInfo, tapAB, clearAB, updateABButton, setCollapsed,
      setSidebarOpen, loadLibrary, renderList, loadChart, backend, bindLoadEvents, startBufferAt,
      sidebarJustOpened,
@@ -31,15 +31,36 @@
     els.panelGlow.classList.add("on");
   }
 
+  // —— 合并重排 ——
+  //
+  // 尺寸变化会从好几条通路同时到达：window.resize、orientationchange、
+  // visualViewport.resize、pageshow、字体就绪、visibilitychange，加上面板 / 舞台 /
+  // 物量条外围的两个 ResizeObserver。以前每条通路都直接 layoutCanvas()，而
+  // refreshCanvas 自己还要「立刻量一次 + 下一帧再量一次」，一次窗口拖动能叠出
+  // 4 次全量布局（含密度底图重建）。这里统一成一个入口：同一个 rAF 内只量一次。
+  let relayoutFrame = 0;
+  // 拖动 / 悬停时缓存的物量条 rect（见下面的拖动处理）
+  let densityDragRect = null;
+
+  function scheduleRelayout() {
+    if (relayoutFrame) return;
+    relayoutFrame = requestAnimationFrame(() => {
+      relayoutFrame = 0;
+      densityDragRect = null;      // 尺寸变了，缓存的 rect 作废
+      layoutCanvas();
+      layoutDensity();
+    });
+  }
+
   // —— events ——
   function urlState() {
-    const p = new URLSearchParams(location.search);
+    const p = QUERY;                 // 启动参数在 app-base 只解析一次
     const sharedSong = document.querySelector('meta[name="jubeat-share-song"]')?.content;
     const tRaw = p.get("t");
     // ?t=：只认「非空 + 是有限数 + 不为负」。以前只判 isFinite()，于是
     // `?t=%20%20`（全空格）→ Number("") = 0、`?t=-5` 也被放行，定位到莫名其妙的位置。
     // 上界不在这里管：seekTo() 会按音频 / 谱面长度再夹一次。
-    const tNum = tRaw == null || tRaw.trim() === "" ? NaN : Number(tRaw);
+    const tNum = textOf(tRaw) === "" ? NaN : Number(tRaw);
     // ?chart=：难度码只可能是 BSC/ADV/EXT 这种短标识，畸形值当没给（走默认难度）
     const chartRaw = p.get("chart");
     const chart = chartRaw && /^[A-Za-z0-9_-]{1,8}$/.test(chartRaw) ? chartRaw : null;
@@ -75,12 +96,30 @@
   }
 
   /**
+   * 设置值的统一读数：null / undefined → ""，布尔按存储约定折成 "1" / "0"，
+   * 其余一律转成去掉首尾空白的字符串。
+   *
+   * 壳（Electron preload / 安卓原生桥）走的是 JSON 偏好文件，同一个键可能回数字或布尔，
+   * 老版本也可能在 web 存储里留下别的东西。以前这里直接 `saved[key].trim()`，一旦壳
+   * 回了数字就抛 TypeError，被 app.js 的 catch 接住把整页换成「启动失败」—— 白屏但
+   * 看不出是哪个设置项。所有「按字符串比较的设置值」都走这个 helper。
+   * 布尔单独折成 "1"/"0"：设置项在存储里本来就是 "1"/"0"，直接 String(true) 会得到
+   * "true"，于是「开着」被读成关。
+   */
+  function textOf(value) {
+    if (value == null) return "";
+    if (typeof value === "boolean") return value ? "1" : "0";
+    return String(value).trim();
+  }
+
+  /**
    * 从 localStorage 恢复 <select> 的值前先过白名单：直接 select.value = 脏值会把
    * .value 变成 ""（没有匹配的 option），表现就是节拍音悄悄变成「关」、排序 / 断句
    * 参数失效，而且用户很难再点回来。不匹配就什么都不做，保留 HTML 里的默认选中项。
    */
   function restoreSelectValue(select, value) {
-    const v = String(value);
+    if (value == null) return;             // 没存过（或壳回了 null）：保留页面默认选中项
+    const v = textOf(value);
     if ([...select.options].some((o) => o.value === v)) select.value = v;
   }
 
@@ -168,7 +207,7 @@
         control.addEventListener('input', update);
         control.addEventListener('change', () => { update(); store(key, control.value); });
       }
-      const recording = new URLSearchParams(location.search).get("rec") === "1";
+      const recording = QUERY.get("rec") === "1";
       function setNumColorMode(value) {
         numCfg.colorMode = !recording && value === "rhythm" ? "rhythm" : "custom";
         els.numColorMode.value = numCfg.colorMode;
@@ -253,11 +292,11 @@
         sort: store(STORAGE.sort),
         holdFilter: store(STORAGE.holdFilter),
       };
-      els.autoPreview.checked = !window.__recActive && saved.autoPreview === "1";
+      els.autoPreview.checked = !window.__recActive && textOf(saved.autoPreview) === "1";
       // v5 已删除「拍手」组：旧值 clap、更早的 billy / nyan 以及手改过的其它非法值
       // 统一迁移为 "click"（点击）并写回，避免升级后下拉框落到「关」、音效突然静音。
       // 必须先迁移再 restoreSelectValue —— 后者只在 option 存在时才赋值，传脏值会什么都不做。
-      let metroSound = saved.metroSound;
+      let metroSound = saved.metroSound == null ? null : textOf(saved.metroSound);
       if (metroSound != null && !["", "click", "taiko"].includes(metroSound)) {
         metroSound = "click";
         store(STORAGE.metroSound, "click");
@@ -273,7 +312,7 @@
       }
       if (els.chordSound) {
         els.chordSound.checked = (useChordSoundDefault || saved.chordSound == null)
-          ? true : saved.chordSound === "1";
+          ? true : textOf(saved.chordSound) === "1";
       }
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
       // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
@@ -312,12 +351,12 @@
       }
       store(STORAGE.settingsVersion, "9");
       if (!useComboDefaults) {
-        if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
-        if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";
+        if (saved.showCombo != null) els.showCombo.checked = textOf(saved.showCombo) === "1";
+        if (saved.showNumbers != null) els.showNumbers.checked = textOf(saved.showNumbers) === "1";
       }
-      els.numPerfectOnly.checked = !window.__recActive && saved.numPerfectOnly === "1";
-      els.firstMarker.checked = saved.firstMarker !== "0";
-      if (saved.showChordGlow != null) els.showChordGlow.checked = saved.showChordGlow === "1";
+      els.numPerfectOnly.checked = !window.__recActive && textOf(saved.numPerfectOnly) === "1";
+      els.firstMarker.checked = textOf(saved.firstMarker) !== "0";
+      if (saved.showChordGlow != null) els.showChordGlow.checked = textOf(saved.showChordGlow) === "1";
       numCfg.style = normalizeChordStyle(saved.chordGlowStyle);
       els.chordGlowStyle.value = numCfg.style;
       // Retain a valid saved value even when it lies between the common presets.
@@ -326,7 +365,7 @@
         ['numAlpha', els.numAlpha, els.numAlphaLabel, 'alpha', clampNumAlpha],
         ['numGlowAlpha', els.numGlowAlpha, els.numGlowAlphaLabel, 'glowAlpha', clampNumGlowAlpha],
       ]) {
-        if (saved[key] == null || saved[key].trim() === '' || !Number.isFinite(Number(saved[key]))) continue;
+        if (textOf(saved[key]) === '' || !Number.isFinite(Number(saved[key]))) continue;
         const value = String(Math.round(clamp(Number(saved[key]) / 100) * 100));
         if (![...control.options].some(option => option.value === value)) {
           const option = new Option(value + '%（原设置）', value);
@@ -335,10 +374,10 @@
         control.value = value; numCfg[property] = Number(value) / 100; label.textContent = value + '%';
       }
       if (!useCornerDefault && saved.numCorner != null) {
-        els.numCorner.checked = saved.numCorner === "1";
+        els.numCorner.checked = textOf(saved.numCorner) === "1";
         numCfg.corner = els.numCorner.checked;
       }
-      els.longHoldCountdown.checked = !recording && saved.longHoldCountdown === "1";
+      els.longHoldCountdown.checked = !recording && textOf(saved.longHoldCountdown) === "1";
       els.longHoldCountdown.disabled = recording;
       // 序号颜色：老版本没存过 → 保持默认白（取色器里显示的也是 #ffffff）
       numCfg.color = normalizeHexColor(saved.numColor);
@@ -356,7 +395,7 @@
       if (saved.holdFilter != null) restoreSelectValue(els.holdFilter, saved.holdFilter);
       // 窄屏默认收起选项，给面板留空间
       const narrow = window.matchMedia("(max-width: 900px)").matches;
-      setCollapsed(saved.collapsed != null ? saved.collapsed === "1" : narrow);
+      setCollapsed(saved.collapsed != null ? textOf(saved.collapsed) === "1" : narrow);
     }
 
     els.sortSelect.addEventListener("change", () => {
@@ -410,6 +449,28 @@
     // 还会从不对的位置出声，拍子就乱了。现在松手才 seek 一次。
     let resumeAfterScrub = false;
     let scrubPointerId = null;
+    // 拖动 / 悬停时 pointermove 一秒能来 100+ 次。以前每次都在做三件事：
+    // getBoundingClientRect（强制布局）、`bucketInfo`（二分 + 2 秒窗口扫描）、写
+    // textContent。现在 rect 在按下时量一次存起来（重排时作废），文本更新合并到
+    // 同一个 rAF 里：一帧最多算一次，且只在文字真的变了才写 DOM。
+    let densityInfoFrame = 0;
+    let densityInfoEvent = null;
+    let densityInfoScrub = true;
+    // 悬停时的 rect 不在事件里量：把事件留到 rAF 里再用，一帧最多量一次、
+    // 最多算一次 bucketInfo（2 秒窗口扫描）、最多写一次 textContent。
+    const queueDensityInfo = (ev, scrubbing) => {
+      densityInfoEvent = ev;
+      densityInfoScrub = scrubbing;
+      if (densityInfoFrame) return;
+      densityInfoFrame = requestAnimationFrame(() => {
+        densityInfoFrame = 0;
+        const sec = densitySeekFromEvent(densityInfoEvent, densityDragRect);
+        const text = densityInfoScrub
+          ? `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`
+          : `物量 · ${fmtTime(sec)} 附近 ${bucketInfo(sec)}`;
+        if (els.densityInfo.textContent !== text) els.densityInfo.textContent = text;
+      });
+    };
     els.densityCanvas.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0 || state.scrubbing || !state.notes.length || density.placeholder) return;   // 音源没就绪时不给拖
       // 已经有 A–B 打点时，拖动进度条 = 清空所有打点（用户明确要的行为）
@@ -419,28 +480,30 @@
       resumeAfterScrub = A.playbackActive ? A.playbackActive() : state.playing;
       if (resumeAfterScrub) pause();
       els.densityCanvas.setPointerCapture(ev.pointerId);
-      const sec = densitySeekFromEvent(ev);
+      densityDragRect = els.densityCanvas.getBoundingClientRect();   // 整段拖动只量这一次
+      const sec = densitySeekFromEvent(ev, densityDragRect);
       state.scrubSec = sec;
-      els.densityInfo.textContent = `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`;
+      queueDensityInfo(ev, true);
       A.requestPaint();
     });
     els.densityCanvas.addEventListener("pointermove", (ev) => {
       if (state.scrubbing && ev.pointerId !== scrubPointerId) return;
-      const sec = densitySeekFromEvent(ev);
       if (!state.scrubbing) {
-        els.densityInfo.textContent = `物量 · ${fmtTime(sec)} 附近 ${bucketInfo(sec)}`;
+        queueDensityInfo(ev, false);           // 悬停：连 rect 都留到 rAF 里量
         return;
       }
-      state.scrubSec = sec;                    // 只记录预览位置，不碰音频
-      els.densityInfo.textContent = `跳转到 ${fmtTime(sec)} · ${bucketInfo(sec)}`;
+      // 拖动：rect 是按下时缓存的那一份，算一次纯算术就能进画面
+      state.scrubSec = densitySeekFromEvent(ev, densityDragRect);
+      queueDensityInfo(ev, true);
       A.requestPaint();
     });
     const endScrub = (ev) => {
       if (!state.scrubbing || ev.pointerId !== scrubPointerId) return;
       // Include the final pointer position, even if its last move was coalesced.
-      if (ev.type === "pointerup") state.scrubSec = densitySeekFromEvent(ev);
+      if (ev.type === "pointerup") state.scrubSec = densitySeekFromEvent(ev, densityDragRect);
       state.scrubbing = false;
       scrubPointerId = null;
+      densityDragRect = null;
       try {
         els.densityCanvas.releasePointerCapture(ev.pointerId);
       } catch (_) {
@@ -456,7 +519,10 @@
     els.densityCanvas.addEventListener("pointercancel", endScrub);
     els.densityCanvas.addEventListener("lostpointercapture", endScrub);
     els.densityCanvas.addEventListener("pointerleave", () => {
-      if (!state.scrubbing) els.densityInfo.textContent = "物量 · 拖这里跳转";
+      if (state.scrubbing) return;
+      // 丢掉还在排队的悬停文本，否则它会在这一帧之后把提示又盖回去
+      if (densityInfoFrame) { cancelAnimationFrame(densityInfoFrame); densityInfoFrame = 0; }
+      els.densityInfo.textContent = "物量 · 拖这里跳转";
     });
 
     let searchTimer = 0;
@@ -491,13 +557,13 @@
     };
     restoreMarkerSpeed();
     window.addEventListener("pageshow", restoreMarkerSpeed);
-    window.addEventListener("pageshow", refreshCanvas);
-    window.addEventListener("orientationchange", refreshCanvas);
+    window.addEventListener("pageshow", scheduleRelayout);
+    window.addEventListener("orientationchange", scheduleRelayout);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", refreshCanvas);
+      window.visualViewport.addEventListener("resize", scheduleRelayout);
     }
     if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(refreshCanvas).catch(() => {});
+      document.fonts.ready.then(scheduleRelayout).catch(() => {});
     }
     els.markerNormalSpeed?.addEventListener("change", () => {
       store(STORAGE.markerNormalSpeed, els.markerNormalSpeed.checked ? "1" : "0");
@@ -509,7 +575,7 @@
     // 切回前台 / 重新可见时，确保音频图还在跑（隐藏页面里 WebAudio 可能被挂起）
     document.addEventListener("visibilitychange", keepAudioAlive);
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refreshCanvas();
+      if (!document.hidden) scheduleRelayout();
     });
     window.addEventListener("focus", keepAudioAlive);
     // 兜底：任何一次用户手势都顺便确认一次 AudioContext。iOS 上被系统挂起后，
@@ -545,16 +611,11 @@
         els.audio.pause();
         return;
       }
-      setPlaying(true);
-      els.playIcon.textContent = "❚❚";
+      setPlaying(true);      // 图标 / aria-label 也在 setPlaying 里，不再单独写
     });
     els.audio.addEventListener("pause", () => {
       if (backend.mode !== "element" || !els.audio.paused) return;
       setPlaying(false);
-      els.playIcon.textContent = "▶";
-    });
-    els.audio.addEventListener("timeupdate", () => {
-      // 时间显示统一在 rAF 里刷新，这里不用做事
     });
 
     document.addEventListener("keydown", (e) => {
@@ -596,8 +657,7 @@
       }
     });
 
-    window.addEventListener("resize", refreshCanvas);
-    window.addEventListener("resize", layoutDensity);
+    window.addEventListener("resize", scheduleRelayout);
     // 窗口跨过 900px 断点时重新决定曲库的去留：宽屏常驻、窄屏收成抽屉。
     // 不然从窄屏拉宽后曲库还是 hidden，而这时 ☰ 又已经不显示了 → 打不开列表。
     const narrowMq = window.matchMedia("(max-width: 900px)");
@@ -605,7 +665,7 @@
     if (narrowMq.addEventListener) narrowMq.addEventListener("change", onBreakpoint);
     else if (narrowMq.addListener) narrowMq.addListener(onBreakpoint);
     if (window.ResizeObserver && els.panel) {
-      const ro = new ResizeObserver(() => A.mode?.scheduleLayout ? A.mode.scheduleLayout() : refreshCanvas());
+      const ro = new ResizeObserver(() => A.mode?.scheduleLayout ? A.mode.scheduleLayout() : scheduleRelayout());
       ro.observe(els.panel);
       // 同时 observe 所在区块：歌曲信息 / 断点布局改变中间行时也要重新量一次，
       // 不能只盯着面板自身，否则会留下一个偏大或偏小的旧尺寸。
@@ -613,7 +673,7 @@
       if (panelStage) ro.observe(panelStage);
     }
     if (window.ResizeObserver && els.densityWrap) {
-      const ro2 = new ResizeObserver(() => {if(!A.mode?.ownsFrame)layoutDensity();});
+      const ro2 = new ResizeObserver(() => {if(!A.mode?.ownsFrame)scheduleRelayout();});
       ro2.observe(els.densityWrap);
     }
     // 桌面封面跟随信息高度；移动端优先留出完整面板，再适度分配剩余空间。

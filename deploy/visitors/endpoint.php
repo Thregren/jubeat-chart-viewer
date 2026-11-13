@@ -20,7 +20,13 @@ try {
     if (!in_array($method,['GET','POST'],true)) {header('Allow: GET, POST');reply(405,['error'=>'method_not_allowed']);}
     $event=null;
     if ($method==='POST') {
-        $expected=getenv('VISITOR_STATS_ORIGIN')?:'https://'.($_SERVER['SERVER_NAME']??'');
+        // SERVER_NAME follows the request Host when UseCanonicalName is Off, so
+        // it must never be used as the expected Origin. Refuse to guess.
+        $expected=getenv('VISITOR_STATS_ORIGIN');
+        if (!is_string($expected)||$expected==='') {
+            error_log('[visitor-stats] VISITOR_STATS_ORIGIN is not configured');
+            reply(503,['error'=>'statistics_unavailable']);
+        }
         if (($_SERVER['HTTP_ORIGIN']??'')!==$expected) reply(403,['error'=>'origin_not_allowed']);
         if (strtolower(trim(explode(';',$_SERVER['CONTENT_TYPE']??'')[0]))!=='application/json') reply(415,['error'=>'json_required']);
         if (!ctype_digit((string)($_SERVER['CONTENT_LENGTH']??''))||(int)$_SERVER['CONTENT_LENGTH']>2048) reply(413,['error'=>'request_too_large']);
@@ -67,9 +73,7 @@ try {
         $q=$db->prepare('SELECT 1 FROM receipts WHERE id=?');$q->execute([$eventId]);
         if ($q->fetchColumn()) {
             $db->exec('COMMIT');
-            $counts=$db->query('SELECT visitors,views FROM counters WHERE id=1')->fetch(PDO::FETCH_ASSOC);
-            reply(200,['visitors'=>(int)$counts['visitors'],'today_visitors'=>visitor_today($db,time()),
-                'views'=>(int)$counts['views'],'popular_songs'=>visitor_popular($db,time())]);
+            reply(200,visitor_public_stats($db,time()));
         }
         if (!visitor_admit_cookie($db,$visitor,$now)) {
             $db->exec('COMMIT');header('Retry-After: 3600');
@@ -100,11 +104,10 @@ try {
             }
         }
         $db->exec('COMMIT');
-        try {visitor_export($db,$root);} catch (Throwable $error) {error_log('[visitor-stats] export pending: '.get_class($error));}
+        // JSONL export is no longer part of the request. maintenance.php --flush
+        // drains the outbox from cron; events stay durable in SQLite until then.
     }
-    $counts=$db->query('SELECT visitors,views FROM counters WHERE id=1')->fetch(PDO::FETCH_ASSOC);
-    reply(200,['visitors'=>(int)$counts['visitors'],'today_visitors'=>visitor_today($db,time()),
-        'views'=>(int)$counts['views'],'popular_songs'=>visitor_popular($db,time())]);
+    reply(200,visitor_public_stats($db,time()));
 } catch (Throwable $error) {
     if ($db instanceof PDO) {try {$db->exec('ROLLBACK');} catch (Throwable $ignored) {}}
     error_log('[visitor-stats] '.get_class($error));reply(503,['error'=>'statistics_unavailable']);

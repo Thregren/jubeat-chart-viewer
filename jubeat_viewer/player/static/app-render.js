@@ -10,18 +10,19 @@
   const A = (window.JubeatApp = window.JubeatApp || {});
 
   // —— 更早那层提供的接口 ——
-  const { Core, els, state, markerCfg, abLoop, fmtTime, drawMarkers, drawDensity,
-     bumpCombo, rebuildVisualState, backend, masterPeak, audioNow,
+  const { Core, QUERY, els, state, markerCfg, abLoop, fmtTime, drawMarkers, drawDensity,
+     newPadVisual, bumpCombo, rebuildVisualState, backend, masterPeak, audioNow,
      renderMediaTime, seekTo, play, pause } = A;
 
   // —— frame render ——
 
-  const DEBUG_TIMELINE = new URLSearchParams(location.search).get("debug") === "1";
+  // 启动参数在 app-base 里只解析一次（QUERY），这里读字段。
+  const DEBUG_TIMELINE = QUERY.get("debug") === "1";
   // 逐帧录制（?rec=1）的「按需重画」开关：URL 带 pg=1 才开。细节见 updateFrame。
-  const PAINT_GUARD = new URLSearchParams(location.search).get("pg") === "1";
+  const PAINT_GUARD = QUERY.get("pg") === "1";
   // 逐帧录制的「降频保活」：URL 带 pn=N 时，帧时间没变的那些 rAF 里只每 N 帧补画
   // 一张一模一样的内容，纯粹让合成器 / 编码器别冷下来（冷启动一次要 ~300ms）。
-  const PAINT_EVERY = Math.max(1, Math.floor(Number(new URLSearchParams(location.search).get("pn")) || 1));
+  const PAINT_EVERY = Math.max(1, Math.floor(Number(QUERY.get("pn")) || 1));
   let warmTick = 0;
   let dbgEl = null;
 
@@ -83,11 +84,8 @@
   function paintFrame(mediaT) {
     // arm upcoming (pending within ARM window)
     const markerMode = !!markerCfg.design;
-    const padVisual = state.padVisual || (state.padVisual = {
-      hit: new Array(16).fill(false),
-      armed: new Array(16).fill(false),
-      panelGlow: false,
-    });
+    // 默认结构与 app-base 是同一份（newPadVisual），不再各写一遍
+    const padVisual = state.padVisual || (state.padVisual = newPadVisual());
     state.armed.fill(false);
     if (!markerMode) {
       // 没有 marker 时用「落点前微亮」代替接近动画。

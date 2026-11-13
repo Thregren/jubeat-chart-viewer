@@ -7,10 +7,13 @@ import html
 import json
 import os
 import re
+import sys
 from pathlib import Path
-import tempfile
 from urllib.parse import quote, urlencode, urlsplit
 from package_site import safe_file as _checked_path
+
+# 原子写只有 jubeat_viewer/player/media.py 一份；分享页也要用它。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'jubeat_viewer/player'))
 
 
 def song_key(value):
@@ -31,18 +34,9 @@ def safe_file(root, relative):
 
 
 def write(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists() and path.read_bytes() == data:
-        return
-    fd, temporary = tempfile.mkstemp(prefix='.share-', dir=str(path.parent))
-    try:
-        with os.fdopen(fd, 'wb') as stream:
-            stream.write(data)
-        os.chmod(temporary, 0o644)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    """分享页写入：内容没变就不动文件（两千多个页面，重建时别白改 mtime）。"""
+    from media import write_atomic
+    write_atomic(path, data, skip_identical=True)
 
 
 def load_songs(root):

@@ -13,6 +13,9 @@ function call(op, key, value) {
 }
 contextBridge.exposeInMainWorld('JubeatPreferences', Object.freeze({
   getItem: key => call('get', key),
+  // 启动时把整份偏好一次拿走（一次同步 IPC，而不是每个键一次）。
+  // 渲染进程侧 SettingsStore 会拿它当基线，之后的写仍然逐键走 setItem。
+  getAll: () => call('all'),
   setItem: (key, value) => call('set', key, value),
   removeItem: key => call('remove', key),
 }));

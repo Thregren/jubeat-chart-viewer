@@ -11,26 +11,21 @@ python3 tools/build_directory.py --library <曲库目录> --out site
 
 默认构建入口是 `tools/build_directory.py`，只接受 `--library` / `--out` / `--no-markers`：
 按索引把目录下的 WAV、封面、谱面原样铺到站点，不导入 MCZ、不转码、不需要 ffmpeg。
-下面关于 1371 首 4 分钟、Ogg Opus 转码，以及 `--prune` / `--force` / `--limit` / `--jobs`
-等参数的说明，都只属于**旧 MCZ 导入模式**：必须显式加 `--legacy-mcz` 才会启用
-`site_builder`（同时设置 `JUBEAT_LIBRARY` 指向旧曲库），例如：
+源文件用**硬链接**落到 `site/`（跨卷时退化成拷贝），所以重复构建基本是秒级，
+删歌之后旧的内容哈希资源会留在原地，保证已经打开的页面不会 404。
+
+想要小一点的包，先用 `tools/compress_directory.py` 从母库生成一份 Opus 精简目录库
+（参数与流程见 [../docs/目录曲库.md](../docs/目录曲库.md)），再把精简库当 `--library` 构建：
 
 ```bash
-JUBEAT_LIBRARY=music python3 tools/build_site.py --legacy-mcz --out site --prune
+python3 tools/compress_directory.py --source <母库> --out <精简库> --report <报告目录>
+python3 tools/build_directory.py --library <精简库> --out site
 ```
 
-不带 `--legacy-mcz` 时，`tools/build_site.py` 等价于上面的 `build_directory.py`，
-不认 `--prune` 等旧参数；本文其余出现的 `python3 tools/build_site.py ...` 命令同理，
-都需要补上 `--legacy-mcz` 与 `JUBEAT_LIBRARY` 才能执行。
-
-- 首次 1371 首约 **4 分钟**、产出 **2.0 GB**（音频 1.5 G + 封面 0.20 G + 缩略图 0.01 G + 谱面 0.28 G）；
-  其中约 3 分钟花在把 mcz 里的 Vorbis 音源转成 **Ogg Opus 80k** 上
-- 转码结果按内容哈希缓存在 `cache/audio-opus/`，所以**只有这一遍慢**：
-  之后再跑是增量的，几秒就跑完
-- 本机没有 `ffmpeg` 时不转码（原样复制），站点照跑，只是包大一圈；换码率用
-  `JUBEAT_OPUS_BITRATE=96k python3 tools/build_site.py --legacy-mcz`（旧 MCZ 模式；改了参数会整库重转）
-- 删歌之后加 `--prune` 清理已不需要的普通文件；旧内容哈希资源保留以支持已打开的页面。`--limit` 不能与 `--prune` 同时使用。
-- 构建使用同目录暂存与互斥锁，失败不发布；生产服务器仍需先验证新资源，最后切换入口。
+- 转码只在 `compress_directory.py` 那一步发生，按内容哈希缓存在 `cache/audio-opus/`，
+  母库没动就不会重转；换码率用 `JUBEAT_OPUS_BITRATE=96k`（改了参数会整库重转）
+- 本机没有 `ffmpeg` 时那一整步会直接报错退出，不会静默出一份没转码的包
+- 构建使用同目录暂存与互斥锁，失败不发布；生产服务器仍需先验证新资源，最后切换入口
 
 ### iOS 15 音频兼容
 

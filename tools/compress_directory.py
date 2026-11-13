@@ -16,26 +16,22 @@ import threading
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / 'jubeat_viewer/player'))
 from directory_library import load_directory, asset_path
+import audio_opus
 
-PROFILE = 'opus/80k/vbr/audio/20ms/cl10'
+# 编码参数只有 audio_opus.encode_options() 一份；这里只是把参数组合成「构建状态」
+# 的指纹。保持与历史字符串一致（默认 80k 时完全相同），免得已有输出的状态文件
+# 因为格式变化而失效、被迫重转整库。
+PROFILE = 'opus/%s/vbr/audio/20ms/cl10' % audio_opus.bitrate()
 FIELDS = ('id','title','titleKnown','artist','version','category','cover','resourceOnly','missing','charts')
 
 def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 def write(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # mkstemp 给每个写者（convert() 里 ThreadPoolExecutor 并发调用）保留唯一
-    # 临时名，避免固定 .tmp 互相截断；flush+fsync 保证落盘后再原子替换。
-    fd, temporary = tempfile.mkstemp(prefix=path.name+'.tmp-', dir=path.parent)
-    try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            stream.write(json.dumps(value,ensure_ascii=False,separators=(',',':'))+'\n')
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
+    # 与其它构建脚本共用一份原子写：唯一临时名（convert() 里是并发调用）、
+    # fsync 落盘、权限 0644（站点由 nginx 以 www 用户读取）。
+    from media import write_atomic
+    write_atomic(path, (json.dumps(value,ensure_ascii=False,separators=(',',':'))+'\n').encode('utf-8'))
 
 def probe(path):
     p=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_name,sample_rate,channels:format=duration','-of','json',str(path)],capture_output=True,check=True)
@@ -68,14 +64,7 @@ def convert(source, out, master, report, jobs=4):
             st=src.stat();fingerprint=[st.st_size,st.st_mtime_ns,st.st_ino]
             prior=state['done'].get(s['id'],{}).get(key,{})
             if prior.get('source')!=fingerprint or not dest.is_file() or dest.stat().st_size!=prior.get('bytes'):
-                tmp=dest.with_name(dest.name+'.partial')
-                try:
-                    cmd=['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-y','-threads','1','-i',str(src),'-map','0:a:0','-threads','1','-c:a','libopus','-b:a','80k','-vbr','on','-compression_level','10','-application','audio','-frame_duration','20','-map_metadata','-1','-f','ogg',str(tmp)]
-                    p=subprocess.run(cmd,capture_output=True,timeout=900)
-                    if p.returncode:raise RuntimeError('转码失败 '+s['id']+': '+p.stderr.decode(errors='replace')[:600])
-                    tmp.replace(dest)
-                finally:
-                    tmp.unlink(missing_ok=True)
+                audio_opus.encode_file(src,dest)
             info=probe(dest);stream=info['streams'][0]
             if stream['codec_name']!='opus' or stream['sample_rate']!='48000':raise ValueError('编码格式不符：'+str(dest))
             record[key]=dict(source=fingerprint,bytes=dest.stat().st_size,duration=float(info['format']['duration']),sampleRate=int(stream['sample_rate']),channels=int(stream['channels']),codec='opus')
@@ -130,12 +119,8 @@ def convert(source, out, master, report, jobs=4):
                     try:os.link(p,dest)
                     except OSError:shutil.copyfile(p,dest)
     shutil.copyfile(source/'data/markers.json',out/'data/markers.json')
-    from web_assets import publish_catalog, optimize_markers, hash_frontend
-    publish_catalog(out)
-    optimize_markers(out, read(out/'data/markers.json'))
-    hash_frontend(out)
-    from build_share_pages import build_share_pages
-    build_share_pages(out, out, version=(REPO/'VERSION').read_text().strip(), songs=songs)
+    from publish_site import publish_site
+    publish_site(out, songs, marker_manifest=read(out/'data/markers.json'))
     summary=dict(status='complete',format='jubeat-directory-v1',profile=PROFILE,songs=len(songs),charts=sum(len(s['charts']) for s in songs),audio=sum('audio' in s['assets'] for s in songs),previews=sum('preview' in s['assets'] for s in songs),covers=sum('cover' in s['assets'] for s in songs),sourceAudioBytes=original_bytes,compressedAudioBytes=compressed_bytes,mczOpened=0,legacyMetadataRead=False,webMediaImported=False,originalsAndExactEventsIncluded=False)
     write(out/'data/build.json',summary);write(report/'转码结果.json',summary)
     from web_assets import record_web_assets

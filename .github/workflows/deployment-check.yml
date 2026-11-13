@@ -1,4 +1,7 @@
 name: Published website checks
+# Action pin 策略与 ci.yml 相同：第三方 action 应固定到 commit SHA（行尾注释保留
+# tag）。待 pin：actions/checkout@v4、actions/setup-python@v5。取 SHA 的办法见
+# ci.yml 顶部注释，不要手抄。
 on:
   release:
     types: [published]
@@ -9,8 +12,8 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
       - run: python tools/check_deployment.py --url https://ub.thregren.world/

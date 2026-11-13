@@ -645,9 +645,7 @@
     } catch (_) {
       /* ignore */
     }
-    setPlaying(false);
-    els.playIcon.textContent = "▶";
-    els.btnPlay.setAttribute("aria-label", "播放");
+    setPlaying(false);   // 播放按钮的图标 / aria-label 由它一起同步
     state.notes = [];
     state.chart = null;
     state.chartMeta = null;

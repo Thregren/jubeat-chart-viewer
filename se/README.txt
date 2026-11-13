@@ -24,7 +24,4 @@
 
       python3 tools/build_directory.py --library <曲库目录> --out site
 
-  默认入口只认 `--library` / `--out` / `--no-markers`；`--prune` / `--force` /
-  `--limit` / `--jobs` 是旧 MCZ 导入（`tools/build_site.py --legacy-mcz`，需设
-  `JUBEAT_LIBRARY` 指向旧曲库）才启用的 `site_builder` 参数，不带 `--legacy-mcz`
-  时 `build_site.py` 等价于 `build_directory.py`、不认这些参数。
+  构建入口只认 `--library` / `--out` / `--no-markers`。

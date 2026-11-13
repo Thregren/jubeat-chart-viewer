@@ -4,18 +4,35 @@ import copy
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import wave
+from asset_hash import canonical_version_index
 from media import write_atomic, safe_join
 
 
 def write_changed(path, content):
-    if path.is_file() and path.read_bytes() == content:
-        return
-    write_atomic(path, content)
+    # 内容一致就不动文件：构建尾部会把几乎所有页面和索引再过一遍，
+    # 每次重写都会改 mtime、打乱增量与缓存。
+    write_atomic(path, content, skip_identical=True)
+
+
+def link_alias(canonical, alias):
+    """把已写好的 canonical 以硬链接暴露成哈希别名。
+
+    内容相同、inode 相同：省一次写盘，GC 的「同 inode」判断也照样成立。
+    硬链接不可用（跨设备、FAT/exFAT、部分容器卷）时退化成复制。
+    """
+    try:
+        if alias.exists() and os.path.samefile(canonical, alias):
+            return
+        alias.unlink(missing_ok=True)
+        os.link(canonical, alias)
+    except OSError:
+        shutil.copyfile(canonical, alias)
 
 
 def encode(value):
@@ -69,7 +86,7 @@ def publish_catalog(root):
     enrich_songs(root, manifest['songs'])
     for relative in manifest.get('versionIndexes', []):
         source = safe_join(root, relative)
-        canonical = re.sub(r'\.[a-f0-9]{20}(?=\.json$)', '', relative)
+        canonical = canonical_version_index(relative)
         if not source.is_file():
             aliases.append(canonical)
             continue
@@ -79,7 +96,9 @@ def publish_catalog(root):
         write_changed(root / canonical, content)
         digest = hashlib.sha256(content).hexdigest()[:20]
         alias = canonical[:-5] + '.' + digest + '.json'
-        write_changed(root / alias, content)
+        # 别名和正式名是同一份字节：硬链接过去，别再写一遍（一份索引几百 KB
+        # 到几 MB，写两遍就是双倍的 write + fsync + 一次全量 read_bytes 比对）。
+        link_alias(root / canonical, root / alias)
         aliases.append(alias)
     if 'versionIndexes' in manifest:
         manifest['versionIndexes'] = aliases

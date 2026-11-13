@@ -1,5 +1,6 @@
 package world.thregren.jubeatviewer;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -12,6 +13,8 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -29,8 +32,28 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 口径和 Electron 桌面版那套 {@code electron/site-server.js} 保持一致。
  *
  * 每个响应都带 Connection: close —— 请求头只读、不做 keep-alive，少一堆状态。
+ *
+ * 调用方鉴权：只校验 Host 挡得住 DNS rebinding，挡不住同机其它 App ——
+ * 它们扫到随机端口后带同样的 Host 就能把整个曲库读走。所以 {@link #start()}
+ * 返回的地址里带一段一次性 token（{@code /t/<32 位十六进制>/}），除它之外的
+ * 路径一律 403。WebView 拿这个地址当文档地址，页面里的资源全是相对路径，
+ * 自然都落在带 token 的前缀下，不用页面配合。
  */
 public final class LocalServer {
+    /** 路径里的 token 段：{@code /t/<token>/} */
+    private static final String TOKEN_PREFIX = "/t/";
+
+    /**
+     * 每个响应都带的公共安全头，{@code deploy/security-headers.conf} 逐条同序。
+     * 两处差别是有意的：不在回环上发 upgrade-insecure-requests；media-src 必须留
+     * {@code blob:}，前端 app-player.js 把已下载的音源包成 blob 复用（保音调变速）。
+     * 不放 img-src 的 data:（前端没有任何 data: 图片）；这条串被
+     * tools/test_cache_headers.py 钉住，改一端就得改四方。
+     */
+    private static final String CSP = "default-src 'self'; script-src 'self'; style-src 'self'; "
+            + "img-src 'self'; media-src 'self' blob:; font-src 'self'; connect-src 'self'; "
+            + "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'";
+
     private static final Map<String, String> MIME = new HashMap<String, String>();
 
     static {
@@ -49,6 +72,8 @@ public final class LocalServer {
         MIME.put("ico", "image/x-icon");
         MIME.put("ogg", "audio/ogg");
         MIME.put("oga", "audio/ogg");
+        MIME.put("caf", "audio/x-caf");
+        MIME.put("webm", "audio/webm");
         MIME.put("mp3", "audio/mpeg");
         MIME.put("m4a", "audio/mp4");
         MIME.put("wav", "audio/wav");
@@ -58,8 +83,10 @@ public final class LocalServer {
 
     private static final int MAX_CONN = 48;          // 同时处理的连接上限（超了就关掉，别堆线程）
     private static final int IO_BUF = 64 * 1024;
+    private static final int MAX_HEAD = 65536;       // 请求头上限，超了回 431
 
     private final File root;
+    private final byte[] tokenBytes;
     private final AtomicInteger live = new AtomicInteger();
     private volatile ServerSocket socket;
     private final Set<Socket> connections = Collections.newSetFromMap(new ConcurrentHashMap<Socket, Boolean>());
@@ -68,9 +95,21 @@ public final class LocalServer {
 
     public LocalServer(File root) {
         this.root = root;
+        byte[] raw = new byte[16];
+        new SecureRandom().nextBytes(raw);
+        StringBuilder sb = new StringBuilder(TOKEN_PREFIX.length() + raw.length * 2);
+        for (byte b : raw) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+        }
+        this.tokenBytes = sb.toString().getBytes(StandardCharsets.US_ASCII);
     }
 
-    /** 起服务（随机端口，只听 127.0.0.1），返回给 WebView 用的首页地址。 */
+    /**
+     * 起服务（随机端口，只听 127.0.0.1），返回给 WebView 用的首页地址。
+     *
+     * 返回的地址带一次性 token（{@code http://127.0.0.1:<port>/t/<token>/}）：
+     * 只有以它开头的请求才被服务，别处的请求一律 403。同机进程扫到端口也读不到曲库。
+     */
     public synchronized String start() throws IOException {
         if (running) throw new IOException("Server already started");
         final ServerSocket ss = new ServerSocket();
@@ -86,7 +125,14 @@ public final class LocalServer {
         }, "jubeat-http");
         acceptor.setDaemon(true);
         acceptor.start();
-        return "http://127.0.0.1:" + ss.getLocalPort() + "/";
+        return origin() + TOKEN_PREFIX + new String(tokenBytes, StandardCharsets.US_ASCII) + "/";
+    }
+
+    /** 服务的 origin（{@code http://127.0.0.1:<port>}），WebView 用它放行 blob: 子资源。 */
+    public synchronized String origin() throws IOException {
+        ServerSocket ss = socket;
+        if (ss == null) throw new IOException("Server not started");
+        return "http://127.0.0.1:" + ss.getLocalPort();
     }
 
     public synchronized void stop() {
@@ -148,11 +194,16 @@ public final class LocalServer {
 
     private void handle(Socket s) throws IOException {
         s.setSoTimeout(30000);
-        InputStream in = s.getInputStream();
+        // 必须包一层缓冲：裸 socket 每读一个字节就是一次 syscall，几十个请求就能上万次。
+        InputStream in = new BufferedInputStream(s.getInputStream(), 8192);
         OutputStream out = new BufferedOutputStream(s.getOutputStream(), 32 * 1024);
-        String head = readHead(in);
-        if (head == null) return;
-        String[] lines = head.split("\r\n");
+        Head head = readHead(in);
+        if (head == Head.EMPTY) return;
+        if (head == Head.TOO_LARGE) {
+            plain(out, 431, "Request Header Fields Too Large", "request header too large");
+            return;
+        }
+        String[] lines = head.text.split("\r\n");
         String[] req = lines[0].split(" ");
         if (req.length < 2) {
             plain(out, 400, "Bad Request", "bad request");
@@ -194,7 +245,25 @@ public final class LocalServer {
             plain(out, 400, "Bad Request", "bad request");
             return;
         }
-        if (path.isEmpty() || path.equals("/")) path = "index.html";
+        // 除 /t/<token>/ 之外的路径一律不服务：token 是每次启动新生成的 128 位随机数，
+        // 只有拿到 start() 返回地址的 WebView 知道。位置放在 Host 校验之后、碰文件之前，
+        // 未授权方连目录结构都探不到。
+        if (!path.startsWith(TOKEN_PREFIX)) {
+            plain(out, 403, "Forbidden", "forbidden");
+            return;
+        }
+        int tokenEnd = path.indexOf('/', TOKEN_PREFIX.length());
+        if (tokenEnd < 0) {
+            plain(out, 403, "Forbidden", "forbidden");
+            return;
+        }
+        if (!MessageDigest.isEqual(path.substring(TOKEN_PREFIX.length(), tokenEnd)
+                .getBytes(StandardCharsets.US_ASCII), tokenBytes)) {
+            plain(out, 403, "Forbidden", "forbidden");
+            return;
+        }
+        path = path.substring(tokenEnd + 1);
+        if (path.isEmpty()) path = "index.html";
 
         String rel = HttpRange.resolveSafe(root.getAbsolutePath(), path);
         if (rel == null) {
@@ -219,23 +288,43 @@ public final class LocalServer {
         sendFile(out, f, rel, headers.get("range"), headOnly);
     }
 
-    /** 读到请求头结束（\r\n\r\n），超出上限或连不上就返回 null。 */
-    private static String readHead(InputStream in) throws IOException {
+    /** 请求头读取的三种结局：正常读到（text 非空）、对端先关（EMPTY）、超限（TOO_LARGE）。 */
+    private static final class Head {
+        static final Head EMPTY = new Head(null);
+        static final Head TOO_LARGE = new Head(null);
+        final String text;
+
+        Head(String text) {
+            this.text = text;
+        }
+    }
+
+    /**
+     * 读到请求头结束（\r\n\r\n）。按块读再在块内逐字节匹配结尾标记：
+     * 一次 read 最多 4 KB，不再一字节一次 syscall。
+     *
+     * 超限不再静默丢弃连接（旧行为让客户端只能等超时），而是回 431。
+     */
+    private static Head readHead(InputStream in) throws IOException {
         ByteArrayOutputStream buf = new ByteArrayOutputStream(1024);
         byte[] tail = new byte[4];
-        int b;
-        while ((b = in.read()) != -1) {
-            buf.write(b);
-            if (buf.size() > 65536) return null;
-            tail[0] = tail[1];
-            tail[1] = tail[2];
-            tail[2] = tail[3];
-            tail[3] = (byte) b;
-            if (tail[0] == '\r' && tail[1] == '\n' && tail[2] == '\r' && tail[3] == '\n') {
-                return new String(buf.toByteArray(), StandardCharsets.ISO_8859_1);
+        byte[] chunk = new byte[4096];
+        while (true) {
+            int n = in.read(chunk);
+            if (n < 0) return Head.EMPTY;
+            for (int i = 0; i < n; i++) {
+                byte b = chunk[i];
+                buf.write(b);
+                if (buf.size() > MAX_HEAD) return Head.TOO_LARGE;
+                tail[0] = tail[1];
+                tail[1] = tail[2];
+                tail[2] = tail[3];
+                tail[3] = b;
+                if (tail[0] == '\r' && tail[1] == '\n' && tail[2] == '\r' && tail[3] == '\n') {
+                    return new Head(new String(buf.toByteArray(), StandardCharsets.ISO_8859_1));
+                }
             }
         }
-        return null;
     }
 
     /**
@@ -267,9 +356,7 @@ public final class LocalServer {
         h.put("Content-Type", mime(rel));
         h.put("Accept-Ranges", "bytes");
         h.put("Cache-Control", cacheControl(rel));
-        h.put("X-Content-Type-Options", "nosniff");
-        h.put("Referrer-Policy", "no-referrer");
-        h.put("X-Frame-Options", "SAMEORIGIN");
+        safety(h);
 
         long[] rng = HttpRange.parseRange(rangeHeader, size);
         long start = 0;
@@ -309,6 +396,17 @@ public final class LocalServer {
         out.flush();
     }
 
+    /**
+     * 公共安全头。正常响应和错误响应都要走这里 —— 桌面端以前只有 200 那条带了头、
+     * 400/403/404 裸奔，两端口径对不上。
+     */
+    private static void safety(Map<String, String> h) {
+        h.put("X-Content-Type-Options", "nosniff");
+        h.put("Referrer-Policy", "no-referrer");
+        h.put("X-Frame-Options", "SAMEORIGIN");
+        h.put("Content-Security-Policy", CSP);
+    }
+
     private void plain(OutputStream out, int code, String reason, String body) throws IOException {
         plainWith(out, code, reason, body, null);
     }
@@ -318,6 +416,7 @@ public final class LocalServer {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         Map<String, String> h = new LinkedHashMap<String, String>();
         if (extra != null) h.putAll(extra);
+        safety(h);
         h.put("Content-Type", "text/plain; charset=utf-8");
         h.put("Content-Length", Integer.toString(bytes.length));
         writeHead(out, code, reason, h);

@@ -17,7 +17,7 @@ test('local desktop, android and file links share the public site, never a local
  assert.throws(()=>Links.build('','EXT','https://example.com/'));
 });
 function parse(search,shared){
- const A={services:{register(){}}},source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-wiring.js',import.meta.url),'utf8');
+ const A={QUERY:new URLSearchParams(search),services:{register(){}}},source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-wiring.js',import.meta.url),'utf8');
  vm.runInNewContext(source,{window:{JubeatApp:A,JubeatRuntime:{RequestScope:class{}}},URLSearchParams,location:{search},document:{querySelector:()=>shared?{content:shared}:null}});
  return A.urlState();
 }

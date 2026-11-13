@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const runtime=createRequire(import.meta.url)('../jubeat_viewer/player/static/runtime.js');
+const Core=createRequire(import.meta.url)('../jubeat_viewer/player/static/core.js');
 const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js',import.meta.url),'utf8');
 const manifest=JSON.parse(fs.readFileSync(new URL('../marker/jubeat_official/manifest.json',import.meta.url)));
 test('all marker designs keep idle pads free of static backgrounds',()=>{
  let draws=0;
  const ctx=new Proxy({drawImage(){draws++;}},{get:(target,key)=>key in target?target[key]:()=>{}});
- const A={services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},
+ const A={QUERY:new URLSearchParams(''),Core,services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},rate:{value:'1'},markerNormalSpeed:{checked:true},showCombo:{checked:false}},
   state:{notes:[],padRects:Array.from({length:16},()=>({x:0,y:0,w:80,h:80}))},
   markerCfg:{design:null,images:new Map(),frStatic:1},PATHS:{markersBase:'markers/'},encPath:String};
  vm.runInNewContext(source,{window:{JubeatApp:A,JubeatRuntime:{Semaphore:class{},markerRate:()=>1,markerTiming:runtime.markerTiming}}});

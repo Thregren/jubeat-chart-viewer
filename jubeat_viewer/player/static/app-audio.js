@@ -47,13 +47,23 @@
     limiterCeiling: 0.885,  // -1.06dBFS 硬天花板
   };
 
-  /** 归一化 tanh 传输曲线：两端严格落在 ±ceiling，保证输出峰值不越 0dBFS。 */
-  function limiterCurve(drive, ceiling) {
+  /**
+   * 归一化 tanh 传输曲线：两端严格落在 ±ceiling，保证输出峰值不越 0dBFS。
+   *
+   * 参数是常量，曲线也就不变：以前每建一次音效总线（跳转 / 暂停 / 变速都会重建）
+   * 就重算 4096 个点，纯属白烧 —— 第一次要用时算一遍，之后整页复用。
+   */
+  let limiterCurveCache = null;
+  function limiterCurve() {
+    if (limiterCurveCache) return limiterCurveCache;
+    const drive = SFX_BUS.limiterDrive;
+    const ceiling = SFX_BUS.limiterCeiling;
     const n = 4096, curve = new Float32Array(n), norm = Math.tanh(drive);
     for (let i = 0; i < n; i++) {
       const x = (i / (n - 1)) * 2 - 1;
       curve[i] = (ceiling * Math.tanh(drive * x)) / norm;
     }
+    limiterCurveCache = curve;
     return curve;
   }
 
@@ -315,7 +325,7 @@
       let tail = bus;
       if (audioCtx.createWaveShaper) {
         const limiter = audioCtx.createWaveShaper();
-        limiter.curve = limiterCurve(SFX_BUS.limiterDrive, SFX_BUS.limiterCeiling);
+        limiter.curve = limiterCurve();
         // 必须 none：2x/4x 的插值过冲会让峰值反超 0dBFS，天花板保证失效。
         limiter.oversample = "none";
         bus.connect(limiter);
@@ -346,15 +356,8 @@
     }
     // 音乐时钟（<audio>.currentTime 换算的谱面时间）是唯一权威。任何视觉插值、
     // 单调下界、外推都不能参与定位，否则跳转之后打点音会整体偏移。
-    const now = A.rawMediaTime();
-    let lo = 0;
-    let hi = state.notes.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (state.notes[mid].t < now - 1e-4) lo = mid + 1;
-      else hi = mid;
-    }
-    sfxSched.idx = lo;
+    // 「t ≥ now - 1e-4」＝ firstAtOrAfter（窗口起点那颗还算没过）；1e-4 是原实现就有的容差。
+    sfxSched.idx = Core.firstAtOrAfter(state.notes, A.rawMediaTime() - 1e-4);
   }
 
   // 打点音排程器只在「正在播放且音效启用」时开着。
@@ -382,14 +385,23 @@
   /**
    * state.playing 的唯一写入口。
    *
-   * 播放状态会牵动两件「必须跟着开关」的东西：
+   * 播放状态会牵动三件「必须跟着开关」的东西：
+   *   - 播放按钮的图标 / aria-label（以前在 6 个地方各写一遍，还会和 <audio> 的
+   *     playing / pause 事件互相覆盖）
    *   - 打点音排程定时器（见 sfxTimerSync）
    *   - 渲染循环（暂停且没有变化时 updateFrame 自己停表，恢复播放要唤醒）
    * 以前 state.playing 在 8 个地方各写各的，谁忘了同步都会留下「暂停了还在响 /
-   * 播了画面不动」这种难查的问题，所以收敛成一个入口。
+   * 播了画面不动 / 图标反了」这种难查的问题，所以收敛成一个入口。
+   *
+   * 图标先写、状态后判：即使这次调用没有改变 state.playing（例如 <audio> 的 pause
+   * 事件在已经暂停时又响一次），按钮也一定会回到和 state.playing 一致的样子；
+   * 写入前比对，重复调用不会产生多余的 DOM 变更。
    */
   function setPlaying(v) {
     const on = !!v;
+    const icon = on ? "❚❚" : "▶";
+    if (els.playIcon && els.playIcon.textContent !== icon) els.playIcon.textContent = icon;
+    els.btnPlay?.setAttribute("aria-label", on ? "暂停" : "播放");
     if (state.playing === on) return;
     state.playing = on;
     if (on) A.visitors?.event('play_start');

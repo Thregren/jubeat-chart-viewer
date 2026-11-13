@@ -11,8 +11,9 @@ import sys
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / 'jubeat_viewer/player'))
-from directory_library import load_directory, asset_path
+from directory_library import load_directory, asset_name, asset_path
 from media import write_atomic
+from package_site import equal_files
 import markers
 import config
 
@@ -22,12 +23,13 @@ def copy_or_link(source, dest):
     if dest.exists():
         if os.path.samefile(source, dest):
             return
-        # 先用轻量 stat 快路径：size + mtime 完全一致就直接跳过，避免把
-        # 几十 MB 音频读成两份内存做比较（data/、songs/ 下每个文件都会走到这里）。
+        # 先用轻量 stat 快路径：size + mtime 完全一致就直接跳过。
         src_stat, dst_stat = os.stat(source), os.stat(dest)
         if (src_stat.st_size, src_stat.st_mtime_ns) == (dst_stat.st_size, dst_stat.st_mtime_ns):
             return
-        if source.read_bytes() == dest.read_bytes():
+        # mtime 变了不代表内容变了（重新拷库、rsync、时钟漂移都会改 mtime）。
+        # 这里必须比内容，但不能把几十 MB 音频读成两份内存：流式分块比。
+        if equal_files(source, dest):
             return
         # 仅替换构建产物路径，不改动源库或其他硬链接。
         dest.unlink()
@@ -41,8 +43,10 @@ def _build_directory(source: Path, out: Path, include_markers=True):
     source, out = source.resolve(), out.resolve()
     data, assets = load_directory(source)
     # 先检查再写前端，部分安装的版本只检查已安装索引中的资源。
+    # 路径合法性在 load_directory 里已经用字符串判过（asset_name），这里只 stat 存在性；
+    # 以前对每个资源再做一次 asset_path().is_file()，等于把同一批路径重新 resolve 一遍。
     for name in sorted(assets):
-        if not asset_path(source, name).is_file():
+        if not source.joinpath(*name.split('/')).is_file():
             raise ValueError('已声明资源不存在: ' + name)
     if source != out:
         for top in ('data', 'songs'):
@@ -66,19 +70,14 @@ def _build_directory(source: Path, out: Path, include_markers=True):
         write_atomic(out / 'data/markers.json', json.dumps(manifest, ensure_ascii=False).encode())
     else:
         write_atomic(out / 'data/markers.json', b'{"designs":[],"error":null}')
-    from web_assets import publish_catalog, optimize_markers, hash_frontend
-    publish_catalog(out)
-    if include_markers:
-        optimize_markers(out, manifest)
-    hash_frontend(out)
-    from build_share_pages import build_share_pages
-    build_share_pages(out, out, version=(REPO/'VERSION').read_text().strip(), songs=data['songs'])
+    from publish_site import publish_site, write_json
+    publish_site(out, data['songs'], marker_manifest=manifest if include_markers else None)
     stats = dict(format='jubeat-directory-v1', status='complete', songs=len(data['songs']),
                  charts=sum(len(s['charts']) for s in data['songs']),
                  resourceOnly=sum(bool(s.get('resourceOnly')) for s in data['songs']),
                  assets=len(assets), source='explicit-directory-index', mczOpened=0,
                  legacyMetadataRead=False)
-    write_atomic(out / 'data/build.json', json.dumps(stats, ensure_ascii=False, indent=2).encode())
+    write_json(out / 'data/build.json', stats)
     print(json.dumps(stats, ensure_ascii=False, indent=2), flush=True)
     return stats
 

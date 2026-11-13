@@ -5,7 +5,7 @@ test('desktop architectures share canonical resources and retain preload files',
  try{
   for(const dir of ['electron','tools','site/static','site/data','site/media/audio/_hashed'])fs.mkdirSync(path.join(root,dir),{recursive:true});
   fs.copyFileSync(new URL('../electron/electron-builder.config.js',import.meta.url),path.join(root,'electron/electron-builder.config.js'));
-  for(const name of ['package_site.py','site_transaction.py'])fs.copyFileSync(new URL('./'+name,import.meta.url),path.join(root,'tools',name));
+  for(const name of ['asset_hash.py','package_site.py','site_transaction.py'])fs.copyFileSync(new URL('./'+name,import.meta.url),path.join(root,'tools',name));
   const hash='0123456789abcdef0123',audio='media/audio/_hashed/'+hash+'.ogg';
   fs.writeFileSync(path.join(root,'site/media/audio/song.ogg'),'audio');fs.linkSync(path.join(root,'site/media/audio/song.ogg'),path.join(root,'site',audio));
   fs.writeFileSync(path.join(root,'site/static/app.js'),'fixture');fs.linkSync(path.join(root,'site/static/app.js'),path.join(root,'site/static/app.js.'+hash+'.js'));

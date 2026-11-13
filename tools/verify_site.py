@@ -34,6 +34,7 @@ PLAYER_DIR = REPO / "jubeat_viewer" / "player"
 sys.path.insert(0, str(PLAYER_DIR))
 
 import markers as markers_mod  # noqa: E402
+from asset_hash import canonical_version_index, is_hashed  # noqa: E402
 import version as version_mod  # noqa: E402
 
 PASS, FAIL, WARN = "\033[32m✓\033[0m", "\033[31m✗\033[0m", "\033[33m!\033[0m"
@@ -73,98 +74,72 @@ class Report:
         return 0
 
 
-def stem_of(rel_id: str) -> str:
-    return rel_id[:-4] if rel_id.lower().endswith(".mcz") else rel_id
+def check_song(out: Path, song: dict, want: set[str], r: "Report") -> None:
+    """逐曲核对：索引里声明的每个资源都要在盘上，且不是空文件。
 
-
-def full_index_audio() -> dict[str, str] | None:
-    """`{曲目 id: 音源成员名}`，取自构建缓存里的**完整**索引。
-
-    公网那份 `data/library.json` 是给前端看的形状，故意不带 `audio` 字段
-    （path / audio / size 加起来约占 40%），所以「这首歌到底该不该有音源」
-    只能回完整索引里查。缓存不在（例如在服务器上核对一份下载下来的站点）就
-    返回 None，此时退化成「这首歌还在索引里，它的 .ogg 就不算孤儿」。
+    目录曲库的布局是 `songs/<版本>/<分类>/<id>/...`（由索引的 assets 给出），
+    不再有 `data/charts/<stem>/<code>.json` / `media/audio/<stem>.ogg` 那套
+    推导规则 —— 以前按规则拼路径，目录曲库会被判成「每个难度都缺谱面」。
     """
-    try:
-        import config as config_mod
-
-        raw = json.loads(config_mod.INDEX_CACHE.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    songs = raw.get("songs") if isinstance(raw, dict) else None
-    if not isinstance(songs, list):
-        return None
-    out: dict[str, str] = {}
-    for s in songs:
-        if isinstance(s, dict) and s.get("id"):
-            # 缓存里的 id 可能是 NFD（macOS 上扫出来的就是），索引是 NFC
-            out[unicodedata.normalize("NFC", s["id"])] = s.get("audio") or ""
-    return out
-
-
-def check_song(out: Path, song: dict, want: set[str], r: Report, degraded: set[str],
-               audio_map: dict[str, str] | None = None) -> None:
-    stem = stem_of(song["id"])
-    if unicodedata.normalize("NFC", stem) != stem:
-        r.check(f"NFC：{stem}", False, "路径不是 NFC，Windows 上会 404")
+    song_id = song["id"]
+    assets = song.get("assets") or {}
 
     for chart in song["charts"]:
-        r.check(f"等级 {song['id']} {chart['code']}", bool(str(chart.get("level", "")).strip()))
-        rel = f"data/charts/{stem}/{chart['code']}.json"
-        want.add(rel)
-        path = out / rel
-        if not r.check(f"谱面 {rel}", path.is_file() and path.stat().st_size > 0):
+        code = chart.get("code")
+        r.check(f"等级 {song_id} {code}", bool(str(chart.get("level", "")).strip()))
+        name = assets.get(f"chart:{code}")
+        if not name:
+            r.check(f"谱面资源 {song_id} {code}", False, f"索引里没有 chart:{code}")
+            continue
+        want.add(name)
+        path = out / name
+        if not r.check(f"谱面 {name}", path.is_file() and path.stat().st_size > 0):
             continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
-            r.check(f"谱面可解析 {rel}", False, str(exc))
+            r.check(f"谱面可解析 {name}", False, str(exc))
             continue
         if not isinstance(data.get("note"), list):
-            r.check(f"谱面结构 {rel}", False, "没有 note 数组")
+            r.check(f"谱面结构 {name}", False, "没有 note 数组")
 
-    known_audio = audio_map.get(song["id"]) if audio_map is not None else None
-    rel_audio = f"media/audio/{stem}.ogg"
-    if known_audio:
-        rel = f"media/audio/{stem}.ogg"
-        want.add(rel)
-        path = out / rel
+    audio = assets.get("audio")
+    if audio:
+        want.add(audio)
+        path = out / audio
         size = path.stat().st_size if path.is_file() else 0
-        r.check(f"音源 {rel}", size > 1024, f"{size}B")
-        # 音源从 0.6.8 起是 Ogg Opus。构建机上没有 ffmpeg 时会退回源格式（Vorbis），
-        # 站点照样能用，只是包大一圈 —— 报成警告，别把这种「知道的降级」当错误。
-        if size > 1024:
+        r.check(f"音源 {audio}", size > 1024, f"{size}B")
+        # 压缩曲库的音源是 Ogg Opus。原样直发的曲库保留 WAV/MP3，不参与这条判断。
+        if size > 1024 and audio.lower().endswith(".ogg"):
             try:
                 with open(path, "rb") as fh:
-                    head = fh.read(64)
+                    head = fh.read(64)      # 只看头，别把整张封面/整段音频读进内存
             except OSError:
                 head = b""
             if b"OpusHead" not in head:
-                r.warn(f"音源编码 {rel}", "不是 Opus（构建时没有 ffmpeg？安装包会大一截）")
-    elif audio_map is None and (out / rel_audio).is_file():
-        # 没有完整索引可查：只要这首歌还在库索引里，它的音源就不算孤儿文件
-        want.add(rel_audio)
+                r.warn(f"音源编码 {audio}", "不是 Opus（未压缩的目录曲库，包会大一截）")
 
-    r.check(f"封面已声明 {song['id']}", bool(song.get("cover")))
-    if song.get("cover"):
-        ext = os.path.splitext(song["cover"])[1].lower() or ".png"
-        rel = f"media/cover/{stem}{ext}"
-        want.add(rel)
-        size = (out / rel).stat().st_size if (out / rel).is_file() else 0
-        r.check(f"封面 {rel}", size > 128, f"{size}B")
-        rel_thumb = f"media/thumb/{stem}.jpg"
-        want.add(rel_thumb)
-        path = out / rel_thumb
-        ok = path.is_file() and path.stat().st_size > 128 and path.read_bytes()[:2] == b"\xff\xd8"
-        if ok:
-            r.check(f"缩略图 {rel_thumb}", True)
-        elif rel_thumb in degraded:
-            # 那 5 张源封面是坏 PNG，缩略图做不出来是预期内的（前端用 ♪ 占位）
-            r.check(f"缩略图 {rel_thumb}", False, "封面降级不允许发布")
-        elif not path.is_file():
-            r.check(f"缩略图 {rel_thumb}", False, "文件不存在")
-        else:
-            r.check(f"缩略图 {rel_thumb}", False, "不是 JPEG 或空的（构建时没报降级？）")
+    cover = assets.get("cover")
+    r.check(f"封面已声明 {song_id}", bool(cover))
+    if cover:
+        want.add(cover)
+        path = out / cover
+        size = path.stat().st_size if path.is_file() else 0
+        r.check(f"封面 {cover}", size > 128, f"{size}B")
+
+    thumb = assets.get("thumb")
+    if thumb:
+        want.add(thumb)
+        path = out / thumb
+        size = path.stat().st_size if path.is_file() else 0
+        head = b""
+        if size:
+            try:
+                with open(path, "rb") as fh:
+                    head = fh.read(2)
+            except OSError:
+                head = b""
+        r.check(f"缩略图 {thumb}", size > 128 and head == b"\xff\xd8", f"{size}B")
 
 
 def main() -> int:
@@ -209,23 +184,25 @@ def main() -> int:
     except Exception as exc:
         r.check("data/library.json 可解析", False, str(exc))
         return r.summary()
-    directory_mode=lib.get('format')=='jubeat-directory-v1'
-    songs = lib.get("songs") or []
-    if directory_mode:
-        try:
-            from directory_library import load_directory
-            merged,_=load_directory(out);songs=merged['songs']
-            for relative in lib.get('versionIndexes',[]):
-                if (out/relative).is_file():want.add(relative)
-                canonical=__import__('re').sub(r'\.[a-f0-9]{20}(?=\.json$)','',relative)
-                if (out/canonical).is_file():want.add(canonical)
-        except Exception as error:
-            r.check('目录索引完整性',False,str(error));return r.summary()
+    if lib.get("format") != "jubeat-directory-v1":
+        r.check("曲库格式是开放目录", False, f"format={lib.get('format')!r}（只支持 jubeat-directory-v1）")
+        return r.summary()
+    try:
+        from directory_library import load_directory
+        merged, _ = load_directory(out)
+        songs = merged["songs"]
+        for relative in lib.get("versionIndexes", []):
+            if (out / relative).is_file():
+                want.add(relative)
+            canonical = canonical_version_index(relative)
+            if (out / canonical).is_file():
+                want.add(canonical)
+    except Exception as error:
+        r.check("目录索引完整性", False, str(error))
+        return r.summary()
     r.check("曲库非空", len(songs) > 0, f"{len(songs)} 首")
 
-    # 3) 构建报告 —— 提前读：里面的「降级清单」要给逐曲检查用
-    #    （降级 = 源素材本身就是坏的，例如那 5 张坏 PNG 封面；前端有占位，
-    #      不能和「这次构建真的失败了」混在一起报）
+    # 3) 构建报告
     build_path = out / "data" / "build.json"
     report: dict = {}
     if r.check("data/build.json 存在", build_path.is_file()):
@@ -233,22 +210,14 @@ def main() -> int:
             report = json.loads(build_path.read_text(encoding="utf-8"))
         except Exception as exc:
             r.check("data/build.json 可解析", False, str(exc))
-    degraded = set(report.get("degraded") or [])
-    r.check("构建报告无封面降级", not degraded)
-    if degraded:
-        print(f"  ! 构建期降级 {len(degraded)} 项（源素材本身有问题，前端有占位）")
 
     # 4) 逐曲
-    audio_map = full_index_audio()
-    if audio_map is None:
-        print("  ! 没有构建缓存（cache/library_index.json）：音源只按「歌还在不在索引里」算，"
-              "不再逐个核对文件大小")
     for song in songs:
-        if not directory_mode:
-            check_song(out, song, want, r, degraded, audio_map)
-        for rel in song.get("assets", {}).values():
-            want.add(rel)
-            r.check(f"内容哈希资源 {rel}", not Path(rel).is_absolute() and ".." not in Path(rel).parts and (out/rel).is_file())
+        check_song(out, song, want, r)
+        for rel, name in (song.get("assets") or {}).items():
+            want.add(name)
+            r.check(f"资源路径可发布 {rel}", not Path(name).is_absolute()
+                    and ".." not in Path(name).parts and (out / name).is_file())
 
     # 5) marker 素材（官方逐帧贴图：清单里的每一帧都要在盘上）
     markers_path = out / "data" / "markers.json"
@@ -292,7 +261,7 @@ def main() -> int:
                 rel = path.relative_to(out).as_posix()
                 # media/se/ 是可选打点音素材：构建时「源目录里有什么就传什么」，
                 # 索引里没有它的清单，所以不参与孤儿判断
-                if "_hashed" in path.parts or __import__("re").search(r"\.[a-f0-9]{20}\.", path.name):
+                if is_hashed(rel):
                     continue
                 if rel.startswith("media/se/"):
                     continue

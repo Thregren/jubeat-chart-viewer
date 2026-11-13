@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """jubeat 铺面查看器 —— 本地 HTTP 服务。
 
-职责：曲库索引、谱面 JSON、音源（Range / nginx X-Accel-Redirect）、封面与缩略图、marker 素材。
-所有重活（zip 解包、缩略图）都会落到 <repo>/cache/ 里，重复请求直接走文件。
+职责：曲库索引、谱面 JSON、音源（Range）、封面与缩略图、marker 素材。
+曲库是开放目录（`data/library.json` + 显式资源路径），服务端不打开任何压缩包；
+唯一的落盘产物是按需生成的缩略图，落在 <repo>/cache/。
 
 启动：
     python3 player/server.py                 # http://127.0.0.1:8765
@@ -87,12 +88,19 @@ class Handler(BaseHTTPRequestHandler):
     sys_version = ""
     protocol_version = "HTTP/1.1"  # 开 keep-alive：境外高延迟下差别很大
 
-    # 每个响应都带的头（_send_bytes 里 setdefault，调用方可以覆盖）
+    # 每个响应都带的头（_send_bytes 里 setdefault，调用方可以覆盖）。
+    # CSP 与线上 deploy/security-headers.conf 保持同一套口径：开发服务器也会被
+    # 反代出去给人看，少这一层就等于本地预览比线上少一道纵深防御。
     BASE_HEADERS = {
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "no-referrer",
         "X-Frame-Options": "SAMEORIGIN",
         "Cross-Origin-Opener-Policy": "same-origin",
+        "Content-Security-Policy": (
+            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; "
+            "media-src 'self' blob:; font-src 'self'; connect-src 'self'; "
+            "object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'"
+        ),
     }
 
     # —— 基础输出 ——
@@ -171,12 +179,6 @@ class Handler(BaseHTTPRequestHandler):
         headers.update(extra or {})
         return headers
 
-    def _redirect(self, location: str, code: int = 302) -> None:
-        self.send_response(code)
-        self.send_header("Location", location)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
-
     # —— 路由 ——
     def do_GET(self) -> None:
         self._responded = False
@@ -215,22 +217,28 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/markers/"):
             return self._serve_marker(path[len("/markers/"):])
 
+        # 曲库资源：前端直接请求 assets 里的相对路径（都以 songs/ 开头），
+        # 所以 "/" + 资源路径 与这个路由天然对齐。
         if path.startswith('/songs/'):
             LIB.load()
             from directory_library import asset_path
             name = media.unquote_path(path[1:])
-            if name not in getattr(LIB, 'directory_assets', set()):
+            if name not in LIB.assets:
                 raise FileNotFoundError(name)
             target = asset_path(LIB.root, name)
             return media.stream_file(self, target, media.guess_ctype(name), self._hdr({'Cache-Control': 'no-cache'}))
 
         # —— 与静态站点完全相同的路径布局 ——
         if path == "/data/library.json":
-            if qs.get("reindex", [""])[0]:
+            # 重新读取是显式的运维动作：默认关闭，避免任何 GET（含预取、被反代的
+            # 公共路径）都能触发一次全量重读。
+            if qs.get("reindex", [""])[0] and os.environ.get("JUBEAT_ALLOW_REINDEX") == "1":
                 LIB.load(force=True)
             return self._data_library()
         if path == "/data/markers.json":
             return self._json(markers.manifest(), cache="no-cache")
+        if path.startswith("/data/versions/"):
+            return self._data_version(path[len("/data/versions/"):])
         if path.startswith("/data/charts/"):
             return self._media_chart(path[len("/data/charts/"):])
         if path.startswith("/media/audio/"):
@@ -249,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
     # —— API ——
     def _api_health(self) -> None:
         LIB.load()
-        # 物量读不出来的难度（坏 zip / 谱面 json 解析失败）：健康检查要能一眼看出
+        # 物量读不出来的难度（谱面 json 解析失败）：健康检查要能一眼看出
         unknown = sum(1 for s in LIB.songs for c in s["charts"] if not c.get("notesKnown", True))
         return self._json({
             "ok": True,
@@ -261,7 +269,6 @@ class Handler(BaseHTTPRequestHandler):
             "cache": config.CACHE_DIR.name,
             "thumb_backend": thumbs.backend(),
             "thumb_size": config.THUMB_SIZE,
-            "x_accel": config.X_ACCEL_PREFIX or None,
             # 清单是「一套设计一个入口」（designs）；旧字段 "markers" 在改版后就一直
             # 是 0，健康检查会把「45 套素材都在」误报成「一套都没有」。
             "markers": len(markers.manifest().get("designs") or []),
@@ -283,6 +290,18 @@ class Handler(BaseHTTPRequestHandler):
             headers["Content-Encoding"] = "gzip"
         return self._send_bytes(200, body, JSON_CT, headers)
 
+    def _data_version(self, rel: str) -> None:
+        """data/versions/<版本>.json：按版本拆分的曲库，索引里列了哪些就发哪些。"""
+        name = "data/versions/" + media.unquote_path(rel)
+        LIB.load()
+        if name not in LIB.version_indexes:
+            raise FileNotFoundError(rel)
+        target = LIB.asset_path(name)
+        if not target.is_file():
+            raise FileNotFoundError(rel)
+        return media.stream_file(self, target, JSON_CT,
+                                 self._hdr({"Cache-Control": "no-cache"}))
+
     def _media_chart(self, rel: str) -> None:
         """data/charts/<曲目>/<难度>.json"""
         parts = [media.unquote_path(p) for p in rel.split("/") if p]
@@ -297,9 +316,11 @@ class Handler(BaseHTTPRequestHandler):
         chart = next((c for c in song["charts"] if c["code"] == code), None)
         if not chart:
             raise FileNotFoundError(f"{stem} {code}")
-        data = media.read_member(LIB.mcz_path(song["id"]), chart["file"])
-        return self._send_bytes(200, data, JSON_CT,
-                                {"Cache-Control": "public, max-age=86400"}, compress=True)
+        target = LIB.asset_file(song, "chart:" + code)
+        if target is None:
+            raise FileNotFoundError(f"{stem} {code}")
+        return media.stream_file(self, target, JSON_CT,
+                                 self._hdr({"Cache-Control": "public, max-age=86400"}))
 
     def _media_file(self, kind: str, rel: str) -> None:
         """media/{audio|cover|thumb}/<曲目>[.ext]"""
@@ -323,72 +344,48 @@ class Handler(BaseHTTPRequestHandler):
                                  self._hdr({"Cache-Control": "public, max-age=86400"}))
 
     def _serve_media(self, kind: str, song: dict) -> None:
-        zip_path = LIB.mcz_path(song["id"])
+        """按曲目 assets 直接发文件；只有缩略图需要现场生成（按 cover 的 revision 缓存）。"""
         if kind == "audio":
-            member = song.get("audio")
-            if not member:
+            source = LIB.asset_file(song, "audio")
+            if source is None:
                 raise FileNotFoundError("no audio")
-            dest = self._cached(config.AUDIO_CACHE_DIR, song["id"], member, zip_path)
-            ctype = mimetypes.guess_type(member)[0] or "audio/ogg"
-            cache = "public, max-age=86400"
-            return self._send_audio(dest, ctype, cache)
+            return media.stream_file(self, source, media.guess_ctype(source.name),
+                                     self._hdr({"Cache-Control": "public, max-age=86400"}))
 
-        member = song.get("cover")
-        if not member:
+        cover = LIB.asset_file(song, "cover")
+        if cover is None:
             raise FileNotFoundError("no cover")
-        revision = source_revision(zip_path)
-        cover = self._cached(config.COVER_CACHE_DIR, song["id"], member, zip_path)
         if kind == "cover":
-            return media.stream_file(self, cover, media.guess_ctype(member),
+            return media.stream_file(self, cover, media.guess_ctype(cover.name),
                                      self._hdr({"Cache-Control": "public, max-age=604800"}))
 
-        # thumb：没有可用的图像库就直接把原图发出去
+        # thumb：曲库自带缩略图就直接用；否则按需生成，没有可用的图像库就把原图发出去
+        provided = LIB.asset_file(song, "thumb")
+        if provided is not None:
+            return media.stream_file(self, provided, media.guess_ctype(provided.name),
+                                     self._hdr({"Cache-Control": "public, max-age=604800"}))
         if thumbs.backend() == "none":
-            return media.stream_file(self, cover, media.guess_ctype(member),
+            return media.stream_file(self, cover, media.guess_ctype(cover.name),
                                      self._hdr({"Cache-Control": "public, max-age=604800"}))
         size = config.THUMB_SIZE
         quality = config.THUMB_QUALITY
-        # 把后端实现版本也钉进缓存 key（tools/site_builder.py:262 的签名早就包含
-        # thumbs.profile()）：换了 Pillow 版本 / 切到 sips 后旧缩略图不能继续复用。
+        # 把后端实现版本也钉进缓存 key：换了 Pillow 版本 / 切到 sips 后旧缩略图不能继续复用。
         # 代价是旧 key 的缓存文件一次性失效；member_is_fresh 只用传入的路径，逻辑不变。
         thumb = config.THUMB_CACHE_DIR / (
-            f"{media.cache_key(song['id'], member, str(size), str(quality), thumbs.profile())}.jpg"
+            f"{media.cache_key(song['id'], cover.name, str(size), str(quality), thumbs.profile())}.jpg"
         )
-        if not media.member_is_fresh(thumb, zip_path):
+        if not media.member_is_fresh(thumb, cover):
+            revision = source_revision(cover)
             with media.lock_for(str(thumb)):
-                if not media.member_is_fresh(thumb, zip_path):
+                if not media.member_is_fresh(thumb, cover):
                     if not thumbs.make(cover, thumb, size, quality):
-                        return media.stream_file(
-                            self, cover, media.guess_ctype(member),
-                            self._hdr({"Cache-Control": "public, max-age=604800"}))
-                    media.mark_member_fresh(thumb, zip_path, revision)
+                        return media.stream_file(self, cover, media.guess_ctype(cover.name),
+                                                 self._hdr({"Cache-Control": "public, max-age=604800"}))
+                    media.mark_member_fresh(thumb, cover, revision)
         return media.stream_file(self, thumb, "image/jpeg",
                                  self._hdr({"Cache-Control": "public, max-age=604800"}))
 
-    def _send_audio(self, dest: Path, ctype: str, cache: str) -> None:
-        if config.X_ACCEL_PREFIX:
-            # 交给 nginx 直接发文件：Range/断点/大文件都不再经过 Python
-            self.send_response(200)
-            self.send_header("X-Accel-Redirect", f"{config.X_ACCEL_PREFIX}{dest.name}")
-            self.send_header("Content-Type", ctype)
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Cache-Control", cache)
-            self.send_header("Content-Length", "0")
-            for k, v in self.BASE_HEADERS.items():
-                self.send_header(k, v)
-            self.end_headers()
-            return
-        return media.stream_file(self, dest, ctype, self._hdr({"Cache-Control": cache}))
-
     # —— 辅助 ——
-    def _cached(self, cache_dir: Path, song_id: str, member: str, zip_path: Path) -> Path:
-        """把 zip 成员解到磁盘缓存（按 曲目+成员 做 key，保留原扩展名方便判类型）。"""
-        ext = os.path.splitext(member)[1].lower()
-        if ext not in (".ogg", ".mp3", ".wav", ".png", ".jpg", ".jpeg", ".webp"):
-            ext = ".bin"
-        dest = cache_dir / f"{media.cache_key(song_id, member)}{ext}"
-        return media.cached_member_file(zip_path, member, dest)
-
     def _serve_static(self, rel: str) -> None:
         dest = media.safe_join(config.STATIC_DIR, rel or "index.html")
         if not dest.is_file():
@@ -425,8 +422,7 @@ def main() -> None:
     LIB.load()
     print(f"jubeat 铺面查看器 → http://{config.HOST}:{config.PORT}/")
     print(f"曲库: {LIB.root}（{len(LIB.songs)} 首）")
-    print(f"缓存: {config.CACHE_DIR} · 缩略图后端: {thumbs.backend()}"
-          + (f" · X-Accel: {config.X_ACCEL_PREFIX}" if config.X_ACCEL_PREFIX else ""))
+    print(f"缓存: {config.CACHE_DIR} · 缩略图后端: {thumbs.backend()}")
     httpd = BoundedHTTPServer((config.HOST, config.PORT), Handler)
     httpd.daemon_threads = True
     try:

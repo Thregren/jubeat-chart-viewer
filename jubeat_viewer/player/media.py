@@ -1,4 +1,4 @@
-"""zip 成员读取、磁盘缓存、HTTP Range 与响应发送。"""
+"""磁盘缓存、原子写入、HTTP Range 与响应发送。"""
 from __future__ import annotations
 
 import hashlib
@@ -9,8 +9,6 @@ import posixpath
 import re
 import threading
 import tempfile
-import zipfile
-import shutil
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -20,22 +18,9 @@ from source_revision import source_revision
 # a reference but has not acquired it yet. Hash collisions only serialize work.
 _MEMBER_LOCKS = tuple(threading.Lock() for _ in range(256))
 
-
-def zip_name(info: zipfile.ZipInfo) -> str:
-    """zip 里的中文名：有 UTF-8 标志位就直接用，否则按 cp437→utf8/shift_jis 猜。"""
-    name = info.filename
-    if info.flag_bits & 0x800:
-        return name
-    try:
-        raw = name.encode("cp437")
-    except UnicodeEncodeError:
-        return name
-    for enc in ("utf-8", "shift_jis", "cp932"):
-        try:
-            return raw.decode(enc)
-        except UnicodeDecodeError:
-            continue
-    return name
+# 构建产物一律 0644：站点由 nginx（www 用户）读取，而 rsync -a 会保留权限。
+# mkstemp 建的是 0600，不显式改的话「文件在但 403」。
+DEFAULT_FILE_MODE = 0o644
 
 
 def lock_for(key: str) -> threading.Lock:
@@ -78,78 +63,14 @@ def safe_join(root: Path, rel: str) -> Path:
     return dest
 
 
-MAX_ARCHIVE_ENTRIES = 4096
-MAX_CHART_BYTES = 8 * 1024 * 1024
-MAX_MEMBER_BYTES = 64 * 1024 * 1024
-
-
-def _member_index(zf: zipfile.ZipFile) -> dict:
-    """同一个 ZipFile 的「成员名 → ZipInfo」索引，挂在 zf 上做一次性缓存。
-
-    scan_song() 会为 .mcz 里的每个谱面成员调用一次 member_info()；以前每次都
-    infolist() + 全表重算 zip_name()，是 O(谱面数 × 成员数)。这里按 zf 对象缓存
-    （不以 id(zf) 作全局键：对象回收后 id 会被复用，容易串到另一个 zip 上），
-    生命周期与打开的 zip 完全一致。zip_name() 的解码逻辑保持不变，每个成员只算一次。
-    """
-    cached = getattr(zf, "_jubeat_member_index", None)
-    if cached is not None:
-        return cached
-    infos = zf.infolist()
-    if len(infos) > MAX_ARCHIVE_ENTRIES:
-        raise ValueError("Archive has too many entries")
-    by_name = {}
-    by_base = {}
-    for info in infos:
-        if info.is_dir():
-            continue
-        name = zip_name(info)
-        # 与原来 next(...) 的「第一个命中」一致：精确匹配同时认原始名与解码名。
-        by_name.setdefault(info.filename, info)
-        by_name.setdefault(name, info)
-        by_base.setdefault(os.path.basename(name), []).append(info)
-    cached = {"by_name": by_name, "by_base": by_base}
-    zf._jubeat_member_index = cached
-    return cached
-
-
-def member_info(zf: zipfile.ZipFile, member: str) -> zipfile.ZipInfo:
-    index = _member_index(zf)
-    base = os.path.basename(member)
-    target = index["by_name"].get(member)
-    if target is None:
-        matches = index["by_base"].get(base, [])
-        if len(matches) != 1:
-            raise FileNotFoundError("Missing or ambiguous archive member: " + member)
-        target = matches[0]
-    limit = MAX_CHART_BYTES if member.lower().endswith((".mc", ".json")) else MAX_MEMBER_BYTES
-    if target.file_size > limit:
-        raise ValueError("Archive member exceeds size budget: " + member)
-    return target
-
-
-def read_zip_member(zf: zipfile.ZipFile, member: str) -> bytes:
-    info = member_info(zf, member)
-    with zf.open(info) as source:
-        data = source.read(info.file_size + 1)
-    if len(data) != info.file_size:
-        raise ValueError("Archive member length mismatch")
-    return data
-
-
-def read_member(zip_path: Path, member: str) -> bytes:
-    """Read a bounded member; ambiguous basename fallbacks are rejected."""
-    with zipfile.ZipFile(zip_path) as zf:
-        return read_zip_member(zf, member)
-
-
-def member_is_fresh(cached: Path, zip_path: Path) -> bool:
+def member_is_fresh(cached: Path, source: Path) -> bool:
     """A cache is valid only for the exact source and fully published file."""
     try:
         if not cached.is_file() or cached.stat().st_size == 0:
             return False
         stamp = json.loads(_revision_file(cached).read_text(encoding="utf-8"))
         return (isinstance(stamp, dict)
-                and stamp.get("source") == source_revision(zip_path)
+                and stamp.get("source") == source_revision(source)
                 and stamp.get("cached") == source_revision(cached))
     except (OSError, ValueError, TypeError):
         return False
@@ -168,41 +89,42 @@ def mark_member_fresh(cached: Path, source: Path, revision: str) -> None:
     }, separators=(",", ":")).encode("utf-8"))
 
 
-def cached_member_file(zip_path: Path, member: str, dest: Path) -> Path:
-    """把 zip 成员解到 dest（原子写入 + 单飞锁），返回 dest。已存在且新鲜就直接用。"""
-    if member_is_fresh(dest, zip_path):
-        return dest
-    with lock_for(str(dest)):
-        if member_is_fresh(dest, zip_path):  # 等锁期间别人已经解好了
-            return dest
-        revision = source_revision(zip_path)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(prefix=dest.name + ".tmp-", dir=dest.parent)
-        tmp = Path(name)
+def write_atomic(path: Path, data: bytes, mode: int | None = DEFAULT_FILE_MODE,
+                 skip_identical: bool = False) -> None:
+    """原子写文件，并把权限固定成站点可读的 0644（构建产物唯一一份实现）。
+
+    * `mode=None` 表示保留目标文件原有的权限（入口页那种「部署后可能被改过
+      权限」的文件用这个）；目标不存在时退回 0644。
+    * `skip_identical=True` 时先比内容，一样就不动文件 —— 分享页有两千多个，
+      重建时没必要每个都改一次 mtime。
+
+    以前这里不给 mkstemp 的 0600 补 chmod，os.replace 会把权限一起带过去：
+    构建产物经 `rsync -a` 同步到服务器后仍是 0600，nginx 以 www 运行就 403
+    （deploy/README.md 专门为音频目录交代 chown/chmod，说明这个坑踩过）。
+    仓库里另外三份原子写（分享页 / 入口页 / 精简库）已统一到这一份。
+    """
+    if skip_identical:
         try:
-            with os.fdopen(fd, "wb") as out, zipfile.ZipFile(zip_path) as zf:
-                info = member_info(zf, member)
-                with zf.open(info) as source:
-                    shutil.copyfileobj(source, out, 256 * 1024)
-                if out.tell() != info.file_size:
-                    raise ValueError("Archive member length mismatch")
-            if source_revision(zip_path) != revision:
-                raise OSError("Source changed while extracting media")
-            os.replace(tmp, dest)
-            mark_member_fresh(dest, zip_path, revision)
-        finally:
-            tmp.unlink(missing_ok=True)
-        return dest
-
-
-def write_atomic(path: Path, data: bytes) -> None:
+            # 先比大小：绝大多数「改过了」的文件长度就不同，不必读整份
+            if path.stat().st_size == len(data) and path.read_bytes() == data:
+                return
+        except OSError:
+            pass
     path.parent.mkdir(parents=True, exist_ok=True)
+    if mode is None:
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            mode = DEFAULT_FILE_MODE
     # mkstemp reserves a unique name across threads and processes.
     fd, name = tempfile.mkstemp(prefix=path.name + ".tmp-", dir=path.parent)
     tmp = Path(name)
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     finally:
         try:

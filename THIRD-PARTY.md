@@ -27,7 +27,9 @@ HTML/CSS/JS）、`tools/`、`deploy/`、`electron/` 里的脚本、配置与应�
 ## 2. 曲库与音效
 
 - **曲库**取自 [Swan416ya/Jubeat2Malody-GUI](https://github.com/Swan416ya/Jubeat2Malody-GUI/tree/mcz-releases)
-  整理打包的 jubeat `.mcz`（Malody 谱面格式）；本项目只做浏览与回放，**曲库本身不入库**
+  整理打包的 jubeat `.mcz`（Malody 谱面格式）；本项目只做浏览与回放，**曲库本身不入库**。
+  注意：`.mcz` 只是这些素材的原始打包格式，现在的构建与运行都不再解析它
+  （只读 `jubeat-directory-v1` 目录曲库，见 `docs/目录曲库.md`）。
   （见 `.gitignore` 的 `music/`）。
 - `se/` 下的音效（太鼓「咚 / 咔」、比利·海灵顿等）同为第三方素材，**不入库**，只保留
   `se/README.txt` 说明格式。

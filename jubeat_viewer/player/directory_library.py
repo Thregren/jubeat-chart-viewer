@@ -8,12 +8,26 @@ FORMAT = 'jubeat-directory-v1'
 MAX_INDEX = 8 * 1024 * 1024
 
 
-def asset_path(root: Path, name: str) -> Path:
+def asset_name(name: str) -> str:
+    """校验曲库内相对路径并原样返回。
+
+    只做字符串判断，**不碰文件系统**：索引加载时每个曲目 id、每个资源都要过一遍
+    （四千首 × 十来个资源），以前这里对 root 和目标各做一次 resolve()，等于每条
+    路径逐级 lstat，单次加载三四万次 syscall。路径本身的合法性（无 `..`、无绝对
+    路径、无反斜杠与盘符）靠字符串就够了；符号链接越界交给真正要打开文件时的
+    asset_path() 处理。
+    """
     if (not isinstance(name, str) or not name or '\\' in name or ':' in name
             or PurePosixPath(name).is_absolute()
             or any(part in ('', '.', '..') for part in name.split('/'))
             or any(ord(c) < 32 for c in name)):
         raise ValueError('无效目录资源路径')
+    return name
+
+
+def asset_path(root: Path, name: str) -> Path:
+    """曲库内相对路径 → 绝对路径，解一次符号链接防止越界（打开文件时用）。"""
+    name = asset_name(name)
     root = root.resolve()
     path = (root / name).resolve()
     if root not in path.parents:
@@ -56,7 +70,7 @@ def load_directory(root: Path):
         for song in catalog['songs']:
             if not isinstance(song, dict) or not isinstance(song.get('id'), str) or song['id'] in seen:
                 raise ValueError('曲目ID无效或重复')
-            asset_path(root, song['id'])
+            asset_name(song['id'])
             if not isinstance(song.get('title'), str) or not isinstance(song.get('version'), str):
                 raise ValueError('曲目标题或版本无效')
             if not isinstance(song.get('charts'), list) or len(song['charts']) > 32:
@@ -66,7 +80,7 @@ def load_directory(root: Path):
             if not isinstance(song.get('assets'), dict):
                 raise ValueError('资源清单无效')
             for name in song['assets'].values():
-                asset_path(root, name)
+                asset_name(name)
                 assets.add(name)
             if any(not isinstance(c, dict) or not isinstance(c.get('code'), str)
                    or '/' in c['code'] or not c['code'] or 'chart:' + c['code'] not in song['assets']
@@ -77,5 +91,5 @@ def load_directory(root: Path):
             seen.add(song['id']); songs.append(song)
     if len(songs) > 50000:
         raise ValueError('曲库曲目数过大')
-    return dict(format=FORMAT, version=1, songs=songs,
+    return dict(format=FORMAT, version=1, songs=songs, versionIndexes=indexes,
                 versions=sorted({s['version'] for s in songs} | {v for c in catalogs for v in c.get('versions', [])})), assets

@@ -5,10 +5,15 @@ import vm from 'node:vm';
 
 // Exercise the actual iterator used by both hold arrows and marker rendering.
 const source = fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js', import.meta.url), 'utf8');
+const coreSource = fs.readFileSync(new URL('../jubeat_viewer/player/static/core.js', import.meta.url), 'utf8');
 const start = source.indexOf('  function* notesInWindow(');
 const end = source.indexOf('  // ================= 长押', start);
 const state = {notes: []};
 const context = vm.createContext({state});
+// notesInWindow 的二分来自 core.js（JubeatCore.firstAtOrAfter）：把它按同样的方式挂进沙箱，
+// 这样测的仍然是「页面里真正跑的那份实现」，而不是测试里再抄一遍的替身。
+vm.runInContext(coreSource, context);
+vm.runInContext('globalThis.Core = globalThis.JubeatCore;', context);
 vm.runInContext(source.slice(start, end) + '\nglobalThis.windowNotes = notesInWindow; globalThis.markerWindow = markerNotesInWindow;', context);
 const windowNotes = (lo, hi) => Array.from(context.windowNotes(lo, hi));
 

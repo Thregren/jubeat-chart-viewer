@@ -40,15 +40,14 @@ class DirectoryTests(unittest.TestCase):
     def test_no_mcz_or_old_metadata_and_partial_install(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); fixture(root)
-            with patch.object(library, 'mcz_paths', side_effect=AssertionError('old scan')), \
-                 patch.object(library, 'official_levels', side_effect=AssertionError('old levels')), \
-                 patch.object(library.Library, '_read_cache', side_effect=AssertionError('old cache')):
-                instance=library.Library(root); instance.load()
-                public=json.loads(instance.published_response()[0]); song=public['songs'][0]
-                self.assertEqual(song['assets']['audio'], 'songs/v/only/bgm.wav')
-                self.assertTrue(song['resourceOnly']); self.assertEqual(song['charts'], [])
-                self.assertEqual(song['missing'], ['cover','charts/BSC'])
-                self.assertEqual(len(instance.songs),1)
+            instance=library.Library(root); instance.load()
+            public=json.loads(instance.published_response()[0]); song=public['songs'][0]
+            self.assertEqual(song['assets']['audio'], 'songs/v/only/bgm.wav')
+            self.assertTrue(song['resourceOnly']); self.assertEqual(song['charts'], [])
+            self.assertEqual(song['missing'], ['cover','charts/BSC'])
+            self.assertEqual(len(instance.songs),1)
+            # 部分安装：只列了版本索引，未安装的那个不报错、也不出现在索引里
+            self.assertEqual(public['versionIndexes'], ['data/versions/v.json', 'data/versions/uninstalled.json'])
 
     def test_duplicate_and_unsafe_paths_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -74,8 +73,7 @@ class DirectoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)/'input';root.mkdir();fixture(root)
             out=Path(temp)/'site'
-            with patch.object(library, 'mcz_paths', side_effect=AssertionError('old scan')):
-                stats=B.build_directory(root,out,False)
+            stats=B.build_directory(root,out,False)
             self.assertEqual(stats['mczOpened'],0);self.assertFalse(stats['legacyMetadataRead'])
             self.assertEqual((out/'songs/v/only/bgm.wav').read_bytes(),b'RIFFsyntheticWAVE')
             self.assertFalse((out/'old.mcz').exists())

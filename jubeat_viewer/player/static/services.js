@@ -20,24 +20,44 @@
     }
   }
   class SettingsStore {
-    constructor(bridge, storage) { this.bridge = bridge; this.storage = storage; }
+    constructor(bridge, storage) {
+      this.bridge = bridge; this.storage = storage;
+      this.batchSource = null; this.batch = null;
+    }
+    /**
+     * 桥支持 getAll（桌面版）时，第一次访问就把整份偏好取进来。
+     * 以前每个键一次 sendSync，启动要二十多次主线程往返、每次都阻塞渲染进程。
+     * 网页 / 安卓的桥没有 getAll，这里返回 null，退回逐键读取的老路径。
+     */
+    snapshot(bridge) {
+      if (this.batchSource === bridge) return this.batch;
+      this.batchSource = bridge; this.batch = null;
+      try {
+        const all = typeof bridge.getAll === 'function' ? bridge.getAll() : null;
+        if (all && typeof all === 'object') this.batch = new Map(Object.entries(all));
+      } catch (_) { /* 取不到就逐键读，不影响功能 */ }
+      return this.batch;
+    }
     access(key, value) {
       try {
         const bridge = this.bridge();
         if (bridge) {
+          const batch = this.snapshot(bridge);
           if (value === undefined) {
-            const saved = bridge.getItem(key);
+            const saved = batch ? batch.get(key) : bridge.getItem(key);
             if (saved != null) return saved;
             const legacy = this.storage().getItem(key);
-            if (legacy != null) bridge.setItem(key, legacy);
+            if (legacy != null) { bridge.setItem(key, legacy); if (batch) batch.set(key, legacy); }
             return legacy;
           }
           if (value === null) {
             bridge.removeItem(key);
+            if (batch) batch.delete(key);
             // Removal must clear both stores: a value written during recording
             // mode lives only in web storage and would otherwise survive.
           } else {
             bridge.setItem(key, String(value));
+            if (batch) batch.set(key, String(value));
             return;  // bridge 写成功即结束，与读分支对称；只有 bridge 抛错时才回退到 web storage
           }
         }

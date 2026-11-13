@@ -7,7 +7,17 @@ location = /api/visitors {
     include fastcgi_params;
     fastcgi_param SCRIPT_FILENAME /www/wwwroot/jubeat/.visitor-private/endpoint.php;
     fastcgi_param SCRIPT_NAME /api/visitors;
+    # Required: the endpoint rejects POST with 503 when this is missing. It must
+    # be a fixed, deployment-configured origin — never derived from the request
+    # Host, which the client controls. No trailing slash. Keep it in sync with
+    # wherever the front end is actually served from.
+    fastcgi_param VISITOR_STATS_ORIGIN https://jubeat.example.com;
     fastcgi_read_timeout 5s;
     fastcgi_pass unix:/tmp/php-cgi-85.sock;
     # Include your existing security-header snippet here if it uses add_header.
 }
+
+# Only the configured host name should reach PHP at all. Without a fixed
+# server_name, UseCanonicalName Off makes SERVER_NAME echo the request Host.
+# Prefer an explicit `server_name jubeat.example.com;` (already the default in
+# deploy/nginx-site.conf.example) plus a default_server that returns 444.

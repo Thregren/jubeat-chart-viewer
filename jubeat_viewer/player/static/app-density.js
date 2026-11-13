@@ -310,15 +310,20 @@
     ctx2.fill();
   }
 
-  function densitySeekFromEvent(ev) {
+  /**
+   * 指针位置 → 谱面时间。
+   * box 可由调用方传入（拖动时在 pointerdown 量一次就够了）：pointermove 一秒上百次，
+   * 每次都 getBoundingClientRect() 会强制布局，白白把拖动拖慢。
+   */
+  function densitySeekFromEvent(ev, box = null) {
     const cv = els.densityCanvas;
-    const box = cv.getBoundingClientRect();
-    if (box.width <= 0) return 0;
-    const logicalWidth = density.rect?.w || box.width;
-    const x = Math.max(0, Math.min(box.width, ev.clientX - box.left)) * logicalWidth / box.width;
+    const rect = box || cv.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    const logicalWidth = density.rect?.w || rect.width;
+    const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left)) * logicalWidth / rect.width;
     const dur = density.dur || state.duration || 0;
     // 图是居中的：左右那两条留白不参与换算，免得点最左边却落到曲子中间
-    const graphW = density.graphW || box.width;
+    const graphW = density.graphW || rect.width;
     const ratio = Math.max(0, Math.min(1, (x - density.graphX) / graphW));
     return ratio * dur;
   }
@@ -343,16 +348,11 @@
     if (!state.notes.length) return "—";
     const from = Math.max(0, sec - INFO_WINDOW / 2);
     const to = from + INFO_WINDOW;
-    // state.notes 按时间有序：二分找到窗口起点，再顺序数到窗口终点
-    let lo = 0;
-    let hi = state.notes.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (state.notes[mid].t < from) lo = mid + 1;
-      else hi = mid;
-    }
+    // state.notes 按时间有序：从窗口起点（含）二分跳到第一颗，再顺序数到窗口终点。
+    // 二分在 core.js（node 可测），这里不再内联一份。
+    const notes = state.notes;
     let n = 0;
-    for (let i = lo; i < state.notes.length && state.notes[i].t < to; i++) n++;
+    for (let i = Core.firstAtOrAfter(notes, from); i < notes.length && notes[i].t < to; i++) n++;
     return `${fmtTime(from)}–${fmtTime(to)} ${n} note`;
   }
 

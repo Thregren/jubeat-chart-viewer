@@ -7,12 +7,13 @@ import os
 import shutil
 import argparse
 from pathlib import Path, PurePosixPath
+from asset_hash import HASHED_RE, canonical_frontend, is_hashed
 from site_transaction import read_site
 
-HASHED = re.compile(r"\.[a-f0-9]{20}(?=\.[^.]+$)")
+HASHED = HASHED_RE
 
 def hashed_path(rel: str) -> bool:
-    return "_hashed" in PurePosixPath(rel).parts or bool(HASHED.search(rel))
+    return is_hashed(rel)
 
 def safe_file(root: Path, rel: str) -> Path:
     path = PurePosixPath(rel)
@@ -88,7 +89,7 @@ def portable_files(root: Path) -> tuple[set[str], dict[str, bytes]]:
         html = index.read_text(encoding="utf-8")
         for rel in re.findall(r'(?:src|href)=["\']([^"\'?#]+)', html):
             if not HASHED.search(rel): continue
-            canonical = re.sub(r"\.[a-f0-9]{20}\.[^.]+$", "", rel)
+            canonical = canonical_frontend(rel)
             if not equal_files(safe_file(root, rel), safe_file(root, canonical)):
                 raise ValueError("Frontend changed while packaging: " + rel)
             html = html.replace(rel, canonical)

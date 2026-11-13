@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文只对回环开放。
+
+  这个 App 里唯一的 http 就是 127.0.0.1 上的本地服务（见 LocalServer：WebView 下
+  file:// 读不了 data/*.json、音频也发不了 Range）。以前用 application 级的
+  usesCleartextTraffic="true" 全局放开，等于允许任意域名走明文；现在 base-config
+  一律禁止，只有 127.0.0.1 / localhost 例外。
+
+  API 24 起 Android 才认这个文件；21~23 上该属性被忽略，明文默认仍然允许 ——
+  那几版没有更细的开关可用（usesCleartextTraffic 从 API 23 才有），行为与改造前一致，
+  不会比现在更宽松。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

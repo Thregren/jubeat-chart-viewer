@@ -27,6 +27,34 @@ def read_site(target: Path):
             raise RuntimeError("站点正在构建，完成后再打包") from None
         yield
 
+def _link_tree(source: Path, dest: Path) -> dict[str, tuple[int, int]]:
+    """把已经发布的站点硬链接成 staging 副本，顺手记下每个文件的 (dev, ino)。
+
+    以前是 `copytree(..., copy_function=os.link)` 之后再各 rglob 一遍新旧两棵树、
+    逐文件 `os.path.samefile` —— 站点两万文件，等于每构建四万次 readdir 加四万次
+    stat 的两倍。这里在链接的同时就把「发布态清单」记下来，后面 publish() 只需要
+    走一遍 stage，拿同一个 (dev, ino) 比，就知道哪些文件真的变了。
+    """
+    inventory: dict[str, tuple[int, int]] = {}
+    dest.mkdir(parents=True, exist_ok=True)
+    for dirpath, dirnames, filenames in os.walk(source):
+        rel_dir = os.path.relpath(dirpath, source)
+        target_dir = dest if rel_dir == "." else dest / rel_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for name in filenames:
+            src = Path(dirpath) / name
+            rel = name if rel_dir == "." else f"{Path(rel_dir).as_posix()}/{name}"
+            try:
+                os.link(src, target_dir / name)
+                st = os.stat(src, follow_symlinks=False)
+            except OSError:
+                # 跨设备 / 不支持硬链接（Windows 非 NTFS）：退回复制，仍然记清单
+                shutil.copyfile(src, target_dir / name)
+                st = os.stat(target_dir / name, follow_symlinks=False)
+            inventory[rel] = (st.st_dev, st.st_ino)
+    return inventory
+
+
 class SiteTransaction:
     def __init__(self, target: Path):
         self.target = target
@@ -46,9 +74,10 @@ class SiteTransaction:
         self.stage = self.workspace / "stage"
         try:
             if self.target.exists():
-                shutil.copytree(self.target, self.stage, copy_function=os.link)
+                self.inventory = _link_tree(self.target, self.stage)
             else:
                 self.stage.mkdir()
+                self.inventory = {}
             return self
         except BaseException:
             shutil.rmtree(self.workspace, ignore_errors=True)
@@ -57,15 +86,22 @@ class SiteTransaction:
     def publish(self):
         from finalize_frontend import finalize
         finalize(self.stage, self.target)
-        old = {p.relative_to(self.target).as_posix(): p for p in self.target.rglob("*") if p.is_file()} if self.target.exists() else {}
         new = {p.relative_to(self.stage).as_posix(): p for p in self.stage.rglob("*") if p.is_file()}
-        changed = [rel for rel, p in new.items() if rel not in old or not os.path.samefile(p, old[rel])]
+        changed = []
+        for rel, path in new.items():
+            try:
+                st = os.stat(path, follow_symlinks=False)
+            except OSError:
+                changed.append(rel)
+                continue
+            if self.inventory.get(rel) != (st.st_dev, st.st_ino):
+                changed.append(rel)
         changed.sort(key=lambda rel: ({"data/build.json": 1, "data/library.json": 2, "index.html": 3}.get(rel, 0), rel))
-        deleted = sorted(old.keys() - new.keys())
+        deleted = sorted(self.inventory.keys() - new.keys())
         backup = self.workspace / "backup"
         for rel in changed + deleted:
-            if rel in old:
-                p = backup / rel; p.parent.mkdir(parents=True, exist_ok=True); os.link(old[rel], p)
+            if rel in self.inventory:
+                p = backup / rel; p.parent.mkdir(parents=True, exist_ok=True); os.link(self.target / rel, p)
         applied = []
         try:
             self.target.mkdir(parents=True, exist_ok=True)
@@ -73,11 +109,11 @@ class SiteTransaction:
                 dest = self.target / rel; dest.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(new[rel], dest); applied.append(rel)
             for rel in deleted:
-                old[rel].unlink(); applied.append(rel)
+                (self.target / rel).unlink(missing_ok=True); applied.append(rel)
         except BaseException:
             for rel in reversed(applied):
                 dest = self.target / rel
-                if rel in old: os.replace(backup / rel, dest)
+                if rel in self.inventory: os.replace(backup / rel, dest)
                 else: dest.unlink(missing_ok=True)
             raise
     def __exit__(self, *exc):

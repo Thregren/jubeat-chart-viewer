@@ -8,7 +8,28 @@ const { crc32 } = require('node:zlib');
 const { randomBytes } = require('node:crypto');
 const yauzl = require('yauzl');
 const MAX_TOTAL=8*1024**3, MAX_FILE=128*1024**2, MAX_FILES=100000;
+// 留一点余量，别把卷写满（和安卓 ArchiveImport.RESERVE 同一个数）。
+const RESERVE=32*1024**2;
 const TOPS=new Set(['data','media','songs','markers']);
+
+function humanSize(n) {
+  const units=['B','KB','MB','GB','TB'];
+  let v=n,i=0;
+  while(v>=1024&&i<units.length-1){v/=1024;i++;}
+  return (i===0?v:v.toFixed(1))+' '+units[i];
+}
+
+/**
+ * 目标目录所在卷还剩多少字节；拿不到返回 -1 让调用方跳过这项检查
+ * （statfs 需要 Node 18.15+，Electron 44 自带的是 22，正常都拿得到）。
+ */
+async function freeBytes(dir) {
+  try {
+    const st=await fsp.statfs(dir);
+    const free=Number(st.bavail)*Number(st.bsize);
+    return Number.isFinite(free)&&free>0?free:-1;
+  } catch {return -1;}
+}
 function safeName(name) {
   if(typeof name!=='string'||!name||/[\\:\x00-\x1f]/.test(name)||name.startsWith('/')||name.split('/').some(p=>!p||p==='.'||p==='..'))throw Error('曲库资源路径无效');
   return name;
@@ -62,7 +83,19 @@ async function validate(root) {
   if(!seen.size)throw Error('资源包没有可用歌曲');
   return {songs:seen.size,charts};
 }
-function extract(archive,root,onProgress=()=>{}) {
+/**
+ * 解压到 root。
+ *
+ * 开解之前先量一次所在卷的可用空间，按各条目的 uncompressedSize 累加估算，
+ * 边写边盯实际字节 —— 声明的 uncompressedSize 可能是假的（zip bomb 的常见手法），
+ * 所以冗余的那道闸门按「实际写出去的字节」算，不只看声明值。
+ * 安卓 ArchiveImport 一直有这道检查，桌面端以前没有，磁盘写满时只会看到
+ * 一个没头没脑的 ENOSPC。
+ */
+async function extract(archive,root,onProgress=()=>{}) {
+  const free=await freeBytes(root);
+  const limited=free>=0;
+  const budget=limited?free-RESERVE:0;   // 余量不足时为负，第一次写就会撞上检查
   return new Promise((resolve,reject)=>{
     yauzl.open(archive,{lazyEntries:true,strictFileNames:true},(error,zip)=>{
       if(error)return reject(error);
@@ -77,13 +110,20 @@ function extract(archive,root,onProgress=()=>{}) {
         if(((entry.externalFileAttributes>>>16)&0o170000)===0o120000)throw Error('资源包不能包含符号链接');
         if(directory){zip.readEntry();return;}
         if(names.has(name))throw Error('资源路径重复');names.add(name);
+        // 荒谬值（NaN / 负数 / 超上限）在算空间之前就拦掉，否则比较恒为 false，预算形同虚设。
+        if(!Number.isFinite(entry.uncompressedSize)||entry.uncompressedSize<0)throw Error('资源包条目大小无效：'+name);
         if(entry.uncompressedSize>MAX_FILE||bytes+entry.uncompressedSize>MAX_TOTAL)throw Error('曲库大小超过限制');
+        if(limited&&bytes+entry.uncompressedSize>budget)throw Error('磁盘空间不足：解压后约需 '
+          +humanSize(bytes+entry.uncompressedSize)+'，卷可用 '+humanSize(Math.max(0,free))
+          +'（需保留 '+humanSize(RESERVE)+'）');
         const dest=location(root,name);await fsp.mkdir(path.dirname(dest),{recursive:true});
         const input=await new Promise((res,rej)=>zip.openReadStream(entry,(e,s)=>e?rej(e):res(s)));
         let sum=0,size=0;
         const check=new Transform({transform(chunk,_encoding,callback){
           size+=chunk.length;bytes+=chunk.length;sum=crc32(chunk,sum);
           if(size>MAX_FILE||bytes>MAX_TOTAL)return callback(Error('解压大小超过限制'));
+          if(limited&&bytes>budget)return callback(Error('磁盘空间不足：已写入 '
+            +humanSize(bytes)+'，卷可用 '+humanSize(Math.max(0,free))+'（需保留 '+humanSize(RESERVE)+'）'));
           callback(null,chunk);
         }});
         await pipeline(input,check,fs.createWriteStream(dest,{flags:'wx'}));

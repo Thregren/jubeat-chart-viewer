@@ -109,23 +109,36 @@ def make(src: Path, dest: Path, size: int, quality: int) -> bool:
     return False
 
 
+_profiles: dict[str, str] = {}
+
+
 def profile() -> str:
     """Include backend implementation version in thumbnail cache signatures.
 
     This runs on every thumbnail request, so it must never raise: a broken or
     mocked backend would otherwise turn a graceful "fall back to the original
     cover" into a 500. Only the signature changes, the fallback stays intact.
+
+    Memoized per backend name for the process lifetime: 后端实现版本在进程里不会变，
+    而 sips 分支每次都会 fork 一个 `sips --version`（列表滚动时一屏几十个请求
+    就是几十次 fork）。按后端名分桶缓存，测试里替换 backend 时不会读到旧值。
     """
     kind = backend()
+    cached = _profiles.get(kind)
+    if cached is not None:
+        return cached
     if kind == "pillow":
         try:
             import PIL
-            return kind + ":" + PIL.__version__
+            value = kind + ":" + PIL.__version__
         except Exception:
-            return kind + ":unknown"
-    if kind == "sips":
+            value = kind + ":unknown"
+    elif kind == "sips":
         try:
-            return kind + ":" + subprocess.check_output(["sips", "--version"], text=True).strip()
+            value = kind + ":" + subprocess.check_output(["sips", "--version"], text=True).strip()
         except Exception:
-            return kind
-    return kind
+            value = kind
+    else:
+        value = kind
+    _profiles[kind] = value
+    return value

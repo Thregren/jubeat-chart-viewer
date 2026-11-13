@@ -37,7 +37,8 @@ test('sustained faster rhythm splits once; BPM changes, simultaneous heads and h
 });
 function renderer(search=''){
  const fills=[],ctx=new Proxy({measureText:()=>({width:20}),fillText(text){fills.push({text,color:this.fillStyle});}},{get(target,key){return key in target?target[key]:()=>{};}});
- const A={services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},showNumbers:{checked:true},longHoldCountdown:{checked:false}},state:{notes:make([0,.25,.75])},numCfg:{color:'#123456',colorMode:'custom',scale:1,alpha:1,corner:true},normalizeHexColor:color=>color};
+ // QUERY 就是 app-base 里那份启动参数解析（app-marker 现在从它读 ?rec=）
+ const A={QUERY:new URLSearchParams(search),Core,services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},showNumbers:{checked:true},longHoldCountdown:{checked:false}},state:{notes:make([0,.25,.75])},numCfg:{color:'#123456',colorMode:'custom',scale:1,alpha:1,corner:true},normalizeHexColor:color=>color};
  const window={JubeatApp:A,JubeatCore:Core,JubeatRuntime:{Semaphore:class{}}};
  // Expose the existing renderer only in this VM, then assert actual canvas fill colors.
  const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js',import.meta.url),'utf8').replace('Object.assign(A, {','Object.assign(A, { testDraw: drawOrderNumber,');

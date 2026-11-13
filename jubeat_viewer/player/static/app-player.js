@@ -10,7 +10,7 @@
   const A = (window.JubeatApp = window.JubeatApp || {});
 
   // —— 更早那层提供的接口 ——
-  const { els, state, audioUrl, fmtTime, fmtBytes, computeDuration, toast, sfxReset, setPlaying,
+  const { QUERY, els, state, audioUrl, fmtTime, fmtBytes, computeDuration, toast, sfxReset, setPlaying,
      density, buildDensity, drawDensity, rebuildVisualState } = A;
 
   // —— transport ——
@@ -29,14 +29,13 @@
 
   const transport = A.services.register('audio', new window.JubeatServices.AudioTransport(window.JubeatRuntime));
   const backend = transport.backend;
-  const FORCE_MEDIA = new URLSearchParams(location.search).get("media") === "1";
+  const FORCE_MEDIA = QUERY.get("media") === "1";
   const NATIVE_FALLBACK = !!A.mediaCompatibility?.nativeFallback;
   // ?outms=NN（毫秒）手动标定输出延迟，只在 IIFE 顶层解析一次；?outms=0 关闭补偿。
   // 无效值（非数字 / 越出 0~300）视为不覆盖，回退到 AudioContext 的实测延迟。
   const OUT_MS_OVERRIDE = (() => {
-    const params = new URLSearchParams(location.search);
-    if (!params.has("outms")) return null;
-    const ms = Number(params.get("outms"));
+    if (!QUERY.has("outms")) return null;
+    const ms = Number(QUERY.get("outms"));
     return Number.isFinite(ms) && ms >= 0 && ms <= 300 ? ms / 1000 : null;
   })();
 
@@ -258,13 +257,6 @@
     audioLoad.buffering = false;
   }
 
-  /**
-   * 读完响应体，边读边报进度。total = 0 表示服务器没给 Content-Length。
-   * 返回 ArrayBuffer，可以直接喂给 decodeAudioData。
-   */
-  async function readWithProgress(res, onProgress) {
-    return window.JubeatRuntime.readBytes(res, 64 * 1024 * 1024, onProgress);
-  }
   const audioRequests = transport.requests;
   function releaseMediaObject() {
     transport.releaseObject();
@@ -506,7 +498,9 @@
       audioLoad.pending = false; audioLoad.fetching = true; updateLoadMeter();
       const res = await fetch(url, { cache: /(?:_hashed|\.[a-f0-9]{20}\.)/.test(url)?"force-cache":"default", signal: request.signal });
       if (!res.ok) throw new Error(`音源读取失败（${res.status}）`);
-      const bytes = await readWithProgress(res, (done, total) => {
+      // 读完响应体，边读边报进度（total = 0 表示服务器没给 Content-Length）；
+      // 返回的 ArrayBuffer 可以直接喂给 decodeAudioData。
+      const bytes = await window.JubeatRuntime.readBytes(res, 64 * 1024 * 1024, (done, total) => {
         if (!current()) return;
         audioLoad.fetchDone = done;
         audioLoad.fetchTotal = total;
@@ -898,9 +892,7 @@
       try {
         const url = backend.url, song = state.song;
         if (!await startBufferAt(backend.anchorPos) || url !== backend.url || song !== state.song || !backend.src) return;
-        setPlaying(true);       // 已经出声了，排队的这次请求就算用掉了
-        els.playIcon.textContent = "❚❚";
-        els.btnPlay.setAttribute("aria-label", "暂停");
+        setPlaying(true);       // 已经出声了，排队的这次请求就算用掉了（图标 / aria 由它同步）
         sfxReset();
       } catch (err) {
         A.visitors?.event('play_error',{code:'buffer_play'});
@@ -942,8 +934,6 @@
       }
       resetMediaClock();
       setPlaying(true);
-      els.playIcon.textContent = "❚❚";
-      els.btnPlay.setAttribute("aria-label", "暂停");
       rebuildVisualState(renderMediaTime());
       sfxReset();
     } catch (err) {
@@ -969,8 +959,6 @@
       els.audio.pause();
     }
     setPlaying(false);
-    els.playIcon.textContent = "▶";
-    els.btnPlay.setAttribute("aria-label", "播放");
     updateLoadMeter();
     sfxReset();
   }

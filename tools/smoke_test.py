@@ -75,7 +75,8 @@ def wait_ready(port: int, timeout: float = 25.0) -> bool:
     return False
 
 
-def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool) -> dict:
+def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool,
+              expect_dev_routes: bool = False) -> dict:
     print(f"\n[{label}] {base}")
     status, _, body = fetch(base + "/")
     c.check("首页 200 且是 HTML", status == 200 and b"<!DOCTYPE html>" in body, f"{status}")
@@ -125,35 +126,54 @@ def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool) -> dict:
     if not songs:
         return {}
     song = songs[0]
-    stem = song["id"][:-4] if song["id"].lower().endswith(".mcz") else song["id"]
-    stem_q = "/".join(urllib.parse.quote(p) for p in stem.split("/"))
+    assets = song.get("assets") or {}
+
+    def url_of(rel):
+        return "/".join(urllib.parse.quote(part) for part in str(rel).split("/"))
+
     chart = song["charts"][-1]
+    chart_rel = assets.get("chart:" + chart["code"])
+    if chart_rel:
+        status, _, body = fetch(f"{base}/{url_of(chart_rel)}")
+        ok = status == 200
+        if ok:
+            try:
+                json.loads(body)
+            except Exception:
+                ok = False
+        c.check("谱面 JSON", ok, f"{status} {len(body)}B")
+    else:
+        c.check("谱面路径已声明", False, "索引里没有 assets.chart:" + chart["code"])
 
-    status, _, body = fetch(f"{base}/data/charts/{stem_q}/{chart['code']}.json")
-    ok = status == 200
-    if ok:
-        try:
-            json.loads(body)
-        except Exception:
-            ok = False
-    c.check("谱面 JSON", ok, f"{status} {len(body)}B")
+    audio_rel = assets.get("audio")
+    if audio_rel:
+        status, hdrs, body = fetch(f"{base}/{url_of(audio_rel)}")
+        c.check("音源整条", status == 200 and len(body) > 100_000, f"{status} {len(body)}B")
+        c.check("音源 Accept-Ranges", hdrs.get("Accept-Ranges") == "bytes", str(hdrs.get("Accept-Ranges")))
+        status, hdrs, body = fetch(f"{base}/{url_of(audio_rel)}", {"Range": "bytes=1000-2999"})
+        c.check("音源 Range 206", status == 206 and len(body) == 2000, f"{status} {len(body)}B")
+        c.check("Content-Range 正确",
+                str(hdrs.get("Content-Range", "")).startswith("bytes 1000-2999/"), str(hdrs.get("Content-Range")))
 
-    status, hdrs, body = fetch(f"{base}/media/audio/{stem_q}.ogg")
-    c.check("音源整条", status == 200 and len(body) > 100_000, f"{status} {len(body)}B")
-    c.check("音源 Accept-Ranges", hdrs.get("Accept-Ranges") == "bytes", str(hdrs.get("Accept-Ranges")))
-
-    status, hdrs, body = fetch(f"{base}/media/audio/{stem_q}.ogg", {"Range": "bytes=1000-2999"})
-    c.check("音源 Range 206", status == 206 and len(body) == 2000, f"{status} {len(body)}B")
-    c.check("Content-Range 正确",
-            str(hdrs.get("Content-Range", "")).startswith("bytes 1000-2999/"), str(hdrs.get("Content-Range")))
-
-    if song.get("cover"):
-        ext = os.path.splitext(song["cover"])[1].lower() or ".png"
-        status, _, body = fetch(f"{base}/media/cover/{stem_q}{ext}")
+    cover_rel = assets.get("cover")
+    if cover_rel:
+        status, _, body = fetch(f"{base}/{url_of(cover_rel)}")
         c.check("封面原图", status == 200 and len(body) > 1000, f"{status} {len(body)}B")
-        status, _, body = fetch(f"{base}/media/thumb/{stem_q}.jpg")
-        c.check("封面缩略图", status == 200 and body[:2] == b"\xff\xd8", f"{status} {len(body)}B")
-        c.check("缩略图比原图小", len(body) < 100_000, f"{len(body)}B")
+
+    if expect_dev_routes:
+        # 开发服务器另外提供按曲目 id 推导的路径（前端在资源缺失时的回退）：
+        #   media/audio|cover|thumb/<曲目 id>[.ext]
+        stem_q = "/".join(urllib.parse.quote(p) for p in song["id"].split("/"))
+        status, _, body = fetch(f"{base}/media/audio/{stem_q}.ogg")
+        c.check("开发服务器按曲目取音源", status == 200 and len(body) > 100_000, f"{status} {len(body)}B")
+        if cover_rel:
+            ext = os.path.splitext(cover_rel)[1].lower() or ".png"
+            status, _, body = fetch(f"{base}/media/cover/{stem_q}{ext}")
+            c.check("开发服务器按曲目取封面", status == 200 and len(body) > 1000, f"{status} {len(body)}B")
+            status, _, body = fetch(f"{base}/media/thumb/{stem_q}.jpg")
+            c.check("开发服务器现场生成缩略图",
+                    status == 200 and body[:2] == b"\xff\xd8" and len(body) < 100_000,
+                    f"{status} {len(body)}B")
 
     status, _, _ = fetch(base + "/media/audio/../music/../nope.ogg")
     c.check("非法路径 404/400", status in (400, 404), str(status))
@@ -163,10 +183,14 @@ def run_suite(base: str, c: Checker, *, label: str, expect_gzip: bool) -> dict:
 
 
 def make_fixture(root: Path) -> dict[str, str]:
-    """Self-contained HTTP fixtures; no private library or game assets required."""
-    music = root / "music" / "fixture"
+    """自足的测试曲库（开放目录格式）+ marker 素材，不依赖私人曲库或游戏资源。
+
+    以前这里造的是 `.mcz` 压缩包，走的是已下线的旧构建通道。现在默认曲库是
+    `data/library.json` + 显式资源路径，所以 fixture 也按这个形状造：
+    每个曲目一个目录，谱面 / 音源 / 封面各自是独立文件。
+    """
+    library = root / "library"
     markers = root / "markers"
-    music.mkdir(parents=True)
     design = markers / "tex_l44_tm0000"
     design.mkdir(parents=True)
     rng = random.Random(42)
@@ -184,15 +208,33 @@ def make_fixture(root: Path) -> dict[str, str]:
     with wave.open(audio, "wb") as out:
         out.setnchannels(1); out.setsampwidth(2); out.setframerate(16000)
         out.writeframes(rng.randbytes(16000 * 2 * 20))
+    wav = audio.getvalue()
+
+    songs = []
     for i in range(5):
+        song_id = f"fixture/Fixture {i}"          # 带空格和斜杠：顺便测 URL 编码
+        base = f"songs/{song_id}"
+        folder = library / base
+        (folder / "charts").mkdir(parents=True)
         chart = {"meta": {"song": {"title": f"Fixture {i}", "artist": "Smoke test " * 20}},
                  "note": [{"index": n % 16, "beat": [n, 0, 1]} for n in range(32)]}
-        with zipfile.ZipFile(music / f"Fixture {i}.mcz", "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(f"0/Fixture {i}_EXT Lv10.mc", json.dumps(chart))
-            archive.writestr("0/bgm.wav", audio.getvalue())
-            archive.writestr("0/jkt.png", png)
-    return {"JUBEAT_LIBRARY": str(music.parent), "JUBEAT_MARKERS": str(markers),
-            "JUBEAT_CACHE": str(root / "cache"), "JUBEAT_LEGACY_MCZ": "1"}
+        (folder / "charts" / "EXT.json").write_text(json.dumps(chart))
+        (folder / "bgm.wav").write_bytes(wav)
+        (folder / "cover.png").write_bytes(png)
+        songs.append(dict(
+            id=song_id, title=f"Fixture {i}", artist="Smoke test " * 20, version="fixture",
+            category="fixture", resourceOnly=False, missing=[], cover="cover.png",
+            charts=[dict(code="EXT", level="10", notes=32, holds=0)],
+            assets={"audio": f"{base}/bgm.wav", "cover": f"{base}/cover.png",
+                    "chart:EXT": f"{base}/charts/EXT.json"},
+        ))
+    (library / "data").mkdir(parents=True)
+    (library / "data" / "library.json").write_text(json.dumps({
+        "format": "jubeat-directory-v1", "version": 1,
+        "songs": songs, "versions": ["fixture"], "versionIndexes": [],
+    }, ensure_ascii=False))
+    return {"JUBEAT_LIBRARY": str(library), "JUBEAT_MARKERS": str(markers),
+            "JUBEAT_CACHE": str(root / "cache")}
 
 
 def main() -> int:
@@ -215,12 +257,11 @@ def main() -> int:
             env.update(make_fixture(Path(tmp_ctx.name) / "fixture"))
         print(f"构建测试站点（5 首）→ {site}")
         r = subprocess.run([sys.executable, str(REPO / "tools" / "build_site.py"),
-                            "--legacy-mcz", "--out", str(site), "--limit", "5", "--force"],
+                            "--library", env["JUBEAT_LIBRARY"], "--out", str(site)],
                            capture_output=True, text=True, env=env)
-        # site_builder.py: return 0 if not stats.failed else 2 —— 退出码 2 代表有曲目构建失败，
-        # 绝不能当「降级成功」放行（test_pwa_assets.py / test_build_assets.py 对同一构建都要求 0）。
+        # 构建只要退出码非 0 就是失败，没有「部分成功」这种状态。
         if r.returncode != 0:
-            print(f"构建失败：returncode={r.returncode}（2=有曲目构建失败）", file=sys.stderr)
+            print(f"构建失败：returncode={r.returncode}", file=sys.stderr)
             print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
             return 1
 
@@ -235,7 +276,7 @@ def main() -> int:
         else:
             c.check("静态服务器启动", False, "超时")
 
-        # —— 开发服务器模式（直接从 .mcz 读）——
+        # —— 开发服务器模式（直接读开放目录曲库）——
         if (PLAYER_DIR / "config.py").is_file():
             port_dev = free_port()
             dev_env = dict(env, JUBEAT_PORT=str(port_dev))
@@ -243,7 +284,8 @@ def main() -> int:
                                           cwd=str(REPO), env=dev_env,
                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
             if wait_ready(port_dev, timeout=60):
-                run_suite(f"http://127.0.0.1:{port_dev}", c, label="开发服务器", expect_gzip=True)
+                run_suite(f"http://127.0.0.1:{port_dev}", c, label="开发服务器", expect_gzip=True,
+                          expect_dev_routes=True)
             else:
                 c.check("开发服务器启动", False, "超时")
     finally:

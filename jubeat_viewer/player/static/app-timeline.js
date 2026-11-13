@@ -177,7 +177,9 @@
     wrap.classList.toggle("timeline-flattened",flatten.checked);
     backgroundKey="";size.dirty=true;repaint();
   });
-  const xOf=e=>{const rect=canvas.getBoundingClientRect();return (e.clientX-rect.left)*(size.w||canvas.clientWidth)/rect.width;};
+  // 指针坐标 → 时间轴内部 x。拖动期间用 pointerdown 量到的 rect：pointermove
+  // 每秒上百次，每次都读 getBoundingClientRect() 会反复强制布局。
+  const xOf=(e,rect=canvas.getBoundingClientRect())=>((e.clientX-rect.left)*(size.w||canvas.clientWidth))/rect.width;
   const clamp=t=>Math.max(0,Math.min(t,state.duration||0));
   function position(e,click=false,x=xOf(e)) {
     const beat=click ? drag.view.left+x/drag.view.scale : drag.beat-(x-drag.x)/drag.view.scale;
@@ -188,7 +190,8 @@
     e.preventDefault();
     const sec=A.currentMediaTime(), m=getModel();
     const resume=A.playbackActive ? A.playbackActive() : state.playing;
-    drag={id:e.pointerId,x:xOf(e),start:sec,beat:m.secToBeat(sec),view:m.frame(sec,canvas.clientWidth,+span.value,+division.value),model:m,notes:state.notes,resume,moved:false};
+    const rect=canvas.getBoundingClientRect();
+    drag={id:e.pointerId,rect,x:xOf(e,rect),start:sec,beat:m.secToBeat(sec),view:m.frame(sec,canvas.clientWidth,+span.value,+division.value),model:m,notes:state.notes,resume,moved:false};
     A.clearAB(null);if(resume)A.pause();
     state.scrubbing=true;state.scrubSec=sec;canvas.setPointerCapture(e.pointerId);
     canvas.focus({preventScroll:true});repaint();
@@ -196,14 +199,14 @@
   canvas.addEventListener("pointermove",e=>{
     if(!drag || e.pointerId!==drag.id)return;
     if(drag.notes!==state.notes){finish(null,true);return;}
-    const x=xOf(e);
+    const x=xOf(e,drag.rect);
     drag.moved ||= Math.abs(x-drag.x)>3;
     state.scrubSec=position(e,false,x);repaint();
   });
   function finish(e,cancel=false) {
     if(!drag || (e && e.pointerId!==drag.id))return;
     const old=drag,same=old.notes===state.notes;
-    const target=cancel ? old.start : e?.type==="pointerup" ? position(e,!old.moved) : state.scrubSec;
+    const target=cancel ? old.start : e?.type==="pointerup" ? position(e,!old.moved,xOf(e,old.rect)) : state.scrubSec;
     drag=null;state.scrubbing=false;state.scrubSec=-1;
     try{canvas.releasePointerCapture(old.id);}catch(_){/* Already released. */}
     if(same) {

@@ -178,6 +178,16 @@ test("firstAfter：第一颗 t 严格大于 sec 的下标（二分）", () => {
   assert.equal(Core.firstAfter(notes, 99), 5);
 });
 
+test("firstAtOrAfter：第一颗 t ≥ sec 的下标（同刻那颗还没过）", () => {
+  const notes = [0, 1, 1, 2, 5].map((t) => ({ t }));
+  assert.equal(Core.firstAtOrAfter(notes, -1), 0);
+  assert.equal(Core.firstAtOrAfter(notes, 0), 0);   // 与 firstAfter 的唯一区别就在同刻
+  assert.equal(Core.firstAtOrAfter(notes, 1), 1);   // 窗口起点那一颗要算进来
+  assert.equal(Core.firstAtOrAfter(notes, 1.5), 3);
+  assert.equal(Core.firstAtOrAfter(notes, 99), 5);
+  assert.equal(Core.firstAtOrAfter([], 0), 0);
+});
+
 const FLASH = 0.14;
 
 /** 旧版 rebuildVisualState 的「每帧扫完整谱面」实现，留着当参照物 */

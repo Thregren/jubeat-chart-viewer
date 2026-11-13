@@ -5,12 +5,16 @@ const { pipeline } = require("node:stream");
 const fs = require("node:fs");
 const path = require("node:path");
 
+// 和安卓 LocalServer.MIME 是同一张表：两端各自内联（不想为它引入构建期代码生成），
+// 但键集合必须完全一致，否则同一个文件在两端 Content-Type 不同。
+// 以前桌面多 .caf/.webm、安卓多 .txt，现在并集：22 个键。
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -73,12 +77,46 @@ function parseRange(header, size) {
   return end < start ? null : [start, end];
 }
 
-// 每个响应都带的头（和 Python 开发服务器 / nginx 那份配置保持一致的口径）
+/**
+ * 每个响应都带的头（和 Python 开发服务器 / nginx 那份配置保持一致的口径）。
+ *
+ * CSP 与 deploy/security-headers.conf 逐条同序，只去掉 upgrade-insecure-requests
+ * （这里就是明文回环，升级没意义）并保留 media-src 的 blob: —— 前端
+ * app-player.js 把已下载音源包成 blob 复用（保音调变速），少了它播放会哑。
+ * 别顺手加 img-src 的 data:：前端没有任何 data: 图片，多放开一条就是白送的注入面。
+ * index.html 本身零内联 script / 零 style 属性，所以不需要 'unsafe-inline'。
+ * 这条串被 tools/test_cache_headers.py 钉住，改一端就得改四方。
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self'",
+  "media-src 'self' blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'self'",
+  "form-action 'none'",
+].join("; ");
+
 const BASE_HEADERS = {
+  "Content-Security-Policy": CSP,
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
   "X-Frame-Options": "SAMEORIGIN",
 };
+
+/** 错误响应也要带全公共头（以前 400/403/404 有几条是裸奔的）。 */
+function fail(res, code, body, extra = null) {
+  if (res.destroyed || res.writableEnded) return;
+  res.writeHead(code, {
+    ...BASE_HEADERS,
+    "Content-Type": "text/plain; charset=utf-8",
+    ...(extra || {}),
+  }).end(body);
+}
 
 /**
  * 缓存策略按资源类型对齐 Python 开发服务器 server.py，四类资源在四端必须一致
@@ -145,41 +183,29 @@ function serve(rootDir) {
     const hosts = req.rawHeaders.filter((_, i) => i % 2 === 0 && req.rawHeaders[i].toLowerCase() === "host");
     if (hosts.length !== 1 || req.headers.host !== expectedHost ||
         (req.headers.origin != null && req.headers.origin !== `http://${expectedHost}`)) {
-      res.writeHead(403, { ...BASE_HEADERS, "Connection": "close" }).end("forbidden"); return;
+      return fail(res, 403, "forbidden", { "Connection": "close" });
     }
     if (req.method !== "GET" && req.method !== "HEAD") {
-      res.writeHead(405, { ...BASE_HEADERS, "Allow": "GET, HEAD" }).end(); return;
+      return fail(res, 405, "", { "Allow": "GET, HEAD" });
     }
     let rel;
     try {
       rel = decodeURIComponent(new URL(req.url, "http://127.0.0.1").pathname);
     } catch {
-      res.writeHead(400).end("bad request");
-      return;
+      return fail(res, 400, "bad request");
     }
     // fs.realpath throws synchronously on NUL instead of reporting an error to
     // its callback; reject it before any filesystem operation.
-    if (rel.includes("\0")) {
-      res.writeHead(400, BASE_HEADERS).end("bad request");
-      return;
-    }
+    if (rel.includes("\0")) return fail(res, 400, "bad request");
     if (rel === "/" || rel === "") rel = "/index.html";
     const target = resolveSafe(root, rel);
-    if (!target) {
-      res.writeHead(403).end("forbidden");
-      return;
-    }
+    if (!target) return fail(res, 403, "forbidden");
     fs.realpath(target, (pathError, resolved) => {
-      if (pathError) { res.writeHead(404).end("404"); return; }
+      if (pathError) return fail(res, 404, "404");
       const relative = path.relative(root, resolved);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) {
-        res.writeHead(403).end("forbidden"); return;
-      }
+      if (relative.startsWith("..") || path.isAbsolute(relative)) return fail(res, 403, "forbidden");
     fs.stat(resolved, (err, stat) => {
-      if (err || !stat.isFile()) {
-        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...BASE_HEADERS }).end("404");
-        return;
-      }
+      if (err || !stat.isFile()) return fail(res, 404, "404");
       const type = MIME[path.extname(target).toLowerCase()] || "application/octet-stream";
       const headers = {
         ...BASE_HEADERS,

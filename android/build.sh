@@ -39,17 +39,33 @@ KEYTOOL="$JAVA_HOME/bin/keytool"
 KS="$HERE/keystore/jubeat-release.jks"
 KS_ALIAS="${KS_ALIAS:-jubeat}"
 KS_PASS_FILE="${KS_PASS_FILE:-$HERE/keystore/.password}"
+# 口令只从「环境变量」或「0600 文件」两处读，源码里不留任何字面量：
+# keystore 一旦随备份/误提交外泄，口令就是唯一还站得住的第二道防线。
 if [ -z "${KS_PASS:-}" ]; then
   if [ -f "$KS_PASS_FILE" ]; then
     KS_PASS="$(cat "$KS_PASS_FILE")"
   elif [ -f "$KS" ]; then
-    # 兼容早期脚本生成的本地密钥。
-    KS_PASS=jubeatviewer
+    cat >&2 <<EOF
+已有密钥库但找不到口令文件，拒绝用猜的口令签名（旧脚本里那个硬编码回退已删除）：
+
+  $KS
+
+二选一：
+  1) 把当时的口令写进 $KS_PASS_FILE（chmod 600），或
+  2) KS_PASS='…' android/build.sh
+口令确实丢了就只能删掉 keystore 重新生成——代价是已安装版本无法覆盖升级。
+EOF
+    exit 1
   else
     mkdir -p "$(dirname "$KS_PASS_FILE")"
     ( umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > "$KS_PASS_FILE" )
     KS_PASS="$(cat "$KS_PASS_FILE")"
   fi
+fi
+
+# 口令文件不该让同机其他用户读到（历史上可能是手工创建的，顺手收一下权限）
+if [ -f "$KS_PASS_FILE" ]; then
+  chmod 600 "$KS_PASS_FILE" 2>/dev/null || true
 fi
 
 NAME="jubeat-viewer-$VERSION-android-min"

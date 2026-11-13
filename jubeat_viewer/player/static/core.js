@@ -304,19 +304,35 @@
   }
 
   /**
-   * notes 里第一颗 t 严格大于 sec 的下标（notes 已按 t 排好）。
-   * 也就是「到这一刻为止已经过去的 note 数」。整支谱面上千颗音，
-   * 线性扫一遍是 O(n)，播放/拖动时每帧都做的话太亏 → 二分。
+   * notes 里第一颗「已经过了 sec」的下标（二分，notes 已按 t 排好）。
+   *
+   * 只有一处比较阈值：strict = true 时「t == sec 也算过了」（firstAfter），
+   * false 时「t == sec 还没过」（firstAtOrAfter）。以前三个文件各写一遍这个循环，
+   * 而且条件一个用 `<`、一个用 `<=`，改一处口径就会悄悄漂移 —— 所以只留这一份。
    */
-  function firstAfter(notes, sec) {
+  function firstIndexPast(notes, sec, strict) {
     let lo = 0;
     let hi = notes.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (notes[mid].t <= sec) lo = mid + 1;
+      if (strict ? notes[mid].t <= sec : notes[mid].t < sec) lo = mid + 1;
       else hi = mid;
     }
     return lo;
+  }
+
+  /**
+   * notes 里第一颗 t 严格大于 sec 的下标。
+   * 也就是「到这一刻为止已经过去的 note 数」。整支谱面上千颗音，
+   * 线性扫一遍是 O(n)，播放/拖动时每帧都做的话太亏 → 二分。
+   */
+  function firstAfter(notes, sec) {
+    return firstIndexPast(notes, sec, true);
+  }
+
+  /** notes 里第一颗 t ≥ sec 的下标（t == sec 的那颗「还没过」） */
+  function firstAtOrAfter(notes, sec) {
+    return firstIndexPast(notes, sec, false);
   }
 
   /** 升序数组里「≤ sec 的元素有几个」（二分） */
@@ -515,6 +531,7 @@
     formatBpm,
     pickChart,
     firstAfter,
+    firstAtOrAfter,
     countPassed,
     rebuildNoteStates,
     noteStateAt,

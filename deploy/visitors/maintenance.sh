@@ -1,5 +1,11 @@
 #!/bin/sh
-# Daily private-maintenance entry point. Keep this file outside the public route.
+# Private-maintenance entry point. Keep this file outside the public route.
+#
+#   maintenance.sh          daily: flush + retention + backup + report
+#   maintenance.sh flush    outbox drain only; run from cron every minute
+#
+# The HTTP endpoint no longer exports JSONL, so the log lags behind SQLite by at
+# most one cron interval. Events are durable in the events table until flushed.
 set -eu
 
 ROOT="${VISITOR_STATS_ROOT:?VISITOR_STATS_ROOT is required}"
@@ -11,6 +17,12 @@ RETENTION_DAYS="${VISITOR_STATS_RETENTION_DAYS:-90}"
 BACKUP_KEEP="${VISITOR_STATS_BACKUP_KEEP:-7}"
 
 umask 077
+
+if [ "${1:-}" = "flush" ]; then
+  # Export-only: no retention, no backup, no report.
+  exec "$PHP_BIN" "$ROOT/maintenance.php" --root "$ROOT" --flush
+fi
+
 "$PHP_BIN" "$ROOT/maintenance.php" \
   --root "$ROOT" \
   --retention-days "$RETENTION_DAYS" \

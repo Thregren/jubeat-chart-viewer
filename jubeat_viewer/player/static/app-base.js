@@ -25,6 +25,17 @@
 
   const $ = (sel) => document.querySelector(sel);
 
+  /**
+   * 启动参数只解析一次。
+   *
+   * location.search 在整页生命周期里不会变（改了只能整页重载），而 ?t= / ?chart= /
+   * ?play= / ?rec= / ?debug= / ?pg= / ?pn= / ?media= / ?outms= 这些键分散在
+   * app-render / app-player / app-marker / app-wiring 里，以前各 new 一次
+   * URLSearchParams（app-render 一个文件就连续三次）。这里统一导出实例，各处读字段。
+   * record.js 早于本层加载，仍保留它自己那一次解析。
+   */
+  const QUERY = new URLSearchParams(location.search);
+
   // 纯逻辑（谱面解析 / 顺序数字 / 难度匹配）在 core.js：node 可测，这里只薄封装
   const Core = window.JubeatCore || {};
 
@@ -144,6 +155,19 @@
     throw new Error(msg);
   }
 
+  /**
+   * 面板「已经提交到 DOM 的状态」的初始值。
+   * 结构只有这一份：state 初始化用它，渲染层的兜底重建（paintFrame）也用它，
+   * 以前两处各抄一遍，加一个反馈通道就得记得改两个地方。
+   */
+  function newPadVisual() {
+    return {
+      hit: new Array(16).fill(false),
+      armed: new Array(16).fill(false),
+      panelGlow: false,
+    };
+  }
+
   const state = {
     songs: [],
     song: null,
@@ -158,11 +182,7 @@
     hitUntil: new Array(16).fill(-1),
     armed: new Array(16).fill(false),
     // 面板当前已经提交到 DOM 的状态；渲染时只在值变化时才碰 classList。
-    padVisual: {
-      hit: new Array(16).fill(false),
-      armed: new Array(16).fill(false),
-      panelGlow: false,
-    },
+    padVisual: newPadVisual(),
     combo: 0,
     maxCombo: 0,
     chartCache: new Map(),
@@ -226,6 +246,16 @@
   const normalizeHexColor = (v) => {
     const m = /^#?([0-9a-f]{6})$/i.exec(String(v == null ? "" : v).trim());
     return m ? `#${m[1].toLowerCase()}` : DEFAULT_NUM_COLOR;
+  };
+  /**
+   * `#rrggbb` → "r,g,b"（拼 `rgba(${rgb}, a)` 用）。
+   * 正则 / 兜底都走 normalizeHexColor：以前 app-marker 里另有一份 hexRgb，同一个正则、
+   * 两套兜底色，改一处另一处不会跟着变。引用最广的同押光晕配色全部落在 GLOW_PAIRS 里
+   * （合法 #rrggbb），所以兜底只在脏输入时才起作用。
+   */
+  const hexRgb = (v) => {
+    const n = parseInt(normalizeHexColor(v).slice(1), 16);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
   };
   /** 同押高亮样式：只认三个枚举值，别的（老缓存 / 手改）一律当默认的「光晕」 */
   const normalizeChordStyle = (v) => (v === "glow" || v === "frame" || v === "both" ? v : DEFAULT_CHORD_STYLE);
@@ -555,11 +585,13 @@
   // —— 对外接口 ——
   Object.assign(A, {
     Core,
+    QUERY,
     el,
     assertEls,
     frontVersion,
     els,
     state,
+    newPadVisual,
     DEFAULT_MARKER_DESIGN,
     markerCfg,
     numCfg,
@@ -567,6 +599,7 @@
     clampNumAlpha,
     clampNumGlowAlpha,
     normalizeHexColor,
+    hexRgb,
     normalizeChordStyle,
     abLoop,
     STORAGE,

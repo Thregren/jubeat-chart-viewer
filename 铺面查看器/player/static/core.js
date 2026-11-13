@@ -192,6 +192,28 @@
     return min === max ? String(min) : `${min}–${max}`;
   }
 
+  /**
+   * 这颗 note 是否落在 16 分或更密的节奏位置。
+   *
+   * 判定看谱面原始拍位，不看与上一颗 note 的时间间隔，所以 BPM 变化、播放倍速和
+   * 同押都不会影响结果。四分 / 八分位置虽然也能被 16 分网格整除，但它们已经有
+   * 更粗的归属，必须保留普通音；只有不在八分网格上的位置才进入 16 分档。
+   * 因此 1/4 拍（16 分）、1/8 拍（32 分）、1/3 拍（三连音）都算密集档。
+   */
+  function isSixteenthOrFiner(beat) {
+    const value = Number(beat);
+    if (!Number.isFinite(value)) return false;
+    const eighth = value * 2;
+    return Math.abs(eighth - Math.round(eighth)) >= 1e-6;
+  }
+
+  /** 按键音档位：只有三档（同押 > 16 分及更密 > 普通），不再有按拍位交替的重音。 */
+  function hitSoundKind(beat, { chord = false, chordSound = false } = {}) {
+    if (chord && chordSound) return "chord";
+    if (isSixteenthOrFiner(beat)) return "sixteenth";
+    return "normal";
+  }
+
   /** .mc 谱面 JSON → note 列表 + 时间轴工具 */
   function parseNotes(chart, opts = {}) {
     const timeEvents = (chart.time || []).map((e) => ({ beat: e.beat, bpm: e.bpm }));
@@ -486,6 +508,8 @@
     RHYTHM_COLORS,
     beatToFloat,
     buildTimeMap,
+    isSixteenthOrFiner,
+    hitSoundKind,
     numberNotes,
     parseNotes,
     formatBpm,

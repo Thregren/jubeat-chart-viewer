@@ -28,6 +28,61 @@ test("beatToFloat / buildTimeMap：拍号与 BPM 变化", () => {
   assert.equal(map.bpmAt(4.5), 120);
 });
 
+test("按键音档位 v3：只返回 normal / sixteenth / chord，永不返回 accent", () => {
+  // normal：整数拍、小节第一拍、八分位、浮点误差、NaN（旧版的「小节重音」档已删除）
+  for (const beat of [0, 1, 0.5, 4, 0.5000000001, NaN]) {
+    assert.equal(Core.hitSoundKind(beat), "normal", `beat=${beat} 应为 normal`);
+  }
+  // sixteenth：16 分及更密，判定规则（isSixteenthOrFiner）完全不变
+  for (const beat of [0.25, 0.125, 1 / 3, 4.25]) {
+    assert.equal(Core.hitSoundKind(beat), "sixteenth", `beat=${beat} 应为 sixteenth`);
+  }
+  // 显式断言：任何拍位 / 任何开关组合都不得再返回 accent，且只落在三档合法值里
+  const allowed = new Set(["normal", "sixteenth", "chord"]);
+  for (const beat of [0, 0.25, 0.5, 1, 4, 4.25, 0.125, 1 / 3, NaN, 0.5000000001]) {
+    for (const opts of [undefined, { chord: false }, { chord: true },
+      { chord: true, chordSound: false }, { chord: true, chordSound: true }]) {
+      const kind = Core.hitSoundKind(beat, opts);
+      assert.notEqual(kind, "accent",
+        `beat=${beat} ${JSON.stringify(opts)} 不得返回 accent`);
+      assert.ok(allowed.has(kind), `beat=${beat} 返回值 ${kind} 不在三档合法值内`);
+    }
+  }
+});
+
+test("按键音档位 v3：同押开关打开恒为 chord，关闭时沿用节奏档", () => {
+  // chord && chordSound 打开时，无论拍位（含 16 分 / 原重音位）都返回 chord
+  for (const beat of [0, 0.25, 0.5, 1, 4, 4.25, 0.125, 1 / 3]) {
+    assert.equal(Core.hitSoundKind(beat, { chord: true, chordSound: true }), "chord",
+      `beat=${beat} 同押开关打开应为 chord`);
+  }
+  // chord 为真但开关关闭：保持节奏档（16 分位仍 sixteenth，整数 / 八分位仍 normal）
+  assert.equal(Core.hitSoundKind(0.25, { chord: true, chordSound: false }), "sixteenth");
+  assert.equal(Core.hitSoundKind(0.25, { chord: true }), "sixteenth");
+  assert.equal(Core.hitSoundKind(0.125, { chord: true }), "sixteenth");
+  assert.equal(Core.hitSoundKind(4.25, { chord: true }), "sixteenth");
+  for (const beat of [0, 1, 0.5, 4, 0.5000000001, NaN]) {
+    assert.equal(Core.hitSoundKind(beat, { chord: true, chordSound: false }), "normal",
+      `beat=${beat} 同押开关关闭应保持 normal`);
+  }
+  // 没有同押（chord=false）时开关也不起作用
+  assert.equal(Core.hitSoundKind(0.25, { chord: false, chordSound: true }), "sixteenth");
+  assert.equal(Core.hitSoundKind(0, { chord: false, chordSound: true }), "normal");
+});
+
+test("parseNotes 保留原始拍位，变速谱的 16 分档不受 BPM 变化影响", () => {
+  const parsed = Core.parseNotes({
+    time: [{ beat: [0, 0, 1], bpm: 60 }, { beat: [4, 0, 1], bpm: 240 }],
+    note: [
+      { beat: [1, 1, 4], index: 0 },  // 1.25 拍：16 分
+      { beat: [5, 1, 2], index: 1 },  // 5.5 拍：八分
+    ],
+  });
+  assert.equal(parsed.notes[0].beat, 1.25);
+  assert.equal(Core.hitSoundKind(parsed.notes[0].beat), "sixteenth");
+  assert.equal(Core.hitSoundKind(parsed.notes[1].beat), "normal");
+});
+
 test("长押：endindex 是尾巴方向，不是第二条 note（phantom 回归）", () => {
   const parsed = Core.parseNotes(CHART([
     { beat: [0, 0, 1], index: 12, endbeat: [1, 0, 1], endindex: 14 },

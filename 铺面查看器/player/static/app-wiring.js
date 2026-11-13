@@ -128,11 +128,18 @@
       els.metroSound.addEventListener("change", () => {
         store(STORAGE.metroSound, els.metroSound.value);
         A.prepareSfx({ unlock: true, retry: true });
-        if (els.metroSound.value) A.previewSfx(); // 试听；采样音等待加载完成
+        if (els.metroSound.value) A.previewSfx(); // 切换音色试听默认 normal 档
       });
       els.metroVolume.addEventListener("change", () => {
         store(STORAGE.metroVolume, els.metroVolume.value);
         A.prepareSfx({ unlock: true });
+      });
+      // 分享页是早期生成的静态页，没有这个后加的控件；用可选链跳过，
+      // 否则整段 bindEvents 会在分享页中途抛错，后面的控件全部绑不上。
+      els.chordSound?.addEventListener("change", () => {
+        store(STORAGE.chordSound, els.chordSound.checked ? "1" : "0");
+        A.prepareSfx({ unlock: true, retry: true });
+        if (els.chordSound.checked && els.metroSound.value) A.previewSfx("chord");
       });
       els.showCombo.addEventListener("change", () => {
         store(STORAGE.showCombo, els.showCombo.checked ? "1" : "0");
@@ -224,6 +231,7 @@
         autoPreview: store(STORAGE.autoPreview),
         metroSound: store(STORAGE.metroSound),
         metroVolume: store(STORAGE.metroVolume),
+        chordSound: store(STORAGE.chordSound),
         showCombo: store(STORAGE.showCombo),
         firstMarker: store(STORAGE.firstMarker),
         showNumbers: store(STORAGE.showNumbers),
@@ -246,8 +254,27 @@
         holdFilter: store(STORAGE.holdFilter),
       };
       els.autoPreview.checked = !window.__recActive && saved.autoPreview === "1";
-      if (saved.metroSound != null) restoreSelectValue(els.metroSound, saved.metroSound);
+      // v5 已删除「拍手」组：旧值 clap、更早的 billy / nyan 以及手改过的其它非法值
+      // 统一迁移为 "click"（点击）并写回，避免升级后下拉框落到「关」、音效突然静音。
+      // 必须先迁移再 restoreSelectValue —— 后者只在 option 存在时才赋值，传脏值会什么都不做。
+      let metroSound = saved.metroSound;
+      if (metroSound != null && !["", "click", "taiko"].includes(metroSound)) {
+        metroSound = "click";
+        store(STORAGE.metroSound, "click");
+      }
+      if (metroSound != null) restoreSelectValue(els.metroSound, metroSound);
       els.metroVolume.value = String(window.JubeatCore.soundEffectVolume(saved.metroVolume));
+      // 设置版本 9：「同押独立音效」改为默认打开。老浏览器存着的 "0" 几乎都是旧默认值
+      // （用户从没动过这个开关），只清一次让新默认露出来；之后照旧记住用户的选择。
+      const savedSettingsVersion = Number(store(STORAGE.settingsVersion)) || 0;
+      const useChordSoundDefault = savedSettingsVersion < 9;
+      if (useChordSoundDefault) {
+        try { localStorage.removeItem(STORAGE.chordSound); } catch (_) { /* 存不了就算了 */ }
+      }
+      if (els.chordSound) {
+        els.chordSound.checked = (useChordSoundDefault || saved.chordSound == null)
+          ? true : saved.chordSound === "1";
+      }
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
       // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
       // 设置版本 4：marker 默认动画速度改为 0.8×。
@@ -260,7 +287,7 @@
       //            没有历史包袱，缺省就是「光晕」，不需要清任何旧值。
       // 设置版本 8：「序号放右下角」改为默认打开（角落里不挡 marker 动画）。存着的值
       //            多半是旧默认「居中」——用户根本没动过，只清一次让新默认露出来。
-      const savedSettingsVersion = Number(store(STORAGE.settingsVersion)) || 0;
+      // 设置版本 9：「同押独立音效」改为默认打开（见上面 chordSound 那一段）。
       const useComboDefaults = savedSettingsVersion < 2;
       const useCornerDefault = savedSettingsVersion < 8;
       if (savedSettingsVersion < 5) {
@@ -283,7 +310,7 @@
       if (useCornerDefault) {
         try { localStorage.removeItem(STORAGE.numCorner); } catch (_) { /* 存不了就算了 */ }
       }
-      store(STORAGE.settingsVersion, "8");
+      store(STORAGE.settingsVersion, "9");
       if (!useComboDefaults) {
         if (saved.showCombo != null) els.showCombo.checked = saved.showCombo === "1";
         if (saved.showNumbers != null) els.showNumbers.checked = saved.showNumbers === "1";

@@ -48,6 +48,7 @@
     chordGlowStyle: "frame",              // 同押高亮样式：加粗面板框
     chordGlowPair: "4",                   // 高亮配色：天蓝 / 玫红（GLOW_PAIRS[4]）
     metroSound: "",                       // 录制页不出声：音轨由录制脚本离线合成
+    chordSound: "0",                    // 离线合成沿用普通 / 16 分 / 同押三档
     collapsed: "1",
   };
   try {
@@ -169,29 +170,29 @@
   /**
    * 本段录制需要的全部信息。
    *
-   * hits 里每个 note 带 accent —— 判定规则和播放器里的打点音一致（整数拍且 4 的倍数
-   * 是「咚」，其余是「咔」），离线合成音轨时直接照抄，不用自己再推一遍拍位。
-   * 同押（同一时刻一起按的一批）只出一发，和播放器一致：不然 4 押会叠 4 下。
+   * hits 里每批 note 带完整按键音档位 kind（normal / sixteenth / chord 三档），
+   * 判定规则和播放器共用 core.hitSoundKind；a 字段保留以兼容旧离线合成脚本，
+   * 恒为 0（不再有重音档）。同押只出一发，不然 4 押会叠 4 下。
    */
   function info() {
     const player = window.__player;
     const state = player.state;
-    const parsed = state._parsed;
     const rect = cardEl
       ? cardEl.getBoundingClientRect()
       : { left: 0, top: 0, width: CARD_W, height: CARD_H };
 
     const hits = [];
     let lastT = -Infinity;
+    const Core = window.JubeatCore;
     for (const note of state.notes) {
       if (note.t - lastT < 1e-4) continue;      // 同一批同押，只留一发（阈值同 core.numberNotes）
       lastT = note.t;
-      let accent = false;
-      if (parsed && parsed.secToBeat) {
-        const beat = parsed.secToBeat(note.t);
-        accent = Math.abs(beat - Math.round(beat)) < 1e-6 && Math.round(beat) % 4 === 0;
-      }
-      hits.push({ t: note.t, a: accent ? 1 : 0 });
+      const chord = note.groupSize > 1;
+      const kind = Core.hitSoundKind(note.beat, {
+        chord,
+        chordSound: !!player.els?.chordSound?.checked,
+      });
+      hits.push({ t: note.t, a: 0, kind });
     }
 
     const song = state.song || {};

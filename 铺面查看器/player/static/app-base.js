@@ -74,6 +74,7 @@
     markerHint: $("#markerHint"),
     metroSound: $("#metroSound"),
     metroVolume: $("#metroVolume"),
+    chordSound: $("#chordSound"),
     showCombo: $("#showCombo"),
     firstMarker: $("#firstMarker"),
     showNumbers: $("#showNumbers"),
@@ -126,7 +127,9 @@
   };
 
   // 允许缺失的元素：真的可以没有（缺了只是少一个装饰），不算「版本对不上」。
-  const OPTIONAL_ELS = new Set(["glowPairChips", "markerHint"]);
+  // 分享页是构建时生成的静态快照，后加的控件不会出现在里面（重建分享页之前）。
+  // 这个必须算可选：否则 assertEls() 会在分享页启动阶段直接抛错、整页白屏。
+  const OPTIONAL_ELS = new Set(["glowPairChips", "markerHint", "chordSound"]);
 
   /**
    * 启动自检：els 里的 #id 只要有一个在 index.html 里找不到（改名 / 少写了一个），
@@ -238,6 +241,7 @@
     marker: "jubeat.marker",   // 选中的 marker 设计 id（如 tm0001）
     metroSound: "jubeat.metroSound",
     metroVolume: "jubeat.metroVolume",
+    chordSound: "jubeat.chordSound",
     showCombo: "jubeat.showCombo",
     firstMarker: "jubeat.firstMarker",
     showNumbers: "jubeat.showNumbers",

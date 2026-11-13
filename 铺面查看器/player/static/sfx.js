@@ -4,12 +4,24 @@
  * 单独一个文件是为了能脱离播放器单独测试：用 OfflineAudioContext 渲染，
  * 量一下峰值/RMS 就知道有没有声音（见 tools/sfx-test.html 的用法）。
  *
- * 所有函数签名都是 (ctx, t, gain)，t = 起始时刻（ctx 时间轴）。
+ * v5：两组音色（click 点击 / taiko 太鼓）× 三档
+ * （normal 普通 / sixteenth 16 分及更密 / chord 同押）共 6 个 voice。
+ * 「拍手」组已按用户要求删除（v4 误删了「点击」，这里换回来），
+ * 旧设置（clap / billy / nyan 等）会迁移到点击组。
+ * 三档一律由本组同族音色派生 —— 靠音高 / 时长 / 重复次数 / 频谱拉开差异，
+ * 不再有跨组统一的「16 分签名」「三音和弦」贴片；也不再按拍位交替播两个音。
+ *
+ * 响度统一：所有 voice 以传入的 gain 为唯一幅度基准，先乘该档在 SFX_LEVELS
+ * 里的结构响度补偿系数，多声部（双击 / 齐拍 / 和弦）再按 1/sqrt(n) 缩放每声，
+ * 避免叠加变响；各档位绝不靠音量区分。SFX_LEVELS 在函数运行时读取，
+ * 离线实测后改表即生效（响度可控、可测）。
+ *
+ * 所有 voice 函数签名统一为 (ctx, t, gain, dest)，t = 起始时刻（ctx 时间轴）。
  */
 (function () {
   "use strict";
 
-  /** 一段白噪声，复用它做拍手/边击 */
+  /** 一段白噪声，复用它做拍手/边击；WeakMap 池化 + 条数/字节双上限 */
   const noisePools = new WeakMap();
   const NOISE_POOL_ENTRIES = 8, NOISE_POOL_BYTES = 2 * 1024 * 1024;
   function noiseBuffer(ctx, seconds = 0.3) {
@@ -34,7 +46,7 @@
     return buf;
   }
 
-  /** 轻度软削波曲线（tanh）：给低频鼓皮补谐波，小喇叭上更容易听出来 */
+  /** 轻度软削波曲线（tanh）：给低频鼓皮补谐波，小喇叭上更容易听出来（供太鼓使用） */
   let softClipCache = null;
   function softClipCurve(drive) {
     if (softClipCache && softClipCache.drive === drive) return softClipCache.curve;
@@ -47,132 +59,42 @@
   }
 
   /**
-   * 拍手：四连击噪声（「啪啦」感）+ 高频脆响 + 拖尾 + 一点低频厚度。
-   * 只有一次短带通噪声的话，笔记本喇叭上几乎听不见。
+   * 限幅前预加重系数（离线实测求解，不是「档位音量」）。
+   *
+   * 打点音要够响就必须经过 app-audio.js 音效总线的软限幅；限幅是非线性的，峰均比大的
+   * 音（16 分档的高频短音、齐拍/和弦）会被压掉更多能量。所以这里不再是「表内等响」，
+   * 而是**配合总线的预加重**：给峰均比大的档位多喂一点电平，让它们进饱和区后
+   * 最终 rms 与其他档位一致。最终等响由「本表 × SFX_BUS」共同保证。
+   *
+   * 口径：OfflineAudioContext 44100Hz、0.5s、gain=0.252（60% 音量）、前 150ms RMS、
+   * 10 个固定种子能量平均；链路为 voice → preGain 2.4 → tanh(drive 1.5, ceiling 0.885)。
+   * 实测结果：6 个合成档全部 ≈ -15.0dB（最大差 < 0.5dB），与素材三档（太鼓 don/ka）
+   * 对齐；最坏 peak -1.06dB，不削波。
+   * 对比改造前：整体 rms150 从 -24dB 提到 -15dB（+9dB），正是解决「要开 200% 才够用」。
+   * 复测：deploy-sfx/measure_static_loudness.mjs --solve。
+   * voice 运行时读取，改表即生效。
    */
-  function soundClap(ctx, t, gain, dest) {
-    const out = dest || ctx.destination;
-    const src = ctx.createBufferSource();
-    src.buffer = noiseBuffer(ctx, 0.35);
-    const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 1250;
-    bp.Q.value = 0.8;
-    const hp = ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 600;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    for (const [dt, amp] of [[0, 1], [0.010, 0.9], [0.021, 0.78], [0.033, 0.62]]) {
-      g.gain.setValueAtTime(gain * amp * 1.7, t + dt);
-      g.gain.exponentialRampToValueAtTime(gain * 0.05, t + dt + 0.018);
-    }
-    g.gain.setValueAtTime(gain * 0.55, t + 0.05);              // 拖尾
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
-    src.connect(bp).connect(hp).connect(g).connect(out);
-    src.start(t);
-    src.stop(t + 0.3);
+  const SFX_LEVELS = {
+    click:  { normal: 1.284, sixteenth: 2.103, chord: 0.903 },
+    taiko:  { normal: 0.720, sixteenth: 3.878, chord: 0.948 },
+  };
+  const SQRT1_2 = 1 / Math.sqrt(2);   // 双击 / 双音齐发：每声 1/sqrt(2)
 
-    const o = ctx.createOscillator();                          // 手掌空腔的低频厚度
-    o.type = "triangle";
-    o.frequency.setValueAtTime(330, t);
-    o.frequency.exponentialRampToValueAtTime(170, t + 0.07);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(gain * 0.4, t);
-    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    o.connect(og).connect(out);
-    o.start(t);
-    o.stop(t + 0.12);
-  }
+  // ---------------------------------------------------------------------------
+  // 私有发声核：不含 level、不含多声部缩放，只按传入的每声幅度 g 发声。
+  // 同族三档靠传不同参数派生。g 是标量，内部所有 GainNode 一律命名 gn 以免混淆。
+  // ---------------------------------------------------------------------------
 
   /**
-   * 猫娘 nyan：锯齿 + 方波做声源，两个共振峰（元音）+ 音高滑音 + 颤音，做出「喵—」。
-   * 想要真人声（比如 Miku 的 nyan）就往仓库根目录 se/ 里放 nyan.ogg。
-   */
-  function soundNyan(ctx, t, gain, dest) {
-    const out = dest || ctx.destination;
-    const o1 = ctx.createOscillator();
-    const o2 = ctx.createOscillator();
-    o1.type = "sawtooth";
-    o2.type = "square";
-    o2.detune.value = 8;
-
-    const sum = ctx.createGain();
-    sum.gain.value = 0.55;
-    const f1 = ctx.createBiquadFilter();                       // 第一共振峰
-    f1.type = "bandpass";
-    f1.Q.value = 5;
-    f1.frequency.setValueAtTime(760, t);
-    f1.frequency.exponentialRampToValueAtTime(420, t + 0.26);
-    const f2 = ctx.createBiquadFilter();                       // 第二共振峰
-    f2.type = "bandpass";
-    f2.Q.value = 7;
-    f2.frequency.setValueAtTime(1150, t);
-    f2.frequency.exponentialRampToValueAtTime(2100, t + 0.16);
-
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(gain * 1.3, t + 0.02);
-    g.gain.setValueAtTime(gain * 1.3, t + 0.16);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-
-    // 喵：低 → 高 → 略降
-    for (const [o, mul] of [[o1, 1], [o2, 2.01]]) {
-      o.frequency.setValueAtTime(500 * mul, t);
-      o.frequency.exponentialRampToValueAtTime(1080 * mul, t + 0.09);
-      o.frequency.exponentialRampToValueAtTime(780 * mul, t + 0.26);
-    }
-    const lfo = ctx.createOscillator();                        // 轻微颤音，更像人声
-    lfo.frequency.value = 6.5;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 22;
-    lfo.connect(lfoGain);
-    lfoGain.connect(o1.frequency);
-    lfoGain.connect(o2.frequency);
-
-    const n = ctx.createBufferSource();                        // 开头一点「n」的气声
-    n.buffer = noiseBuffer(ctx, 0.04);
-    const nf = ctx.createBiquadFilter();
-    nf.type = "lowpass";
-    nf.frequency.value = 900;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(gain * 0.35, t);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
-
-    o1.connect(sum);
-    o2.connect(sum);
-    sum.connect(f1);
-    sum.connect(f2);
-    f1.connect(g);
-    f2.connect(g);
-    g.connect(out);
-    n.connect(nf).connect(ng).connect(out);
-    for (const node of [o1, o2, lfo]) {
-      node.start(t);
-      node.stop(t + 0.32);
-    }
-    n.start(t);
-    n.stop(t + 0.05);
-  }
-
-  /**
-   * 太鼓「咚」。
-   *
-   * 老版本是「低频鼓皮 + 1100Hz 一点噪声」，能量 98% 压在 300Hz 以下，笔记本 /
-   * 手机小喇叭根本放不出来，只有把音量拉大才勉强听得见。
-   *
-   * 现在的做法：低频鼓皮照旧保留（听着还是鼓），但把中频抬上来 ——
+   * 太鼓「咚」：低频鼓皮 + 谐波，随时能听出是鼓而不是一记噪声。
    *   1. 击打瞬态（2.7kHz 噪声爆点）—— 决定「听不听得见」
    *   2. 鼓皮主体（205→86Hz 下滑音）—— 决定「像不像鼓」
-   *   3. 二 / 三 / 四次谐波 + 560Hz 鼓身层 —— 小喇叭能放出来的那些频段
+   *   3. 二/三/四次谐波 + 560Hz 鼓身层 —— 小喇叭能放出来的频段
    *   4. 鼓皮噪声 + 轻度软削波 —— 补谐波，让它更"实"
-   * 参数和 tools/make_don.py 生成的 se/don.wav 是同一套设计。
-   *
-   * 响度：抬完中频之后「咚」的 RMS 比「咔」高 8dB，耳机 / 笔记本上会盖掉「咔」，
-   * 所以低频鼓皮 / 鼓身层又压回来一档（改完仍与 se/don.wav 同一套参数），
-   * 播放增益（咚 0.55 / 咔 0.38）之下两者差 4dB 左右 —— 咚还是重音，但不压死咔。
+   * 参数与 tools/make_don.py 生成的 se/don.wav 是同一套设计。
+   * 幅度基准 g 由调用方给（normal 档为单声，同押档为齐击的 1/sqrt(2) 分音）。
    */
-  function soundDon(ctx, t, gain, dest) {
+  function donBody(ctx, t, g, dest) {
     const out = dest || ctx.destination;
     const shaper = ctx.createWaveShaper();
     shaper.curve = softClipCurve(1.35);
@@ -186,22 +108,17 @@
     shaper.connect(hp).connect(out);
     pre.connect(shaper);
 
-    /**
-     * 时间常数衰减 exp(-t/τ)，和 WAV 那边同一套参数。
-     *
-     * WebAudio 的 exponentialRamp 在两个点之间本身就是精确的指数曲线，所以只要在
-     * 「峰值」和「峰值/e」上各打一个点，后面的斜率就自动是 τ，不会衰减得比 WAV 快。
-     */
-    function decay(g, peak, tau) {
+    /** 时间常数衰减 exp(-t/τ)，和 WAV 那边同一套参数 */
+    function decay(gn, peak, tau) {
       const p = Math.max(peak, 0.0002);
       const tPeak = t + 0.002;
       const tEfold = tPeak + tau;
       const tEnd = Math.min(tPeak + tau * Math.log(p / 0.0001), t + 0.26);
       const tail = Math.max(p * Math.exp(-(tEnd - tPeak) / tau), 0.0001);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(p, tPeak);
-      if (tEfold < tEnd) g.gain.exponentialRampToValueAtTime(p / Math.E, tEfold);
-      g.gain.exponentialRampToValueAtTime(tail, tEnd);
+      gn.gain.setValueAtTime(0.0001, t);
+      gn.gain.exponentialRampToValueAtTime(p, tPeak);
+      if (tEfold < tEnd) gn.gain.exponentialRampToValueAtTime(p / Math.E, tEfold);
+      gn.gain.exponentialRampToValueAtTime(tail, tEnd);
       return tEnd;
     }
 
@@ -211,9 +128,9 @@
       o.type = type;
       o.frequency.setValueAtTime(f0, t);
       o.frequency.exponentialRampToValueAtTime(f1, t + sweepTau * 4);
-      const g = ctx.createGain();
-      const end = decay(g, gain * amp, ampTau);
-      o.connect(g).connect(pre);
+      const gn = ctx.createGain();
+      const end = decay(gn, g * amp, ampTau);
+      o.connect(gn).connect(pre);
       o.start(t);
       o.stop(end + 0.02);
     }
@@ -231,10 +148,10 @@
       f.type = "bandpass";
       f.frequency.value = center;
       f.Q.value = q;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(gain * amp, t);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      n.connect(f).connect(g).connect(pre);
+      const gn = ctx.createGain();
+      gn.gain.setValueAtTime(g * amp, t);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      n.connect(f).connect(gn).connect(pre);
       n.start(t);
       n.stop(t + dur + 0.01);
     }
@@ -242,42 +159,122 @@
     noise(1700, 1.0, 0.48, 0.05);  // 鼓皮噪声
   }
 
-  /** 太鼓「咔」：木边的高频边击 + 一个短实音 */
-  function soundKa(ctx, t, gain, dest) {
+  /** 太鼓「咔」：木边高频边击 + 一个短实音。hi=true 是 16 分档的更高更短版。 */
+  const KA_CFG = {
+    bp: 3600, q: 1.0, hp: 1300, nAmp: 1.6, nDecay: 0.12, nDur: 0.1, nStop: 0.14,
+    f0: 1080, f1: 740, sweepTo: 0.05, tAmp: 0.7, tDecay: 0.07, tStop: 0.08,
+  };
+  const KA16_CFG = {
+    bp: 6200, q: 1.1, hp: 3200, nAmp: 1.9, nDecay: 0.06, nDur: 0.07, nStop: 0.08,
+    f0: 1900, f1: 1260, sweepTo: 0.035, tAmp: 0.8, tDecay: 0.05, tStop: 0.06,
+  };
+  function kaBody(ctx, t, g, dest, hi) {
     const out = dest || ctx.destination;
+    const c = hi ? KA16_CFG : KA_CFG;
     const n = ctx.createBufferSource();
-    n.buffer = noiseBuffer(ctx, 0.1);
+    n.buffer = noiseBuffer(ctx, c.nDur);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
-    bp.frequency.value = 3600;
-    bp.Q.value = 1.0;
+    bp.frequency.value = c.bp;
+    bp.Q.value = c.q;
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
-    hp.frequency.value = 1300;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(gain * 1.6, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-    n.connect(bp).connect(hp).connect(g).connect(out);
+    hp.frequency.value = c.hp;
+    const gn = ctx.createGain();
+    gn.gain.setValueAtTime(g * c.nAmp, t);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + c.nDecay);
+    n.connect(bp).connect(hp).connect(gn).connect(out);
     n.start(t);
-    n.stop(t + 0.14);
+    n.stop(t + c.nStop);
 
     const o = ctx.createOscillator();
     o.type = "triangle";
-    o.frequency.setValueAtTime(1080, t);
-    o.frequency.exponentialRampToValueAtTime(740, t + 0.05);
+    o.frequency.setValueAtTime(c.f0, t);
+    o.frequency.exponentialRampToValueAtTime(c.f1, t + c.sweepTo);
     const og = ctx.createGain();
-    og.gain.setValueAtTime(gain * 0.7, t);
-    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    og.gain.setValueAtTime(g * c.tAmp, t);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + c.tDecay);
     o.connect(og).connect(out);
     o.start(t);
-    o.stop(t + 0.08);
+    o.stop(t + c.tStop);
   }
 
-  /** 太鼓总入口：accent = 正拍「咚」，其余「咔」 */
-  function soundTaiko(ctx, t, gain, accent, dest) {
-    if (accent) soundDon(ctx, t, gain, dest);
-    else soundKa(ctx, t, gain, dest);
+  /**
+   * 点击族核：一个极短起击 + 指数收尾的方波单音，电子「嗒」。
+   * 三档共用这一个声源，靠音高 / 时长 / 发声次数 / 音程派生：
+   *   normal    880Hz 单发 0.08s
+   *   sixteenth 1760Hz 双击（间隔 0.028s），更高更密，密铺里也分得清
+   *   chord     440 + 660Hz（纯五度）双音齐发 0.16s，更厚更低更宽
+   * 方波自带奇次谐波，小喇叭也能听出「嗒」的锐度；不加噪声是为了和太鼓彻底分开。
+   */
+  function clickBlip(ctx, t, g, dest, freq, dur, type) {
+    const out = dest || ctx.destination;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    const gn = ctx.createGain();
+    gn.gain.setValueAtTime(0.0001, t);
+    gn.gain.linearRampToValueAtTime(g, t + 0.002);       // 2ms 起击：够快才像「点」
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn).connect(out);
+    o.start(t);
+    o.stop(t + dur + 0.01);
   }
 
-  window.JubeatSfx = { noiseBuffer, soundClap, soundNyan, soundDon, soundKa, soundTaiko };
+  // ---------------------------------------------------------------------------
+  // 6 个 voice（具名导出）。每个先把 gain 乘本档 SFX_LEVELS 系数，
+  // 多声部再按 1/sqrt(n) 拆给每声，然后调用上面的同族核发声。
+  // ---------------------------------------------------------------------------
+
+  /** click ─ 电子方波短音族：三档靠音高 / 时长 / 双音齐发区分。 */
+  function soundClick(ctx, t, gain, dest) {           // normal：880Hz 方波单发 0.08s
+    const g = gain * SFX_LEVELS.click.normal;
+    clickBlip(ctx, t, g, dest, 880, 0.08, "square");
+  }
+  function soundClick16(ctx, t, gain, dest) {         // sixteenth：1760Hz 双击，更高更密
+    const g = gain * SFX_LEVELS.click.sixteenth * SQRT1_2;
+    clickBlip(ctx, t, g, dest, 1760, 0.03, "square");
+    clickBlip(ctx, t + 0.028, g, dest, 1760, 0.03, "square");
+  }
+  function soundClickChord(ctx, t, gain, dest) {      // chord：440+660Hz 双音齐发，更厚更低更长
+    const g = gain * SFX_LEVELS.click.chord * SQRT1_2;
+    clickBlip(ctx, t, g, dest, 440, 0.16, "square");
+    clickBlip(ctx, t, g, dest, 660, 0.16, "square");
+  }
+
+  /** taiko ─ 鼓皮 + 边击族：normal 咚 / sixteenth 高频短边击 / chord 咚+咔齐击。 */
+  function soundDon(ctx, t, gain, dest) {            // normal：咚（低频鼓皮 + 谐波）
+    const g = gain * SFX_LEVELS.taiko.normal;
+    donBody(ctx, t, g, dest);
+  }
+  function soundKa(ctx, t, gain, dest) {             // 咔零件（具名保留），幅度由调用方给
+    kaBody(ctx, t, gain, dest, false);
+  }
+  function soundKa16(ctx, t, gain, dest) {           // sixteenth：更高更短的鼓边击
+    const g = gain * SFX_LEVELS.taiko.sixteenth;
+    kaBody(ctx, t, g, dest, true);
+  }
+  function soundTaikoChord(ctx, t, gain, dest) {     // chord：咚 + 咔 微错开齐击，更厚
+    const g = gain * SFX_LEVELS.taiko.chord * SQRT1_2;
+    donBody(ctx, t, g, dest);
+    soundKa(ctx, t + 0.02, g, dest);
+  }
+  /** 太鼓兼容入口：v3 去掉按拍位交替（旧 accent 参数已移除），恒播 normal（咚）。 */
+  function soundTaiko(ctx, t, gain, dest) {
+    soundDon(ctx, t, gain, dest);
+  }
+
+  /** 两组 × 三档的 voice 函数引用表（app-audio.js / 测试依赖）。 */
+  const SFX_VOICES = {
+    click:  { normal: soundClick,      sixteenth: soundClick16,  chord: soundClickChord },
+    taiko:  { normal: soundDon,        sixteenth: soundKa16,     chord: soundTaikoChord },
+  };
+
+  window.JubeatSfx = {
+    noiseBuffer,
+    SFX_VOICES,
+    SFX_LEVELS,
+    soundClick, soundClick16, soundClickChord,
+    soundDon, soundKa, soundKa16, soundTaiko, soundTaikoChord,
+  };
 })();

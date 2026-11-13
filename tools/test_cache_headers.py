@@ -3,7 +3,7 @@
 
 同一个站点有四套后端会发 Cache-Control：
 
-  * Python 开发服务器  铺面查看器/player/server.py        （基准，只读）
+  * Python 开发服务器  jubeat_viewer/player/server.py        （基准，只读）
   * PHP 单文件入口      deploy/php/index.php
   * Electron 静态服务   electron/site-server.js
   * Android 静态服务    android/.../LocalServer.java
@@ -27,7 +27,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SOURCES = {
-    "python":   REPO / "铺面查看器" / "player" / "server.py",
+    "python":   REPO / "jubeat_viewer" / "player" / "server.py",
     "php":      REPO / "deploy" / "php" / "index.php",
     "electron": REPO / "electron" / "site-server.js",
     "android":  REPO / "android" / "app" / "src" / "world" / "thregren" / "jubeatviewer" / "LocalServer.java",

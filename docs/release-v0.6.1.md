@@ -61,10 +61,10 @@
 曲库不用重传，只更新前端这几个文件：
 
 ```
-铺面查看器/player/static/index.html   →  <站点根>/index.html
-铺面查看器/player/static/app.js       →  <站点根>/static/app.js
-铺面查看器/player/static/style.css    →  <站点根>/static/style.css
-铺面查看器/player/static/record.js    →  <站点根>/static/record.js
+jubeat_viewer/player/static/index.html   →  <站点根>/index.html
+jubeat_viewer/player/static/app.js       →  <站点根>/static/app.js
+jubeat_viewer/player/static/style.css    →  <站点根>/static/style.css
+jubeat_viewer/player/static/record.js    →  <站点根>/static/record.js
 ```
 
 `index.html` 里的 `?v=` 已提到 `0.6.1`；`core.js` / `sfx.js` / `record.css` 这次没改，

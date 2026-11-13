@@ -1,6 +1,6 @@
 # 第三方素材与依赖
 
-本仓库的 **MIT 许可（[LICENSE](LICENSE)）只覆盖代码** —— 即 `铺面查看器/`（Python 服务端 + 前端
+本仓库的 **MIT 许可（[LICENSE](LICENSE)）只覆盖代码** —— 即 `jubeat_viewer/`（Python 服务端 + 前端
 HTML/CSS/JS）、`tools/`、`deploy/`、`electron/` 里的脚本、配置与应用图标。
 
 下面这些内容**不在 MIT 授权范围内**，版权归各自权利人所有；它们只是出于「个人核对谱面」的目的
@@ -10,7 +10,7 @@ HTML/CSS/JS）、`tools/`、`deploy/`、`electron/` 里的脚本、配置与应�
 
 | 路径 | 内容 | 出处 / 说明 |
 |---|---|---|
-| `铺面查看器/player/static/theme-art-v1-*.webp` | 各版本界面主题装饰 | 从相应游戏版本的背景或标题纹理缩放导出；来源清单见 `docs/theme-assets.json`。 |
+| `jubeat_viewer/player/static/theme-art-v1-*.webp` | 各版本界面主题装饰 | 从相应游戏版本的背景或标题纹理缩放导出；来源清单见 `docs/theme-assets.json`。 |
 | `marker/jubeat_official/` | **官方** marker 逐帧 PNG（58 套设计 × MA/H1–H4/FR 三通道，5524 张 160×160） | 主要从街机 jubeat（beyond the ave.，l44）的 `contents/data/d3/model/*.bin` 里逐帧解出；小埋/NEW GAME!/永谷园联动恢复自 Qubell，Otoca d’or 来自 plus，Stealth 历史画风来自各代 HDD，甜品站来自华立中国版并缩至160px；完整来源与转换见 `additional-markers-provenance.json`，推出时间来源见 `release-sources.json`；小埋的角色版权及逐帧校验见 `marker/jubeat_official/tm0041-provenance.json`；街机渲染时序从 `jubeat.dll` 反汇编读出，中国版甜品站采用单独的查看器适配时序，见 `marker/jubeat_official/README.md` |
 | `marker/jubeat_marker_frames/` | marker 逐帧 PNG、判定爆花特效、preview、filmstrip | 社区公开配布（yuisin、Amy、jujube / Stepland、jubeat analyser 等），逐条出处记在 `marker/jubeat_marker_frames/README.md` 与各素材的 `meta.json` |
 | `marker/jubeat_marker_banners/` | 各版本 banner | 官方素材整理 |
@@ -38,9 +38,9 @@ HTML/CSS/JS）、`tools/`、`deploy/`、`electron/` 里的脚本、配置与应�
 
 | 位置 | 内容 | 许可 |
 |---|---|---|
-| `铺面查看器/player/static/index.html`（`.brand-gh`） | GitHub octicon 图标 | MIT © GitHub, Inc. |
+| `jubeat_viewer/player/static/index.html`（`.brand-gh`） | GitHub octicon 图标 | MIT © GitHub, Inc. |
 | `electron/` | Electron、electron-builder | MIT |
-| `铺面查看器/player/thumbs.py` | Pillow（可选，缺省时回落 macOS `sips`） | HPND |
+| `jubeat_viewer/player/thumbs.py` | Pillow（可选，缺省时回落 macOS `sips`） | HPND |
 | Electron 打包产物 | 随包附带 Electron 及其依赖的许可文件 | 见包内 `LICENSES.chromium.html` |
 
 Python 侧除 Pillow 外只用标准库。

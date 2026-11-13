@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire}from'node:module';
-const Links=createRequire(import.meta.url)('../铺面查看器/player/static/song-links.js');
+const Links=createRequire(import.meta.url)('../jubeat_viewer/player/static/song-links.js');
 
 test('song share URLs carry only song and difficulty, including unicode and punctuation',()=>{
  const id='音乐魔方/A&B #?/" <歌>',url=new URL(Links.build(id,'ADV','https://viewer.example/sub/index.html?t=72&play=1&rec=1#abc'));
@@ -17,7 +17,7 @@ test('local desktop, android and file links share the public site, never a local
  assert.throws(()=>Links.build('','EXT','https://example.com/'));
 });
 function parse(search,shared){
- const A={services:{register(){}}},source=fs.readFileSync(new URL('../铺面查看器/player/static/app-wiring.js',import.meta.url),'utf8');
+ const A={services:{register(){}}},source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-wiring.js',import.meta.url),'utf8');
  vm.runInNewContext(source,{window:{JubeatApp:A,JubeatRuntime:{RequestScope:class{}}},URLSearchParams,location:{search},document:{querySelector:()=>shared?{content:shared}:null}});
  return A.urlState();
 }
@@ -30,7 +30,7 @@ test('existing root deep links retain recording/automation time compatibility',(
 });
 
 test('shared pages resolve all data/media assets from the configured same-origin site root',()=>{
- const full=fs.readFileSync(new URL('../铺面查看器/player/static/app-base.js',import.meta.url),'utf8');
+ const full=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-base.js',import.meta.url),'utf8');
  const code=full.slice(full.indexOf('  let shareBase ='),full.indexOf('  /**\n   * 同押光晕'));
  function resources(root,{canPlay=()=>'',userAgent='' }={}){return vm.runInNewContext(code+';({shareBase,resourcePath,PATHS,mediaCompatibility,mediaUrl,chartPath,audioUrl,coverUrl,thumbUrl})',{URL,navigator:{userAgent},location:{href:'https://example.com/view/share/key.html',origin:'https://example.com'},document:{baseURI:'https://example.com/view/share/key.html',querySelector:()=>root?{content:root}:null,createElement:()=>({canPlayType:canPlay})}});}
  const A=resources('https://example.com/view/'),song={assets:{audio:'songs/a.wav',cover:'songs/a.png',thumb:'songs/a.jpg','chart:EXT':'songs/a.json'}};
@@ -38,7 +38,7 @@ test('shared pages resolve all data/media assets from the configured same-origin
  assert.equal(resources('https://evil.example/').PATHS.library,'data/library.json');assert.equal(resources(null).audioUrl(song),'songs/a.wav');
 });
 test('iOS 15 switches Ogg Opus media to native CAF',()=>{
- const full=fs.readFileSync(new URL('../铺面查看器/player/static/app-base.js',import.meta.url),'utf8');
+ const full=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-base.js',import.meta.url),'utf8');
  const code=full.slice(full.indexOf('  let shareBase ='),full.indexOf('  /**\n   * 同押光晕'));
  function resources(canPlay,userAgent=''){
   return vm.runInNewContext(code+';({mediaCompatibility,mediaUrl,audioUrl})',{URL,navigator:{userAgent},location:{href:'https://example.com/view/index.html',origin:'https://example.com'},document:{baseURI:'https://example.com/view/index.html',querySelector:()=>null,createElement:()=>({canPlayType:canPlay})}});

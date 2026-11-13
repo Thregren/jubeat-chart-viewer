@@ -74,8 +74,8 @@ rm -rf "$WORK" "$DIST"
 mkdir -p "$WORK/assets/www/static" "$WORK/classes" "$WORK/gen" "$DIST"
 
 # 1) 前端铺进 assets —— 直接从仓库源文件拿，不在仓库里再存一份副本
-cp "$REPO/铺面查看器/player/static/index.html" "$WORK/assets/www/index.html"
-for f in "$REPO/铺面查看器/player/static"/*; do
+cp "$REPO/jubeat_viewer/player/static/index.html" "$WORK/assets/www/index.html"
+for f in "$REPO/jubeat_viewer/player/static"/*; do
   b="$(basename "$f")"
   case "$b" in
     index.html|*.py|*.pyc|.DS_Store) continue ;;

@@ -10,7 +10,7 @@ import shutil
 import sys
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / '铺面查看器/player'))
+sys.path.insert(0, str(REPO / 'jubeat_viewer/player'))
 from directory_library import load_directory, asset_path
 from media import write_atomic
 import markers
@@ -50,7 +50,7 @@ def _build_directory(source: Path, out: Path, include_markers=True):
                 if p.is_file():
                     copy_or_link(p, out / p.relative_to(source))
     out.mkdir(parents=True, exist_ok=True)
-    static = REPO / '铺面查看器/player/static'
+    static = REPO / 'jubeat_viewer/player/static'
     for p in static.iterdir():
         if p.is_file() and not p.name.startswith('.'):
             # 前端始终复制，避免未来编辑源码影响已发布站点。

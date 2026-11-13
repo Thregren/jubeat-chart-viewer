@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const window = {};
 vm.runInNewContext(
-  fs.readFileSync(new URL('../铺面查看器/player/static/sfx.js', import.meta.url), 'utf8'),
+  fs.readFileSync(new URL('../jubeat_viewer/player/static/sfx.js', import.meta.url), 'utf8'),
   {window},
 );
 const Sfx = window.JubeatSfx;

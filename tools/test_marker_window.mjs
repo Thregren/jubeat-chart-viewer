@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 // Exercise the actual iterator used by both hold arrows and marker rendering.
-const source = fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js', import.meta.url), 'utf8');
 const start = source.indexOf('  function* notesInWindow(');
 const end = source.indexOf('  // ================= 长押', start);
 const state = {notes: []};

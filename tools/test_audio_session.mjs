@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
-const R=createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
-const Services=createRequire(import.meta.url)('../铺面查看器/player/static/services.js');
-const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-player.js',import.meta.url),'utf8');
+const R=createRequire(import.meta.url)('../jubeat_viewer/player/static/runtime.js');
+const Services=createRequire(import.meta.url)('../jubeat_viewer/player/static/services.js');
+const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-player.js',import.meta.url),'utf8');
 const turn=()=>new Promise(setImmediate);
 test('default browser recovery timers preserve the global receiver',()=>{
- const runtime=fs.readFileSync(new URL('../铺面查看器/player/static/runtime.js',import.meta.url),'utf8');
+ const runtime=fs.readFileSync(new URL('../jubeat_viewer/player/static/runtime.js',import.meta.url),'utf8');
  const context=vm.createContext({});
  vm.runInContext(`
   const pending=new Map();let nextId=0;

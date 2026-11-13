@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const D=require('../铺面查看器/player/static/directory.js');
-const R=require('../铺面查看器/player/static/runtime.js');
+const D=require('../jubeat_viewer/player/static/directory.js');
+const R=require('../jubeat_viewer/player/static/runtime.js');
 const F='jubeat-directory-v1';
 const song={id:'v/id', title:'ID 1',version:'v',charts:[],resourceOnly:true,
   assets:{audio:'songs/v/id/bgm.wav',preview:'songs/v/id/preview.wav'},missing:['cover','chart:BSC']};

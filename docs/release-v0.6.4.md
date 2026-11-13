@@ -92,11 +92,11 @@
 曲库不用重传，只更新前端这几个文件（`?v=` 已提到 `0.6.4`）：
 
 ```
-铺面查看器/player/static/index.html     →  <站点根>/index.html
-铺面查看器/player/static/app-base.js    →  <站点根>/static/app-base.js
-铺面查看器/player/static/app-library.js →  <站点根>/static/app-library.js
-铺面查看器/player/static/app-marker.js  →  <站点根>/static/app-marker.js
-铺面查看器/player/static/app-render.js  →  <站点根>/static/app-render.js
-铺面查看器/player/static/style.css      →  <站点根>/static/style.css
-铺面查看器/player/static/record.css     →  <站点根>/static/record.css
+jubeat_viewer/player/static/index.html     →  <站点根>/index.html
+jubeat_viewer/player/static/app-base.js    →  <站点根>/static/app-base.js
+jubeat_viewer/player/static/app-library.js →  <站点根>/static/app-library.js
+jubeat_viewer/player/static/app-marker.js  →  <站点根>/static/app-marker.js
+jubeat_viewer/player/static/app-render.js  →  <站点根>/static/app-render.js
+jubeat_viewer/player/static/style.css      →  <站点根>/static/style.css
+jubeat_viewer/player/static/record.css     →  <站点根>/static/record.css
 ```

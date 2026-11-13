@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import {createRequire} from 'node:module';
-const Queue=createRequire(import.meta.url)('../铺面查看器/player/static/visitor-queue.js');
-const code=fs.readFileSync(new URL('../铺面查看器/player/static/app-visitors.js',import.meta.url),'utf8');
+const Queue=createRequire(import.meta.url)('../jubeat_viewer/player/static/visitor-queue.js');
+const code=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-visitors.js',import.meta.url),'utf8');
 function setup({recording=false,protocol='https:',host='viewer.test',fail=false,response={visitors:1234,today_visitors:25,views:5678,chart_loads:2468,today_chart_loads:42,popular_songs:[]}}={}){
  const calls=[],badge={hidden:true},value={},today={},A={services:{register(){}},setPopularSongs(rows){this.popular=rows}};let resolvePage;
  const fetch=async(url,options)=>{calls.push({url,...options});if(fail)throw Error('offline');if(calls.length===1)await new Promise(r=>resolvePage=r);return{ok:true,json:async()=>response}};

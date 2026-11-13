@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const {attach}=createRequire(import.meta.url)('../铺面查看器/player/static/list-images.js');
+const {attach}=createRequire(import.meta.url)('../jubeat_viewer/player/static/list-images.js');
 function fixture(options={}) {
  const img=new EventTarget(),requests=[],pending=new Map(),classes=new Set();let tick=0,id=0;
  Object.assign(img,{isConnected:true,naturalWidth:0,hidden:false,parentElement:{classList:{toggle(k,on){on?classes.add(k):classes.delete(k);}}}});

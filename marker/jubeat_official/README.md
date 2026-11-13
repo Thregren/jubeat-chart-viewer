@@ -12,7 +12,7 @@
 时覆盖掉小埋。未收录的其他历史设计另行核查，不按编号自动补入。
 
 渲染时序不是照着视频抄的，而是从 `jubeat.dll`（i386）反汇编读出来的
-——见下面的「时间模型」。查看器（`铺面查看器/player/static/app-marker.js`）
+——见下面的「时间模型」。查看器（`jubeat_viewer/player/static/app-marker.js`）
 就是按这张表画的。
 
 ## 目录结构
@@ -29,7 +29,7 @@ tex_l44_tm0001/           一套设计一个目录
 ```
 
 命名规则固定为 `<目录>/<前缀>_<通道><两位帧号>.png`；这条约定在
-`铺面查看器/player/markers.py` 的 `frame_rel()` 里只有一份实现，
+`jubeat_viewer/player/markers.py` 的 `frame_rel()` 里只有一份实现，
 构建脚本 / 校验脚本 / 前端三方共用。
 
 不是每个设计都满帧（少数设计会多出 `MA24` / `H416` 这类美术附加帧），

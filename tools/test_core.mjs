@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
-const Core = require("../铺面查看器/player/static/core.js");
+const Core = require("../jubeat_viewer/player/static/core.js");
 
 const CHART = (notes, time = [{ beat: [0, 0, 1], bpm: 120 }]) => ({ time, note: notes });
 

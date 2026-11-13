@@ -8,7 +8,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-path = Path(__file__).resolve().parent.parent / '铺面查看器/player/media.py'
+path = Path(__file__).resolve().parent.parent / 'jubeat_viewer/player/media.py'
 sys.path.insert(0, str(path.parent))
 spec = importlib.util.spec_from_file_location('viewer_media', path)
 media = importlib.util.module_from_spec(spec)

@@ -88,21 +88,21 @@
 曲库不用重传，只更新前端这 15 个文件（`?v=` 已提到 `0.6.3`）：
 
 ```
-铺面查看器/player/static/index.html     →  <站点根>/index.html
-铺面查看器/player/static/app-base.js    →  <站点根>/static/app-base.js
-铺面查看器/player/static/app-audio.js   →  <站点根>/static/app-audio.js
-铺面查看器/player/static/app-marker.js  →  <站点根>/static/app-marker.js
-铺面查看器/player/static/app-density.js →  <站点根>/static/app-density.js
-铺面查看器/player/static/app-library.js →  <站点根>/static/app-library.js
-铺面查看器/player/static/app-player.js  →  <站点根>/static/app-player.js
-铺面查看器/player/static/app-render.js  →  <站点根>/static/app-render.js
-铺面查看器/player/static/app-wiring.js  →  <站点根>/static/app-wiring.js
-铺面查看器/player/static/app.js         →  <站点根>/static/app.js
-铺面查看器/player/static/core.js        →  <站点根>/static/core.js
-铺面查看器/player/static/style.css      →  <站点根>/static/style.css
-铺面查看器/player/static/sfx.js         →  <站点根>/static/sfx.js
-铺面查看器/player/static/record.js      →  <站点根>/static/record.js
-铺面查看器/player/static/record.css     →  <站点根>/static/record.css
+jubeat_viewer/player/static/index.html     →  <站点根>/index.html
+jubeat_viewer/player/static/app-base.js    →  <站点根>/static/app-base.js
+jubeat_viewer/player/static/app-audio.js   →  <站点根>/static/app-audio.js
+jubeat_viewer/player/static/app-marker.js  →  <站点根>/static/app-marker.js
+jubeat_viewer/player/static/app-density.js →  <站点根>/static/app-density.js
+jubeat_viewer/player/static/app-library.js →  <站点根>/static/app-library.js
+jubeat_viewer/player/static/app-player.js  →  <站点根>/static/app-player.js
+jubeat_viewer/player/static/app-render.js  →  <站点根>/static/app-render.js
+jubeat_viewer/player/static/app-wiring.js  →  <站点根>/static/app-wiring.js
+jubeat_viewer/player/static/app.js         →  <站点根>/static/app.js
+jubeat_viewer/player/static/core.js        →  <站点根>/static/core.js
+jubeat_viewer/player/static/style.css      →  <站点根>/static/style.css
+jubeat_viewer/player/static/sfx.js         →  <站点根>/static/sfx.js
+jubeat_viewer/player/static/record.js      →  <站点根>/static/record.js
+jubeat_viewer/player/static/record.css     →  <站点根>/static/record.css
 ```
 
 **九个 `app-*.js` 的顺序不能改**：每一层只依赖比它更早的那几层。

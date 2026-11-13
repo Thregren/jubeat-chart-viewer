@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import zipfile
 REPO=Path(__file__).resolve().parent.parent
-sys.path.insert(0,str(REPO/'铺面查看器/player'))
+sys.path.insert(0,str(REPO/'jubeat_viewer/player'))
 from directory_library import load_directory,asset_path
 from version import read_version
 from asset_hash import sha256_file

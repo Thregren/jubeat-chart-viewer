@@ -26,7 +26,7 @@ from typing import Callable
 
 import version as version_mod
 
-PLAYER_DIR = Path(__file__).resolve().parent   # …/铺面查看器/player
+PLAYER_DIR = Path(__file__).resolve().parent   # …/jubeat_viewer/player
 APP_DIR = PLAYER_DIR.parent                    # …/铺面查看器
 REPO = APP_DIR.parent                          # 仓库根（含 directory-library/ 与 marker/）
 STATIC_DIR = PLAYER_DIR / "static"

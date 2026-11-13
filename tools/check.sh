@@ -45,10 +45,10 @@ skip() { SKIPPED="$SKIPPED
 
 # ── 1. 前端语法 ───────────────────────────────────────────────
 check_js() {
-  for f in 铺面查看器/player/static/*.js electron/*.js; do
+  for f in jubeat_viewer/player/static/*.js electron/*.js; do
     node --check "$f" || return 1
   done
-  echo "语法 OK：$(ls 铺面查看器/player/static/*.js electron/*.js | wc -l | tr -d ' ') 个文件"
+  echo "语法 OK：$(ls jubeat_viewer/player/static/*.js electron/*.js | wc -l | tr -d ' ') 个文件"
 }
 run "前端 JS 语法（node --check）" check_js
 
@@ -92,9 +92,9 @@ run "缓存响应头一致性（python3 tools/test_cache_headers.py）" "$PY" to
 check_py() {
   cache=$(mktemp -d)
   PYTHONPYCACHEPREFIX="$cache" "$PY" -m py_compile \
-    铺面查看器/player/*.py deploy/visitors/*.py tools/*.py || return 1
+    jubeat_viewer/player/*.py deploy/visitors/*.py tools/*.py || return 1
   rm -rf "$cache"
-  echo "语法 OK：$(ls 铺面查看器/player/*.py tools/*.py | wc -l | tr -d ' ') 个文件"
+  echo "语法 OK：$(ls jubeat_viewer/player/*.py tools/*.py | wc -l | tr -d ' ') 个文件"
 }
 run "Python 语法（py_compile）" check_py
 

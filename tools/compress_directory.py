@@ -14,7 +14,7 @@ import tempfile
 import threading
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / '铺面查看器/player'))
+sys.path.insert(0, str(REPO / 'jubeat_viewer/player'))
 from directory_library import load_directory, asset_path
 
 PROFILE = 'opus/80k/vbr/audio/20ms/cl10'
@@ -118,7 +118,7 @@ def convert(source, out, master, report, jobs=4):
         name='data/versions/'+version+'.json';indexes.append(name)
         write(out/name,dict(format='jubeat-directory-v1',version=1,versions=[version],songs=[s for s in songs if s['version']==version]))
     write(out/'data/library.json',dict(format='jubeat-directory-v1',version=1,versions=[],songs=[],versionIndexes=indexes))
-    static=REPO/'铺面查看器/player/static'
+    static=REPO/'jubeat_viewer/player/static'
     for p in static.iterdir():
         if p.is_file() and not p.name.startswith('.'):
             dest=out/('index.html' if p.name=='index.html' else 'static/'+p.name);dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)

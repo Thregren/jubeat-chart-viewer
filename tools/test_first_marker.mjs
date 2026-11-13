@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 const repo = process.env.FIRST_MARKER_REPO || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const dir=path.join(repo,'铺面查看器/player/static');
+const dir=path.join(repo,'jubeat_viewer/player/static');
 const require=createRequire(import.meta.url);
 const model=require(path.join(dir,'first-marker.js'));
 for(const count of [1,2,4,16]){

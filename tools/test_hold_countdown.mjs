@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(
-  new URL('../铺面查看器/player/static/app-marker.js', import.meta.url),
+  new URL('../jubeat_viewer/player/static/app-marker.js', import.meta.url),
   'utf8',
 );
 

@@ -1,7 +1,7 @@
 """Generate browser version constants from the recording tools' common JSON table."""
 import json,sys
 from pathlib import Path
-root=Path(__file__).resolve().parent.parent/'铺面查看器/player/static'
+root=Path(__file__).resolve().parent.parent/'jubeat_viewer/player/static'
 source=json.loads((root/'versions.json').read_text())
 assert len(set(source['order'])) == len(source['order'])
 assert set(source['order']) == set(source['labels']) == set(source['display'])

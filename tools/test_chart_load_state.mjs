@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
-const require=createRequire(import.meta.url),Runtime=require('../铺面查看器/player/static/runtime.js'),Core=require('../铺面查看器/player/static/core.js');
-const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-library.js',import.meta.url),'utf8');
+const require=createRequire(import.meta.url),Runtime=require('../jubeat_viewer/player/static/runtime.js'),Core=require('../jubeat_viewer/player/static/core.js');
+const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-library.js',import.meta.url),'utf8');
 const functions=source.slice(source.indexOf('  const parsedChartCache ='),source.indexOf('  /** Rebuild note/pad visual state'));
 function fixture(fetch,parseNotes=Core.parseNotes) {
   let paints=0,densityBuilds=0,parseCalls=0;

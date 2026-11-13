@@ -56,12 +56,12 @@ def package_common(root: Path, output: Path, rebuild=True):
     root, output = root.resolve(), output.resolve()
     if rebuild: build_directory(root, root)
     if not (root/'data/build.json').is_file(): raise ValueError('请先构建目录站点')
-    for name in ('tools/serve.py','铺面查看器/player/media.py','铺面查看器/player/source_revision.py'):
+    for name in ('tools/serve.py','jubeat_viewer/player/media.py','jubeat_viewer/player/source_revision.py'):
         dest=root/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(REPO/name,dest)
     (root/'启动查看器.py').write_text(LAUNCHER,encoding='utf-8')
     (root/'使用说明.txt').write_text(GUIDE,encoding='utf-8')
     names={'index.html','data/library.json','data/markers.json','data/build.json','data/export.json',
-           'tools/serve.py','铺面查看器/player/media.py','铺面查看器/player/source_revision.py',
+           'tools/serve.py','jubeat_viewer/player/media.py','jubeat_viewer/player/source_revision.py',
            '启动查看器.py','使用说明.txt'}
     for top in ('static','markers','share'):
         names.update(p.relative_to(root).as_posix() for p in (root/top).rglob('*') if p.is_file() and not any(x.startswith('.') for x in p.relative_to(root).parts))

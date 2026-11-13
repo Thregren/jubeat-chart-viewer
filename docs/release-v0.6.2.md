@@ -65,7 +65,7 @@ Electron 那份的 `resolveSafe` 也从 `target.startsWith(root)`（字符串前
 
 ## 五、工程化：以前靠记性的事，现在能自动跑
 
-- **`VERSION` 是唯一的版本号来源**（`铺面查看器/player/version.py` 读它）。
+- **`VERSION` 是唯一的版本号来源**（`jubeat_viewer/player/version.py` 读它）。
   `python3 tools/set_version.py X.Y.Z` 一次把 `index.html` 的 `?v=`（6 处）和
   electron 包版本铺好；`--check` 用来守「有人只改了其中一处」
 - **`tools/check.sh`**：一条命令跑完 JS 语法 / core 单测 / Range 三实现一致性 /
@@ -101,10 +101,10 @@ Electron 那份的 `resolveSafe` 也从 `target.startsWith(root)`（字符串前
 曲库不用重传，只更新前端这几个文件（`?v=` 已提到 `0.6.2`）：
 
 ```
-铺面查看器/player/static/index.html   →  <站点根>/index.html
-铺面查看器/player/static/app.js       →  <站点根>/static/app.js
-铺面查看器/player/static/core.js      →  <站点根>/static/core.js
-铺面查看器/player/static/style.css    →  <站点根>/static/style.css
+jubeat_viewer/player/static/index.html   →  <站点根>/index.html
+jubeat_viewer/player/static/app.js       →  <站点根>/static/app.js
+jubeat_viewer/player/static/core.js      →  <站点根>/static/core.js
+jubeat_viewer/player/static/style.css    →  <站点根>/static/style.css
 ```
 
 桌面版 Release 附件照旧是**不含曲库**的轻量包（约 100 MB，六个平台），

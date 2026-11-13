@@ -10,7 +10,7 @@ test('resizing reuses density buckets; chart and duration changes rebuild them',
   const notes = Array.from({length:10000},(_,i)=>({get t(){reads++;return i/100;}}));
   const A = {renderRatio:()=>1,Core:{MAX_CHART_SECONDS:21600},els:{densityCanvas:canvas()},
     state:{notes,duration:100},abLoop:{},fmtTime:String,currentMediaTime:()=>0};
-  vm.runInNewContext(fs.readFileSync(new URL('../铺面查看器/player/static/app-density.js',import.meta.url),'utf8'),
+  vm.runInNewContext(fs.readFileSync(new URL('../jubeat_viewer/player/static/app-density.js',import.meta.url),'utf8'),
     {window:{JubeatApp:A},document:{createElement:canvas},getComputedStyle:()=>({})});
   A.layoutDensity();
   const firstReads=reads,firstCounts=A.density.counts,firstWidth=A.density.graphW;

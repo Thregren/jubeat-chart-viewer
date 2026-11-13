@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const Core=require('../铺面查看器/player/static/core.js');
-const Timeline=require('../铺面查看器/player/static/rhythm-timeline.js');
+const Core=require('../jubeat_viewer/player/static/core.js');
+const Timeline=require('../jubeat_viewer/player/static/rhythm-timeline.js');
 const chart={time:[{beat:[0,0,1],bpm:120},{beat:[2,0,1],bpm:240}],note:[
  {beat:[0,0,1],index:0,endbeat:[6,0,1]},
  {beat:[0,3,4],index:1}, // dotted eighth

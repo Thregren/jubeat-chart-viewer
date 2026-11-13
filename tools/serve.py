@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parent.parent
 # 这里以前自己抄了第三份，结果和另外两份分了叉（`bytes=0 - 99` 被这里放行、前导空格反过来
 # 只有这里拒绝），而 tools/test_range.py 的一致性用例表又没把它算进去 —— 于是没人发现。
 # 直接复用，别再有第四份。
-sys.path.insert(0, str(REPO / "铺面查看器" / "player"))
+sys.path.insert(0, str(REPO / "jubeat_viewer" / "player"))
 from media import parse_range  # noqa: E402
 
 TEXT_SUFFIXES = {".html", ".js", ".css", ".json", ".svg"}

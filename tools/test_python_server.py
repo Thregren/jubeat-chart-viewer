@@ -2,7 +2,7 @@
 from pathlib import Path
 import socket, sys, threading, time, unittest
 from http.server import BaseHTTPRequestHandler
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'铺面查看器/player'))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'jubeat_viewer/player'))
 from server import BoundedHTTPServer
 class Shutdown(unittest.TestCase):
  def test_idle_clients_are_closed_and_slots_released(self):

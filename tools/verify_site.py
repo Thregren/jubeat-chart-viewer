@@ -30,7 +30,7 @@ from pathlib import Path
 
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO = TOOLS_DIR.parent
-PLAYER_DIR = REPO / "铺面查看器" / "player"
+PLAYER_DIR = REPO / "jubeat_viewer" / "player"
 sys.path.insert(0, str(PLAYER_DIR))
 
 import markers as markers_mod  # noqa: E402

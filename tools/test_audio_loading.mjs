@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-audio.js',import.meta.url),'utf8');
+const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-audio.js',import.meta.url),'utf8');
 test('sample timeout falls back to synth even while decoding is pending',async()=>{
  let expire,resolveDecode;
  const ctx={decodeAudioData:()=>new Promise(resolve=>{resolveDecode=resolve;})};

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-const source = fs.readFileSync(new URL('../铺面查看器/player/static/directory.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../jubeat_viewer/player/static/directory.js', import.meta.url), 'utf8');
 const turn = () => new Promise(setImmediate);
 const deferred = () => {let resolve, reject; const promise = new Promise((a, b) => {resolve = a; reject = b;}); return {promise, resolve, reject};};
 const song = (id, preview = true) => ({id, assets: {audio: `songs/${id}/bgm.wav`, ...(preview ? {preview: `songs/${id}/preview.wav`} : {})}});

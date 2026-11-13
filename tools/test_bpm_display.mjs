@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const Core=createRequire(import.meta.url)('../铺面查看器/player/static/core.js');
+const Core=createRequire(import.meta.url)('../jubeat_viewer/player/static/core.js');
 const events=(...values)=>values.map((bpm,i)=>({beat:[i,0,1],bpm}));
 test('BPM display uses integral values and a real range instead of raw decimals plus tilde',()=>{
  assert.equal(Core.formatBpm(events(185.5987,200.142,183.785,188.204)),'184–200');

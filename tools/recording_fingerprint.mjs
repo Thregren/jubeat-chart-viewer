@@ -26,7 +26,7 @@ export function recordingFingerprint(repo, song, args = {}) {
     hash.update(digestFile(file));
   };
   add('song', source);
-  const staticDir = path.join(repo, '铺面查看器/player/static');
+  const staticDir = path.join(repo, 'jubeat_viewer/player/static');
   for (const name of fs.readdirSync(staticDir).sort()) {
     if (/\.(?:js|css|html)$/.test(name)) add(name, path.join(staticDir, name));
   }

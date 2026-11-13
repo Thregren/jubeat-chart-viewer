@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
-const Runtime = createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
-const source = fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js', import.meta.url), 'utf8');
+const Runtime = createRequire(import.meta.url)('../jubeat_viewer/player/static/runtime.js');
+const source = fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js', import.meta.url), 'utf8');
 
 test('rapid Marker changes discard skipped queue entries and can reload the same design', async () => {
   const requested = [], timers = new Map(); let timerId = 0;

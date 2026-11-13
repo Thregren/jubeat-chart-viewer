@@ -15,7 +15,7 @@
   * **zip 结构不对** 在本地看不出来，到了 Windows 上才会「解压失败」：这里开一遍
     压缩包，确认 main.js / package.json 都在里面。
 
-权威版本号只有一个：仓库根的 VERSION（见 铺面查看器/player/version.py）。
+权威版本号只有一个：仓库根的 VERSION（见 jubeat_viewer/player/version.py）。
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ REPO = TOOLS_DIR.parent
 DIST = REPO / "electron" / "dist"
 DOCS = REPO / "docs"
 
-sys.path.insert(0, str(REPO / "铺面查看器" / "player"))
+sys.path.insert(0, str(REPO / "jubeat_viewer" / "player"))
 from version import read_version  # noqa: E402
 from asset_hash import sha256_file  # noqa: E402
 

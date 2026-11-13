@@ -26,9 +26,9 @@ cp "$REPO/electron/main.js" "$REPO/electron/site-server.js" "$REPO/electron/prel
    "$REPO/electron/package-lock.json" "$REPO/electron/electron-builder.config.js" "$WORK/electron/"
 cp "$REPO/electron/library-import.js" "$WORK/electron/"
 mkdir -p "$WORK/frontend/static"
-cp "$REPO/铺面查看器/player/static/index.html" "$WORK/frontend/index.html"
+cp "$REPO/jubeat_viewer/player/static/index.html" "$WORK/frontend/index.html"
 find "$WORK/frontend/static" -type f -delete
-cp "$REPO/铺面查看器/player/static/"* "$WORK/frontend/static/"
+cp "$REPO/jubeat_viewer/player/static/"* "$WORK/frontend/static/"
 rm -rf "$WORK/electron/vendor"
 cp -R "$REPO/electron/vendor" "$WORK/electron/"
 rm -rf "$WORK/electron/build"

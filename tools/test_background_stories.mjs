@@ -3,8 +3,8 @@ import { createRequire } from "node:module";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
-const dataPath = require.resolve("../铺面查看器/player/static/background-stories-data.js");
-const storiesPath = require.resolve("../铺面查看器/player/static/background-stories.js");
+const dataPath = require.resolve("../jubeat_viewer/player/static/background-stories-data.js");
+const storiesPath = require.resolve("../jubeat_viewer/player/static/background-stories.js");
 const builtInCatalog = require(dataPath);
 const serialTest = (name, fn) => test(name, {concurrency: false}, fn);
 

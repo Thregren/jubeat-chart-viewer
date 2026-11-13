@@ -33,16 +33,16 @@
 
 ## 二、具体修复细节
 
-- **`铺面查看器/player/static/app-player.js`**：
+- **`jubeat_viewer/player/static/app-player.js`**：
   - 扩展 `audioClock`（`{ sample, base, at, fresh, floor, rateAt, prevRate }`），将原始 `currentTime` 采样变化检测（`raw !== audioClock.sample`）与外推起点（`audioClock.base`）解耦，并维护连续播放期间的单调下界 `audioClock.floor`。
   - 新增 `syncMediaClockRate(prevRate, nextRate)`：在 `applyPlaybackRate()` 与 `ratechange` 事件中以当前平滑时钟位置作为新倍速的连续锚点，消除降速瞬间的外推回退；当 `prevRate > nextRate`（从快调慢）时，在 `220ms` 过渡窗口内启用斜率限制（`maxSlope = rate + (prevRate - rate) * 0.35`），平滑吸收 `<audio>` WSOLA 旧缓冲泄放冲高，并在随后的缓冲重填停滞期按新倍速平稳过渡。
   - 在 `flushPendingSeek(target)` 中保留交接前的 `audioClock.floor`，消除首次 `webaudio -> element` 切换时 Ogg 页边界对齐带来的 `-48ms` 倒退。
   - 在 `play()` 中，当 `elementSourcePending` 处于已挂起交接状态（`backend.objectUrl || pendingRateSeek != null || pendingSeek != null`）时直接调用 `resumeAfterSeek()` 排队起播，不再误报加载错误。
-- **`铺面查看器/player/static/app-audio.js`**：
+- **`jubeat_viewer/player/static/app-audio.js`**：
   - 扩展 `sfxSched` 记录已入队音符 `queued: []`、已发声上界 `playedUntil: -Infinity` 与过渡重校准定时器 `resyncTimer: 0`。
   - `sfxReset({ rateChange: true })` 在切速时将 `when <= audioCtx.currentTime + 0.004` 的已发声音符记入 `sfxSched.playedUntil`（防止重音），立即同步调用 `sfxTick()` 重排新倍速窗口内的待发声音符（防止吞音），并在 `140ms`（WSOLA 缓冲稳定）后自动执行一次静默重锚定（`sfxReset({ rateChange: true, settled: true })`）。
   - `sfxTick()` 将过期音截断窗口修正为 `now - 0.04 * Math.max(1, rate)`，并对 `when` 施加 `Math.max(audioCtx.currentTime, ...)` 保护。
-- **`铺面查看器/player/static/app-marker.js`**：
+- **`jubeat_viewer/player/static/app-marker.js`**：
   - `drawHoldArrows(chartT)` 中将 `HOLD_PRE` 与 `HOLD_POST` 乘上 `animationRate`，与 `drawMarkers()` 及 `drawFirstMarker()` 保持一致。
 
 ---

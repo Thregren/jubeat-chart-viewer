@@ -56,13 +56,13 @@
 这一版前端**多了两个文件**，曲库不用重传：
 
 ```
-铺面查看器/player/static/index.html   →  <站点根>/index.html
-铺面查看器/player/static/core.js      →  <站点根>/static/core.js
-铺面查看器/player/static/app.js       →  <站点根>/static/app.js
-铺面查看器/player/static/style.css    →  <站点根>/static/style.css
-铺面查看器/player/static/sfx.js       →  <站点根>/static/sfx.js
-铺面查看器/player/static/record.js    →  <站点根>/static/record.js    ← 新增
-铺面查看器/player/static/record.css   →  <站点根>/static/record.css   ← 新增
+jubeat_viewer/player/static/index.html   →  <站点根>/index.html
+jubeat_viewer/player/static/core.js      →  <站点根>/static/core.js
+jubeat_viewer/player/static/app.js       →  <站点根>/static/app.js
+jubeat_viewer/player/static/style.css    →  <站点根>/static/style.css
+jubeat_viewer/player/static/sfx.js       →  <站点根>/static/sfx.js
+jubeat_viewer/player/static/record.js    →  <站点根>/static/record.js    ← 新增
+jubeat_viewer/player/static/record.css   →  <站点根>/static/record.css   ← 新增
 ```
 
 `index.html` 里的 `?v=` 已提到 `0.6.0`。不传这两个新文件也不影响普通使用（页面只会少一个 URL 开关）。

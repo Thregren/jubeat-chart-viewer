@@ -5,9 +5,9 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
-const Core = require('../铺面查看器/player/static/core.js');
+const Core = require('../jubeat_viewer/player/static/core.js');
 const source = fs.readFileSync(
-  process.env.SFX_SOURCE || new URL('../铺面查看器/player/static/app-audio.js', import.meta.url), 'utf8');
+  process.env.SFX_SOURCE || new URL('../jubeat_viewer/player/static/app-audio.js', import.meta.url), 'utf8');
 const settle = () => new Promise(setImmediate);
 
 const KINDS = ['click', 'taiko'];
@@ -379,7 +379,7 @@ test('16 分档素材：rate 1.35、有截短、双击两发；三档都不做 h
 });
 
 test('素材路径与合成路径电平对齐：SAMPLE_AMP 校准值 1.409', () => {
-  const src = fs.readFileSync(new URL('../铺面查看器/player/static/app-audio.js', import.meta.url), 'utf8');
+  const src = fs.readFileSync(new URL('../jubeat_viewer/player/static/app-audio.js', import.meta.url), 'utf8');
   assert.match(src, /const\s+SAMPLE_AMP\s*=\s*1\.409\s*;/,
     '素材放大系数必须是离线实测校准的 1.409（配合 preGain 让素材与合成同电平）');
   assert.doesNotMatch(src, /gain\s*\*\s*2\.2/, '不得再使用未校准的 2.2 倍放大');
@@ -479,7 +479,7 @@ test('previewSfx 默认 normal；previewSfxSequence 已彻底删除', async () =
   assert.equal(h.voiceCalls[0].variant, 'normal', 'previewSfx 默认 normal');
   assert.equal(h.A.previewSfxSequence, undefined, 'previewSfxSequence 已从导出中删除');
   const src = fs.readFileSync(
-    new URL('../铺面查看器/player/static/app-audio.js', import.meta.url), 'utf8');
+    new URL('../jubeat_viewer/player/static/app-audio.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /previewSfxSequence/, '源码里不得再出现 previewSfxSequence');
   assert.equal(h.forbiddenCalls.length, 0);
 });

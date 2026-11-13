@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
-const runtime=createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
-const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js',import.meta.url),'utf8');
+const runtime=createRequire(import.meta.url)('../jubeat_viewer/player/static/runtime.js');
+const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js',import.meta.url),'utf8');
 const manifest=JSON.parse(fs.readFileSync(new URL('../marker/jubeat_official/manifest.json',import.meta.url)));
 test('all marker designs keep idle pads free of static backgrounds',()=>{
  let draws=0;

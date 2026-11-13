@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const STATIC_DIR = new URL('../铺面查看器/player/static/', import.meta.url);
+const STATIC_DIR = new URL('../jubeat_viewer/player/static/', import.meta.url);
 const read = (name) => fs.readFileSync(new URL(name, STATIC_DIR), 'utf8');
 
 /** 去掉 JS 的行注释与块注释，但保留字符串 / 模板字面量里的 // 等字样。 */

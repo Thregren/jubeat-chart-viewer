@@ -2,7 +2,7 @@
 import io,json,sys,tempfile,unittest,wave
 from pathlib import Path
 from unittest.mock import patch
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'铺面查看器/player'))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'jubeat_viewer/player'))
 from PIL import Image,ImageChops
 import web_assets as W
 from directory_library import load_directory

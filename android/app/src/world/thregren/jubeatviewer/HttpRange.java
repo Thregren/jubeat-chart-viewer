@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
  * 同一个站点一共有四套后端会发文件，语义必须一模一样，否则同一首音频在不同部署下
  * 的 Seek 表现会不一样：
  *
- *   * Python 开发服务器  {@code 铺面查看器/player/media.py}      parse_range / safe_join
+ *   * Python 开发服务器  {@code jubeat_viewer/player/media.py}      parse_range / safe_join
  *   * Electron 静态服务  {@code electron/site-server.js}          parseRange / resolveSafe
  *   * PHP 单文件入口     {@code deploy/php/index.php}             jubeat_parse_range
  *   * 安卓内置服务       本文件

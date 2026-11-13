@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const Core=require('../铺面查看器/player/static/core.js');
+const Core=require('../jubeat_viewer/player/static/core.js');
 const make=beats=>beats.map((beat,i)=>({beat,t:beat/2,index:i%16,seq:i+2,kind:'tap'}));
 
 test('legacy SFX volumes migrate to a valid preset without losing mute or the default',()=>{
@@ -40,7 +40,7 @@ function renderer(search=''){
  const A={services:{register(){}},els:{markerCanvas:{getContext:()=>ctx},showNumbers:{checked:true},longHoldCountdown:{checked:false}},state:{notes:make([0,.25,.75])},numCfg:{color:'#123456',colorMode:'custom',scale:1,alpha:1,corner:true},normalizeHexColor:color=>color};
  const window={JubeatApp:A,JubeatCore:Core,JubeatRuntime:{Semaphore:class{}}};
  // Expose the existing renderer only in this VM, then assert actual canvas fill colors.
- const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js',import.meta.url),'utf8').replace('Object.assign(A, {','Object.assign(A, { testDraw: drawOrderNumber,');
+ const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js',import.meta.url),'utf8').replace('Object.assign(A, {','Object.assign(A, { testDraw: drawOrderNumber,');
  vm.runInNewContext(source,{window,location:{search},URLSearchParams,performance:{now:()=>0}});
  const draw=note=>{fills.length=0;A.testDraw(note,{x:0,y:0,w:100,h:100});return fills[0];};
  return {A,draw};

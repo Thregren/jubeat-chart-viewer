@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /* 验证开放目录库：与实际网页共用谱面解析器，只读本地JSON和显式资源。 */
 const fs=require('node:fs'),path=require('node:path');
-const R=require('../铺面查看器/player/static/runtime.js');
-const D=require('../铺面查看器/player/static/directory.js');
-const Core=require('../铺面查看器/player/static/core.js');
+const R=require('../jubeat_viewer/player/static/runtime.js');
+const D=require('../jubeat_viewer/player/static/directory.js');
+const Core=require('../jubeat_viewer/player/static/core.js');
 async function verify(root,reportFile){
  root=fs.realpathSync(root);
  function file(name){

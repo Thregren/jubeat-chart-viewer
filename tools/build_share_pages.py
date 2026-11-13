@@ -66,7 +66,7 @@ def build_share_pages(library, out, base_url='https://ub.thregren.world/', versi
         if os.path.commonpath([str(out), str(target.resolve())]) != str(out):
             raise ValueError('分享输出路径越界')
         write(target, data)
-    template = Path(template) if template else (out / 'index.html' if (out / 'index.html').is_file() else Path(__file__).resolve().parents[1] / '铺面查看器/player/static/index.html')
+    template = Path(template) if template else (out / 'index.html' if (out / 'index.html').is_file() else Path(__file__).resolve().parents[1] / 'jubeat_viewer/player/static/index.html')
     viewer = template.read_text(encoding='utf-8')
     if 'id="app"' not in viewer or 'id="panel"' not in viewer:
         raise ValueError('分享模板必须是完整查看器入口')

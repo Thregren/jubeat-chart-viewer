@@ -35,16 +35,16 @@
 
 ## 二、具体修复细节
 
-- **`铺面查看器/player/static/app-player.js`**：
+- **`jubeat_viewer/player/static/app-player.js`**：
   - 新增并导出 `playbackActive()`，统一涵盖 `state.playing`、`!els.audio.paused`、挂起的有效 `pendingPlaybackResume` 与执行中的 `pendingElementPlay`；`togglePlay()` 与 `applyPlaybackRate()` 同步改用 `playbackActive()`。
   - 新增 `pendingAudioTime()`，在 `pendingSeek != null && !canSeekNow()` 时按谱面偏移与曲长夹紧计算目标音频秒，供 `rawAudioTime()` 与 `audioNow()` 统一读取；在 `flushPendingSeek()` 的 `pendingSeek` 分支末尾补齐 `pendingPlaybackResume?.ready?.()`。
   - 在 `audioNow()` 中，当处于 `!state.playing || els.audio.paused || els.audio.seeking` 时同步更新 `audioClock.base = raw` 并将 `audioClock.fresh` 置为 `-Infinity`，严格保证只有在播放态下 `currentTime` 发生首次真实推进后才启用外推。
   - 在 `seekPosition()`、`resumeAfterSeek()`、`settleAfterSeek()`、`startElementPlay()` 及 `<audio>` 的 `playing` 事件中统一执行 `resetMediaClock()`、`rebuildVisualState(renderMediaTime())` 与 `sfxReset()`。
   - 在 `bindLoadEvents()`、`play()` 与 `resumeAfterSeek()` 中支持 `preload="metadata"` 及 `seeked` 完成态（`readyState >= 2` / `seeked` 事件到达）直接续播，确保 iOS 15 CAF 流式模式与变速切歌模式拖动后顺畅恢复播放。
-- **`铺面查看器/player/static/app-wiring.js` & `app-timeline.js` & `app-render.js`**：
+- **`jubeat_viewer/player/static/app-wiring.js` & `app-timeline.js` & `app-render.js`**：
   - 物量条与横向节奏轴在 `pointerdown` 时通过 `playbackActive()` 判定是否需要续播并立即调用 `pause()`，彻底取消未完成的异步续播。
   - 在 `<audio>` 的 `playing` 监听与 `startElementPlay()` 中增加 `state.scrubbing` 守卫（若拖动中触发则立即 `pause()`）；在 `updateFrame()` 的 A–B 循环与曲末收尾判定上增加 `!state.scrubbing` 守卫。
-- **`铺面查看器/player/static/app-audio.js` & `app-marker.js`**：
+- **`jubeat_viewer/player/static/app-audio.js` & `app-marker.js`**：
   - `sfxTick()` 增加 `if (!state.playing || state.scrubbing || ...)` 守卫，并将排程前瞻窗口 `sfxSched.horizon` 与 `0.04s` 过期阈值乘以 `rate`。
   - `drawMarkers()` 中将顺序数字提前量改为 `const numLead = NUM_LEAD * animationRate`，与「Marker 原速」动画速率对齐。
 

@@ -14,7 +14,7 @@ let importing = false;
 function managedSite() { return path.join(app.getPath('userData'), 'library'); }
 function frontendRoot() {
   const bundled = path.join(process.resourcesPath || __dirname, 'frontend');
-  return fs.existsSync(bundled) ? bundled : path.join(__dirname, '..', '铺面查看器', 'player', 'static');
+  return fs.existsSync(bundled) ? bundled : path.join(__dirname, '..', 'jubeat_viewer', 'player', 'static');
 }
 function stageFrontend(dir) {
   const src=frontendRoot(); fs.mkdirSync(path.join(dir,'static'),{recursive:true});

@@ -41,7 +41,7 @@ from site_transaction import SiteTransaction
 
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO = TOOLS_DIR.parent
-PLAYER_DIR = REPO / "铺面查看器" / "player"
+PLAYER_DIR = REPO / "jubeat_viewer" / "player"
 sys.path.insert(0, str(PLAYER_DIR))
 
 import config  # noqa: E402
@@ -145,7 +145,7 @@ class Stats:
 
 
 def static_files() -> list[Path]:
-    """铺面查看器/player/static/ 下要发布的前端文件。
+    """jubeat_viewer/player/static/ 下要发布的前端文件。
 
     走目录而不是写死文件名：以前漏掉过后来新增的 record.css / record.js，
     index.html 引用了但站点里没有，浏览器直接 404。

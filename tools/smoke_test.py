@@ -29,7 +29,7 @@ import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PLAYER_DIR = REPO / "铺面查看器" / "player"
+PLAYER_DIR = REPO / "jubeat_viewer" / "player"
 
 PASS, FAIL = "\033[32m✓\033[0m", "\033[31m✗\033[0m"
 

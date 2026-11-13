@@ -7,7 +7,7 @@ se/*
 !se/README.txt
 
 # 曲库索引缓存
-铺面查看器/player/.library_index.json
+jubeat_viewer/player/.library_index.json
 .library_index.json
 
 # 运行时缓存（解包音频 / 封面 / 缩略图 / 索引）

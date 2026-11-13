@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const wiring = fs.readFileSync(new URL('../铺面查看器/player/static/app-wiring.js', import.meta.url), 'utf8');
-const base = fs.readFileSync(new URL('../铺面查看器/player/static/app-base.js', import.meta.url), 'utf8');
+const wiring = fs.readFileSync(new URL('../jubeat_viewer/player/static/app-wiring.js', import.meta.url), 'utf8');
+const base = fs.readFileSync(new URL('../jubeat_viewer/player/static/app-base.js', import.meta.url), 'utf8');
 
 /**
  * 分享页是构建时生成的静态快照，后加的控件（同押开关）不会出现在里面。
@@ -199,7 +199,7 @@ test('「同押独立音效」默认打开：新用户 / 老版本旧默认值�
 
 test('同押开关的默认状态与 index.html 的 checked 属性一致', () => {
   const html = fs.readFileSync(
-    new URL('../铺面查看器/player/static/index.html', import.meta.url), 'utf8');
+    new URL('../jubeat_viewer/player/static/index.html', import.meta.url), 'utf8');
   const input = html.match(/<input[^>]*id=["']chordSound["'][^>]*>/);
   assert.ok(input, 'index.html 必须有 #chordSound');
   assert.match(input[0], /\bchecked\b/, '默认打开就必须在 HTML 上写 checked，避免首帧闪一下未勾选');

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const R = createRequire(import.meta.url)("../铺面查看器/player/static/runtime.js");
+const R = createRequire(import.meta.url)("../jubeat_viewer/player/static/runtime.js");
 test("new selection aborts prior request and rejects stale results", () => {
   const scope = new R.RequestScope(); const a = scope.start(); const b = scope.start();
   assert.equal(a.signal.aborted, true); assert.equal(scope.current(a), false);

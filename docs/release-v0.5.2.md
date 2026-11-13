@@ -63,10 +63,10 @@ Release 附件仍是**不带曲库**的桌面版（每个约 100 MB）：解压�
 服务器上更新前端只要传这几个文件，曲库一个字都不用重传：
 
 ```
-铺面查看器/player/static/index.html   →  <站点根>/index.html
-铺面查看器/player/static/app.js       →  <站点根>/static/app.js
-铺面查看器/player/static/style.css    →  <站点根>/static/style.css
-铺面查看器/player/static/sfx.js       →  <站点根>/static/sfx.js
+jubeat_viewer/player/static/index.html   →  <站点根>/index.html
+jubeat_viewer/player/static/app.js       →  <站点根>/static/app.js
+jubeat_viewer/player/static/style.css    →  <站点根>/static/style.css
+jubeat_viewer/player/static/sfx.js       →  <站点根>/static/sfx.js
 ```
 
 **记得同时改 `index.html` 里的 `?v=`**（只要和之前用过的都不同就行，不必等于 app 版本号），

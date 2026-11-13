@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const R=require('../铺面查看器/player/static/runtime.js');
-const D=require('../铺面查看器/player/static/directory.js');
-const S=require('../铺面查看器/player/static/services.js');
-const {EventQueue}=require('../铺面查看器/player/static/visitor-queue.js');
+const R=require('../jubeat_viewer/player/static/runtime.js');
+const D=require('../jubeat_viewer/player/static/directory.js');
+const S=require('../jubeat_viewer/player/static/services.js');
+const {EventQueue}=require('../jubeat_viewer/player/static/visitor-queue.js');
 const turn=()=>new Promise(setImmediate);
 const song=i=>({id:'v/'+i,title:String(i),version:'v',charts:[],resourceOnly:true});
 const manifest=n=>({format:'jubeat-directory-v1',songs:[],versionIndexes:Array.from({length:n},(_,i)=>`data/versions/${i}.json`)});
@@ -89,7 +89,7 @@ test('encoded WAV and Ogg duration constrain PCM independently of catalog metada
 });
 
 test('small version checks back off across a partial rollout instead of looping reloads',async()=>{
- const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-wiring.js',import.meta.url),'utf8');
+ const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-wiring.js',import.meta.url),'utf8');
  const saved=new Map();let reloads=0,now=1000000;
  async function boot() {
   const A={services:{register(){}},frontVersion:()=> '0.6.38',resourcePath:s=>s};

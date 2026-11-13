@@ -5,10 +5,10 @@
     python3 tools/set_version.py --check     # 有地方没跟上就退出码 1
 
 权威值只有一个：仓库根目录的 VERSION（读写逻辑见
-铺面查看器/player/version.py）。这个脚本负责把它铺到下面几处，并用 --check
+jubeat_viewer/player/version.py）。这个脚本负责把它铺到下面几处，并用 --check
 在 CI 里守住「有人手改了其中一处」的情况：
 
-    铺面查看器/player/static/index.html   static/*.js|css 后面的 ?v=
+    jubeat_viewer/player/static/index.html   static/*.js|css 后面的 ?v=
     electron/package.json                "version"
     electron/package-lock.json           "version"（顶层 + packages.""）
 
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "铺面查看器" / "player"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "jubeat_viewer" / "player"))
 from version import (  # noqa: E402
     REPO,
     SEMVER_RE,
@@ -34,7 +34,7 @@ from version import (  # noqa: E402
     read_version,
 )
 
-INDEX_HTML = REPO / "铺面查看器" / "player" / "static" / "index.html"
+INDEX_HTML = REPO / "jubeat_viewer" / "player" / "static" / "index.html"
 # 构建产物里的那份 index.html 拷贝（site/ 是 gitignore 的，由 tools/build_site.py 生成）。
 # 它也带着一整排 ?v=：改了源却忘了重建 site/，线上就会变成「新 HTML + 老 JS」。
 SITE_INDEX = REPO / "site" / "index.html"
@@ -100,7 +100,7 @@ def check() -> int:
     """返回不一致的项数。"""
     want = read_version()
     problems: list[str] = []
-    release = REPO / '铺面查看器/player/static/release.json'
+    release = REPO / 'jubeat_viewer/player/static/release.json'
     if not release.is_file() or json.loads(release.read_text()).get('version') != want:
         problems.append('release.json 与 VERSION 不一致')
 
@@ -145,7 +145,7 @@ def check() -> int:
 
 def apply(version: str) -> None:
     VERSION_FILE.write_text(version + "\n", encoding="utf-8")
-    (REPO / '铺面查看器/player/static/release.json').write_text(json.dumps({'version':version},separators=(',',':'))+'\n')
+    (REPO / 'jubeat_viewer/player/static/release.json').write_text(json.dumps({'version':version},separators=(',',':'))+'\n')
     n = _bump_index(version)
     changed = [f"index.html（{n} 处 ?v= / 版本号徽章）"]
     m = _bump_html(SITE_INDEX, version)

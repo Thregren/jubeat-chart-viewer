@@ -3,7 +3,7 @@
 
 同一个站点有三套后端都会「发文件」：
 
-  * Python 开发服务器  铺面查看器/player/media.py :: parse_range / safe_join
+  * Python 开发服务器  jubeat_viewer/player/media.py :: parse_range / safe_join
   * Electron 静态服务   electron/site-server.js  :: parseRange / resolveSafe
   * PHP 单文件入口      deploy/php/index.php     :: jubeat_parse_range
 
@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PLAYER_DIR = REPO / "铺面查看器" / "player"
+PLAYER_DIR = REPO / "jubeat_viewer" / "player"
 sys.path.insert(0, str(PLAYER_DIR))
 NODE_SERVER = REPO / "electron" / "site-server.js"
 PHP_ENTRY = REPO / "deploy" / "php" / "index.php"

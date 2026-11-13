@@ -47,8 +47,8 @@
 曲库不用重传，只更新前端这几个文件（`?v=` 已提到 `0.6.5`）：
 
 ```
-铺面查看器/player/static/index.html     →  <站点根>/index.html
-铺面查看器/player/static/app-base.js    →  <站点根>/static/app-base.js
-铺面查看器/player/static/app-marker.js  →  <站点根>/static/app-marker.js
-铺面查看器/player/static/app-wiring.js  →  <站点根>/static/app-wiring.js
+jubeat_viewer/player/static/index.html     →  <站点根>/index.html
+jubeat_viewer/player/static/app-base.js    →  <站点根>/static/app-base.js
+jubeat_viewer/player/static/app-marker.js  →  <站点根>/static/app-marker.js
+jubeat_viewer/player/static/app-wiring.js  →  <站点根>/static/app-wiring.js
 ```

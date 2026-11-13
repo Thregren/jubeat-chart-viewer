@@ -62,10 +62,10 @@
 曲库一个字都不用重传，只更新前端：
 
 ```
-铺面查看器/player/static/index.html     →  <站点根>/index.html
-铺面查看器/player/static/*.js           →  <站点根>/static/     （九个 app-*.js + core/sfx/record）
-铺面查看器/player/static/style.css      →  <站点根>/static/style.css
-铺面查看器/player/static/record.css     →  <站点根>/static/record.css
+jubeat_viewer/player/static/index.html     →  <站点根>/index.html
+jubeat_viewer/player/static/*.js           →  <站点根>/static/     （九个 app-*.js + core/sfx/record）
+jubeat_viewer/player/static/style.css      →  <站点根>/static/style.css
+jubeat_viewer/player/static/record.css     →  <站点根>/static/record.css
 ```
 
 `?v=` 已提到 `0.6.6`（`index.html` 15 处 + 侧栏版本号徽章），

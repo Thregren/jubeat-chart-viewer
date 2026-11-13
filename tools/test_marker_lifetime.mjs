@@ -1,7 +1,7 @@
 import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const runtime=createRequire(import.meta.url)('../铺面查看器/player/static/runtime.js');
-let src=fs.readFileSync(new URL('../铺面查看器/player/static/app-marker.js',import.meta.url),'utf8');
+const runtime=createRequire(import.meta.url)('../jubeat_viewer/player/static/runtime.js');
+let src=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js',import.meta.url),'utf8');
 // drawPanelFrames (the old empty stub) was removed. Slice from the reusable
 // drawMarkers containers instead so they stay in scope; indexOf -1 would truncate.
 const a=src.indexOf('  function drawOrderNumber('),b=src.indexOf('  const counts = new Map();',a);

@@ -24,19 +24,19 @@ test('IPC permits only the current main frame on the local server origin',()=>{
  frame.url='http://untrusted.example:3210/';assert(!trustedSender({sender:wc,senderFrame:frame},win,'http://127.0.0.1:3210/'));
 });
 test('every viewer preference is explicitly supported by desktop and Android',()=>{
- const base=fs.readFileSync(new URL('../铺面查看器/player/static/app-base.js',import.meta.url),'utf8');
+ const base=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-base.js',import.meta.url),'utf8');
  const keys=[...base.slice(base.indexOf('  const STORAGE = {'),base.indexOf('\n  };',base.indexOf('  const STORAGE = {'))).matchAll(/"(jubeat\.[A-Za-z]+)"/g)].map(m=>m[1]);
  const java=fs.readFileSync(new URL('../android/app/src/world/thregren/jubeatviewer/PreferenceRules.java',import.meta.url),'utf8');
  assert.equal(keys.length,KEYS.size);for(const key of keys){assert(KEYS.has(key));assert(java.includes('"'+key.slice(7)+'"'));}
 });
 
 test('viewer storage migrates legacy values but recording presets stay local',()=>{
- const source=fs.readFileSync(new URL('../铺面查看器/player/static/app-base.js',import.meta.url),'utf8');
+ const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-base.js',import.meta.url),'utf8');
  const code=source.slice(source.indexOf('  function store('),source.indexOf('  // —— utils'));
  const local=new Map([['jubeat.marker','record-marker']]),persistent=new Map([['jubeat.marker','user-marker']]);
  const adapter=map=>({getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)});
  const window={JubeatPreferences:adapter(persistent)};
- const {SettingsStore}=createRequire(import.meta.url)('../铺面查看器/player/static/services.js');
+ const {SettingsStore}=createRequire(import.meta.url)('../jubeat_viewer/player/static/services.js');
  const settings=new SettingsStore(()=>window.__recActive?null:window.JubeatPreferences,()=>adapter(local));
  const store=vm.runInNewContext(code+';store',{window,settings});
  assert.equal(store('jubeat.marker'),'user-marker');

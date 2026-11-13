@@ -56,11 +56,11 @@
 这一版**前端多了一个文件**（`static/core.js`），曲库本身不用重传：
 
 ```
-铺面查看器/player/static/index.html   →  <站点根>/index.html
-铺面查看器/player/static/core.js      →  <站点根>/static/core.js     ← 新增，必须传
-铺面查看器/player/static/app.js       →  <站点根>/static/app.js
-铺面查看器/player/static/style.css    →  <站点根>/static/style.css
-铺面查看器/player/static/sfx.js       →  <站点根>/static/sfx.js
+jubeat_viewer/player/static/index.html   →  <站点根>/index.html
+jubeat_viewer/player/static/core.js      →  <站点根>/static/core.js     ← 新增，必须传
+jubeat_viewer/player/static/app.js       →  <站点根>/static/app.js
+jubeat_viewer/player/static/style.css    →  <站点根>/static/style.css
+jubeat_viewer/player/static/sfx.js       →  <站点根>/static/sfx.js
 ```
 
 `index.html` 里的 `?v=` 已提到 `0.5.4`。

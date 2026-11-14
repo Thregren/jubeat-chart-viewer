@@ -25,7 +25,7 @@ test('default browser recovery timers preserve the global receiver',()=>{
  `,context);
 });
 function timers(){const pending=new Map();let id=0;return{pending,setTimeout(fn){pending.set(++id,fn);return id},clearTimeout(id){pending.delete(id)},run(){const jobs=[...pending.values()];pending.clear();jobs.forEach(fn=>fn())}};}
-function player({nativeFallback=false}={}){
+function player({nativeFallback=false,query="",userAgent=""}={}){
  const time=timers(),plays=[],sessions=[],toasts=[],rebuilt=[];let fetches=0,now=1000;
  const perf={now:()=>now};
  const element=()=>({classList:{toggle(){}},style:{},setAttribute(){}});
@@ -33,10 +33,10 @@ function player({nativeFallback=false}={}){
  const audio={readyState:0,duration:NaN,paused:true,seeking:false,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},removeAttribute(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(name,fn){if(!events.has(name))events.set(name,new Set());events.get(name).add(fn)},removeEventListener(name,fn){events.get(name)?.delete(fn)},emit(name,ev={type:name}){for(const fn of [...(events.get(name)||[])])fn(ev)}};
  const els={audio,rate:{value:'1'},offset:{value:'0'}};for(const k of ['loadRow','btnPlay','loadLabel','loadPct','loadFill','loadBar','statTime','timeTotal','playIcon','timeNow'])els[k]=element();
  const ctx={state:'running',currentTime:0,resume(){return Promise.resolve()},decodeAudioData(){return Promise.resolve({length:4096,numberOfChannels:2,duration:60})},createGain(){return{connect(){}}},createAnalyser(){return{connect(){}}},createBufferSource(){return{playbackRate:{value:1},connect(){},stop(){},disconnect(){},start(_,off){plays.push({url:A.backend.url,off})}}}};
- const A={services:new Services.Services(),QUERY:new URLSearchParams(''),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(t){rebuilt.push(t)},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
+ const A={services:new Services.Services(),QUERY:new URLSearchParams(query),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(t){rebuilt.push(t)},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
  const Runtime={...R,AudioSession:class extends R.AudioSession{constructor(){super(time);sessions.push(this)}}};
  const window={JubeatApp:A,JubeatServices:{...Services,audioHeader:()=>({duration:60,sampleRate:48000,channels:2})},JubeatRuntime:Runtime,addEventListener(){}};
- vm.runInNewContext(source,{window,URL,Blob,URLSearchParams,location:{search:''},performance:perf,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{fetches++;return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}})}});
+ vm.runInNewContext(source,{window,navigator:{userAgent},URL,Blob,URLSearchParams,location:{search:''},performance:perf,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{fetches++;return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}})}});
  return{A,audio,ctx,time,plays,sessions,toasts,rebuilt,services:window.JubeatServices,fetches:()=>fetches,advanceClock(ms){now+=ms}};
 }
 test('decode queue serializes work, survives errors, and retains only completion',async()=>{
@@ -298,4 +298,90 @@ test('clicking play during a paused rate-handoff queues resume instead of showin
  assert.equal(h.A.playbackActive(),true);
  h.audio.readyState=4;h.audio.duration=60;h.audio.emit('loadedmetadata');h.audio.emit('canplay');await turn();await turn();
  assert.equal(h.A.state.playing,true);assert.equal(h.audio.paused,false);assert.equal(h.audio.currentTime,5);
+});
+
+
+test('rate changes adopt new samples and wait for fresh advancement',()=>{
+ const h=player();h.A.bindLoadEvents();
+ Object.assign(h.A.backend,{mode:'element',url:'song.ogg',rate:1});
+ Object.assign(h.audio,{currentTime:10,readyState:4,duration:60,paused:false,playbackRate:1});
+ h.audio.dataset.src='song.ogg';h.A.state.playing=true;h.A.audioNow();
+ h.advanceClock(100);h.audio.currentTime=10.1;
+ h.A.els.rate.value='0.5';h.A.applyPlaybackRate();
+ assert.ok(Math.abs(h.A.audioNow()-10.1)<1e-6);
+ h.advanceClock(40);assert.ok(Math.abs(h.A.audioNow()-10.1)<1e-6);
+ h.audio.emit('ratechange');assert.ok(Math.abs(h.A.audioNow()-10.1)<1e-6);
+});
+
+test('100 interleaved rates and pending seeks retain final position and playback intent',async()=>{
+ const h=player();h.A.bindLoadEvents();
+ Object.assign(h.A.backend,{mode:'element',url:'song.ogg',rate:1});
+ Object.assign(h.audio,{readyState:4,duration:60,paused:false,playbackRate:1});
+ h.audio.dataset.src='song.ogg';h.A.state.playing=true;
+ for(let i=0;i<100;i++){
+  const resume=h.A.playbackActive();h.A.pause();h.audio.seeking=true;
+  const target=i%2?12:35;h.A.seekTo(target);if(resume)h.A.resumeAfterSeek();
+  h.A.els.rate.value=i%2?'0.5':'2';h.A.applyPlaybackRate();h.audio.emit('ratechange');
+  assert.equal(h.audio.currentTime,target);assert.equal(h.A.audioNow(),target);
+  assert.equal(h.A.playbackActive(),true);
+  h.audio.seeking=false;h.audio.emit('seeked');await turn();await turn();
+  assert.equal(h.A.state.playing,true);assert.equal(h.audio.paused,false);
+ }
+ h.A.pause();assert.equal(h.time.pending.size,0);
+});
+
+test('native media does not inherit a separate AudioContext output latency',()=>{
+ const h=player();Object.assign(h.A.backend,{mode:'element',url:'song.ogg',rate:.5});
+ Object.assign(h.audio,{currentTime:10,playbackRate:.5,paused:false,readyState:4});
+ h.A.state.playing=true;h.ctx.outputLatency=.032;
+ assert.equal(h.A.renderMediaTime(),10);
+ h.A.backend.mode='webaudio';h.A.backend.anchorPos=10;h.A.backend.anchorCtx=h.ctx.currentTime;h.A.backend.rate=1;
+ assert.ok(Math.abs(h.A.renderMediaTime()-9.968)<1e-6,'buffer playback retains its own device compensation');
+});
+
+
+test('explicit device latency override remains available on native media',()=>{
+ const h=player({query:'outms=30'});
+ Object.assign(h.A.backend,{mode:'element',rate:.5});
+ Object.assign(h.audio,{currentTime:10,playbackRate:.5,readyState:4,paused:false});h.A.state.playing=true;
+ assert.ok(Math.abs(h.A.renderMediaTime()-9.985)<1e-6);
+});
+
+test('Chromium WSOLA presentation restores retained source window without changing transport positions',()=>{
+ for(const rate of [.5,.75,1,1.5,2]) {
+  const h=player({userAgent:'Mozilla/5.0 (Macintosh) Chrome/142.0.0.0'});
+  Object.assign(h.A.backend,{mode:'element',rate});
+  Object.assign(h.audio,{currentTime:10,readyState:4,paused:false,playbackRate:rate});
+  h.A.state.playing=true;h.A.els.rate.value=String(rate);
+  h.A.state.baseOffset=2;h.A.els.offset.value='100';
+  h.A.audioNow();h.audio.currentTime=10.01;
+  const lead=rate===1?0:.025;
+  assert.equal(h.A.audioNow(),10.01,'transport remains raw');
+  assert.ok(Math.abs(h.A.renderMediaTime()-(8.11+lead))<1e-9);
+  assert.ok(Math.abs(h.A.rawMediaTime()-(8.11+lead))<1e-9,'SFX uses same presentation mapping');
+  for(const field of ['paused','seeking']) {
+   h.audio[field]=true;assert.ok(Math.abs(h.A.renderMediaTime()-8.11)<1e-9);
+   h.audio[field]=false;h.audio.currentTime+=.01;h.A.audioNow();h.audio.currentTime=10.01;h.A.audioNow();
+  }
+  h.audio.preservesPitch=false;assert.ok(Math.abs(h.A.renderMediaTime()-8.11)<1e-9);
+ }
+});
+test('WSOLA workaround excludes other engines, mobile pipelines, previews and forced recording',()=>{
+ for(const userAgent of ['Firefox/140','Version/18 Safari/605','CriOS/140 Mobile Safari/605','Android Chrome/142','Chrome/128','Chrome/142']) {
+  const h=player({userAgent});Object.assign(h.A.backend,{mode:'element',rate:.5});
+  Object.assign(h.audio,{currentTime:10,readyState:4,paused:false,playbackRate:.5});h.A.state.playing=true;
+  h.A.audioNow();h.audio.currentTime=10.01;h.A.audioNow();
+  if(userAgent!=='Chrome/142')assert.equal(h.A.renderMediaTime(),10.01);
+  h.A.state.scrubbing=true;h.A.state.scrubSec=5;assert.equal(h.A.renderMediaTime(),5);
+  h.A.state.scrubbing=false;h.A.state.playing=false;assert.equal(h.A.renderMediaTime(),10.01);
+  h.A.state.playing=true;h.A.forcedMediaTime=3;assert.equal(h.A.renderMediaTime(),3);
+  assert.equal(h.A.rawMediaTime(),10.01);
+ }
+});
+test('WSOLA compatibility override leaves native presentation unadjusted',()=>{
+ const h=player({userAgent:'Chrome/153',query:'wsolaclock=0'});
+ Object.assign(h.A.backend,{mode:'element',rate:.5});
+ Object.assign(h.audio,{currentTime:10,readyState:4,paused:false,playbackRate:.5});h.A.state.playing=true;
+ h.A.audioNow();h.audio.currentTime=10.01;h.A.audioNow();
+ assert.equal(h.A.renderMediaTime(),10.01);assert.equal(h.A.rawMediaTime(),10.01);
 });

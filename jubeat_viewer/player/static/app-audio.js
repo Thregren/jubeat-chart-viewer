@@ -309,7 +309,7 @@
   // v0.6.56: 排程器只保留「下一颗待发音的游标」。切速 / 跳转时一律按音乐时钟
   // rawMediaTime() 重新二分定位，不做「已发声上界 + 140ms 后重锚」这类状态补偿：
   // 那套补偿把可听音绑在了会漂移的视觉时钟上，反而是变速后打点音错拍的来源。
-  const sfxSched = { idx: 0, timer: 0, bus: null, chain: [], horizon: 0.12 };
+  const sfxSched = { idx: 0, timer: 0, bus: null, chain: [], horizon: 0.12, lastRaw: null };
 
   /**
    * 音效专用输出总线（单例）：bus(preGain) → 软限幅 → 音乐总线。
@@ -332,7 +332,7 @@
         chain.push(limiter);
         tail = limiter;
       }
-      tail.connect(A.master() || audioCtx.destination);   // 和音乐共用输出总线
+      tail.connect(A.master() || audioCtx.destination);   // WebAudio 音乐共用此总线；原生媒体音乐独立直出
       sfxSched.bus = bus;
       sfxSched.chain = chain;
     }
@@ -357,7 +357,8 @@
     // 音乐时钟（<audio>.currentTime 换算的谱面时间）是唯一权威。任何视觉插值、
     // 单调下界、外推都不能参与定位，否则跳转之后打点音会整体偏移。
     // 「t ≥ now - 1e-4」＝ firstAtOrAfter（窗口起点那颗还算没过）；1e-4 是原实现就有的容差。
-    sfxSched.idx = Core.firstAtOrAfter(state.notes, A.rawMediaTime() - 1e-4);
+    sfxSched.lastRaw = A.rawMediaTime();
+    sfxSched.idx = Core.firstAtOrAfter(state.notes, sfxSched.lastRaw - 1e-4);
   }
 
   // 打点音排程器只在「正在播放且音效启用」时开着。
@@ -426,12 +427,15 @@
     if (metroGain(1) <= 0) return;
     // Never queue against a frozen clock while native music keeps advancing.
     if (!audioCtx || audioCtx.state !== "running") return;
+    const raw = A.rawMediaTime();
+    if (sfxSched.lastRaw != null && raw < sfxSched.lastRaw - 1e-6) sfxReset();
+    sfxSched.lastRaw = raw;
     const bus = sfxBus();
     if (!bus || !audioCtx) return;
     // 排程必须锚在音乐时钟上。视觉插值的几十毫秒会直接变成「听到的打点音」
     // 与「听到的音乐」之间的相位差，且切速 / 跳转后不会自愈。
-    const now = A.rawMediaTime();
-    const rate = Number(els.rate.value) || 1;
+    const now = raw;
+    const rate = A.effectivePlaybackRate?.() || Number(els.rate.value) || 1;
     const horizon = now + sfxSched.horizon * rate;
     // 同押（同一时刻一起按的一批 note）只发一发：
     // 以前是按 note 发，4 押就叠 4 下，音量直接顶穿。判定阈值和 core.numberNotes()

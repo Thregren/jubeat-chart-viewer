@@ -134,13 +134,15 @@ if [ "$WANT_FULL" = 1 ]; then
         done
       fi
       fixture=$(mktemp -d)
-      "$PY" tools/browser_fixture.py --out "$fixture" || return 1
+      "$PY" tools/browser_fixture.py --out "$fixture" --sync-audio || return 1
       "$PY" tools/serve.py "$fixture/site" --port 18765 >"$fixture/server.log" 2>&1 &
       server_pid=$!
       trap 'kill "$server_pid" 2>/dev/null || true' EXIT HUP INT TERM
       "$PY" -c "import sys; sys.path.insert(0,'tools'); from smoke_test import wait_ready; sys.exit(0 if wait_ready(18765) else 1)" \
         && node tools/browser/pwa-canvas-regression.mjs http://127.0.0.1:18765/ \
-        && node tools/browser/version-picker-regression.mjs http://127.0.0.1:18765/
+        && node tools/browser/version-picker-regression.mjs http://127.0.0.1:18765/ \
+        && JUBEAT_PREVIEW_URL=http://127.0.0.1:18765/ node tools/browser/check-audio-rate.mjs \
+        && JUBEAT_PREVIEW_URL=http://127.0.0.1:18765/ node tools/browser/speed-seek-regression.mjs
       result=$?
       kill "$server_pid" 2>/dev/null || true
       trap - EXIT HUP INT TERM

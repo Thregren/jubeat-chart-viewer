@@ -1,0 +1,21 @@
+{
+  "final_source_sha256": {
+    "jubeat_viewer/player/static/app-player.js": "ff3e5281b2ec528c231e1bb9e5792822b982991a95faa3242ddaa3eee0678a34",
+    "tools/avsync/analyze.py": "e9ffe5ec0fcf5296955ce35a73cf2f1917e85c0be29b207ea1ccb72b4f3cbb61",
+    "tools/avsync/capture.swift": "9aa5c8ca9178922adffddd5b1a970e8f100aa65f3e978d31b25f35d232588c1b",
+    "tools/browser_fixture.py": "2ceeab8acdbfee21a18479c131935fcc03ca0032650a9f033d2e68da3460cbd9",
+    "tools/browser/avsync-output.mjs": "34bdfad7cce0e5447e00eb1f5b8613e83ce2fb7b58caf1a80888a817ef9fd7d5"
+  },
+  "recordings": {
+    "wav": {
+      "path": "/tmp/jubeat-final-wav/capture.mov",
+      "sha256": "38be18da7126629e6f830ba638eae0af112416d33d32966d4b4273085eb40e6f",
+      "bytes": 64121031
+    },
+    "opus": {
+      "path": "/tmp/jubeat-final-opus/capture.mov",
+      "sha256": "f9c78c4bab2aea3d2a75a2cfb723d6bf7645f753ad389f34b166bcbbbf08d8ef",
+      "bytes": 67344547
+    }
+  }
+}

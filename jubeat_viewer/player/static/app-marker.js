@@ -933,7 +933,7 @@
     if (!ctx || !state.padRects || state.padRects.length < 16) return;
     const notes = state.notes;
     if (!notes.length) return;
-    const animationRate = (window.JubeatRuntime?.markerRate?.(Number(els.rate?.value), !!els.markerNormalSpeed?.checked) || 1);
+    const animationRate = (window.JubeatRuntime?.markerRate?.((A.effectivePlaybackRate?.() ?? Number(els.rate?.value)), !!els.markerNormalSpeed?.checked) || 1);
     const holdPre = HOLD_PRE * animationRate;
     const holdPost = HOLD_POST * animationRate;
     const maxHold = (state._parsed && state._parsed.maxHold) || 0;
@@ -1663,7 +1663,7 @@
     const maPer = timing.maFrameMs;
     const hPer = timing.burstMs ? timing.burstMs / hFrames : timing.hFrameMs;
     // Delta is in chart seconds; dividing by rate gives normal real-time animation.
-    const animationRate = (window.JubeatRuntime?.markerRate?.(Number(els.rate?.value), !!els.markerNormalSpeed?.checked) || 1);
+    const animationRate = (window.JubeatRuntime?.markerRate?.((A.effectivePlaybackRate?.() ?? Number(els.rate?.value)), !!els.markerNormalSpeed?.checked) || 1);
     const earlySec = (early * animationRate) / 1000;
     const lateSec = (Math.min(late, hFrames * hPer) * animationRate) / 1000;
     // 长押时长本身已是谱面时间，不能随动画速度缩短，否则慢速播放时会提前隐藏。
@@ -1753,7 +1753,7 @@
       firstCueBatch = window.JubeatFirstMarker.firstBatch(state.notes);
     }
     if (!firstCueBatch.length) return;
-    const rate = (window.JubeatRuntime?.markerRate?.(Number(els.rate?.value), !!els.markerNormalSpeed?.checked) || 1);
+    const rate = (window.JubeatRuntime?.markerRate?.((A.effectivePlaybackRate?.() ?? Number(els.rate?.value)), !!els.markerNormalSpeed?.checked) || 1);
     const early = window.JubeatRuntime.markerTiming(markerCfg.design, markerCfg).earlyMs;
     const lead = markerCfg.design ? Math.max(0, -early * rate / 1000) : 0.5167 * rate;
     // 音符已在当前渲染帧进入 MA 时，不让预告覆盖它（含被夹到 0 的早首音）。

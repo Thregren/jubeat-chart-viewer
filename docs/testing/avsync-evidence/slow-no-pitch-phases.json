@@ -1,0 +1,152 @@
+[
+  {
+    "phase": "baseline_1x",
+    "wall": 1794671694111,
+    "state": {
+      "raw": 0,
+      "mode": "webaudio",
+      "playing": false,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": -1
+    }
+  },
+  {
+    "phase": "before_rate_0.5",
+    "wall": 1794671702170,
+    "state": {
+      "raw": 6.007709,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "before_rate_2",
+    "wall": 1794671708192,
+    "state": {
+      "raw": 6.001448,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "before_rate_0.75",
+    "wall": 1794671714203,
+    "state": {
+      "raw": 6,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "before_rate_1",
+    "wall": 1794671720218,
+    "state": {
+      "raw": 6,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "after50_rate_0.5",
+    "wall": 1794671728344,
+    "state": {
+      "raw": 0.072283,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "after50_rate_2",
+    "wall": 1794671734352,
+    "state": {
+      "raw": 3.080283,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "after50_rate_0.75",
+    "wall": 1794671740360,
+    "state": {
+      "raw": 15.014401,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "after50_rate_1",
+    "wall": 1794671746368,
+    "state": {
+      "raw": 19.591651,
+      "mode": "element",
+      "playing": true,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  },
+  {
+    "phase": "end",
+    "wall": 1794671752373,
+    "state": {
+      "raw": 25.57801,
+      "mode": "element",
+      "playing": false,
+      "muted": false,
+      "volume": 1,
+      "ctx": "running",
+      "outputLatency": 0.032,
+      "baseLatency": 0.005804988662131519,
+      "peak": 0
+    }
+  }
+]

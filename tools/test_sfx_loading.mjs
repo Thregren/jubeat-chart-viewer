@@ -547,3 +547,12 @@ test('sfxReset 断开旧总线，再次发声重建新总线', () => {
   assert.notEqual(h.shapers[1], first);
   assert.equal(h.shapers[1].oversample, 'none', '重建的总线也必须保持 oversample none');
 });
+
+test('backwards raw music sample disconnects stale voices and schedules crossed notes again', async()=>{
+ const h=player();h.A.state.notes=[{t:3.05},{t:3.08},{t:3.14}];
+ h.position(3.03);h.A.setPlaying(true);await settle();h.tick();
+ const before=h.disconnects;h.started.length=0;
+ h.rawPosition(2.99);h.tick();
+ assert(h.disconnects>before,'old scheduled bus is disconnected');
+ assert.equal(h.started.length,2,'notes crossed backwards become eligible again');
+});

@@ -29,7 +29,16 @@
   const FLASH = 0.14; // seconds pad stays lit after hit
   const ARM = 0.12; // pre-arm window
 
+  let lastAdvancedTime = -Infinity;
   function advanceNotes(chartT) {
+    // Media interpolation and decoder samples can move backwards across a note.
+    // Rebuild instead of leaving the incremental cursor ahead of the music.
+    if (chartT < lastAdvancedTime - 1e-6) {
+      rebuildVisualState(chartT);
+      lastAdvancedTime = chartT;
+      return;
+    }
+    lastAdvancedTime = chartT;
     // notes 在 parseNotes() 里已经按 t 排好：游标之后都是未来 note。
     // 同时只维护一张很小的 activeNotes 表（flash/hold 会跨几帧），不再每帧遍历整首谱面。
     while (state.noteCursor < state.notes.length) {
@@ -192,7 +201,7 @@
     const forceUi = paintDirty || !state.playing || state.scrubbing;
     paintDirty = false;
     state.raf = requestAnimationFrame(updateFrame);
-    const mediaT = renderMediaTime();   // 画面比音频位置提前一个输出延迟，和耳朵对齐
+    const mediaT = renderMediaTime();   // 使用当前播放后端对应的画面时间
     A.visitors?.playback?.(mediaT,state.duration,state.playing&&!state.scrubbing);
 
     // ?debug=1：把时间轴的关键值写进 DOM，方便从外部核对（排查对拍问题用）

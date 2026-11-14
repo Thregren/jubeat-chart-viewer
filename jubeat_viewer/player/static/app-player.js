@@ -276,6 +276,13 @@
     return supported;
   }
 
+  // UI selection is the intent; the media element is authoritative while it runs.
+  // Recording and paused previews retain the selected animation speed.
+  function effectivePlaybackRate() {
+    if (forcedMediaTime != null || !state.playing) return Number(els.rate.value) || 1;
+    return backend.mode === 'element' ? (els.audio.playbackRate || 1) : (backend.rate || 1);
+  }
+
   function selectedRate() {
     const rate = Number(els.rate.value) || 1;
     if (rate !== 1 && !preservePitch()) {
@@ -596,18 +603,14 @@
     return true;
   }
 
-  /**
-   * 输出延迟：画面要提前这么多，marker 才和你听到的声音对齐。
-   *
-   * v0.6.56：以前只在 webaudio 后端做补偿，element 后端（也就是所有变速播放）
-   * 硬编码返回 0 —— 于是「1× 正常、一切到变速就 marker 早于音乐」，而且拖动
-   * 重新起播、重建输出管线后最明显。现在两个后端用同一套补偿，不再从有到无跳变。
-   * element 的音乐不经过 AudioContext，其管线延迟无法直接读取，这里用同一音频
-   * 设备的 outputLatency / baseLatency 近似；真机可用 ?outms=NN（毫秒）手动标定，
-   * ?outms=0 可关闭补偿做 A/B 对比。
+  /** Device compensation belongs only to the graph that actually carries music.
+   * Native media has its own presentation timeline and does not pass through
+   * this AudioContext. Applying its latency again delayed measured marker output.
+   * Keep ?outms=NN as an explicit per-device calibration for either backend.
    */
   function outputLatency() {
     if (OUT_MS_OVERRIDE != null) return OUT_MS_OVERRIDE;
+    if (backend.mode === "element") return 0;
     if (!A.audioCtx) return 0;
     const l = Number(A.audioCtx.outputLatency) || Number(A.audioCtx.baseLatency) || 0;
     return Number.isFinite(l) && l > 0 ? Math.min(0.2, l) : 0;
@@ -689,20 +692,9 @@
   }
 
   function syncMediaClockRate() {
-    // 切速时把插值锚点重设在「当前这一刻」，不让旧倍率继续外推。
-    // currentTime 是媒体管线实测的播放头；用猜出来的 WSOLA 斜率去延迟一个
-    // 已经观测到的采样，只会让画面落后于声音并在过渡窗口结束时突然前跳。
-    if (!state.playing || els.audio.paused || els.audio.seeking) {
-      resetMediaClock();
-      return;
-    }
-    const raw = els.audio.currentTime || 0;
-    const rate = els.audio.playbackRate || 1;
-    const now = performance.now();
-    audioClock.sample = raw;
-    audioClock.base = Math.min(audioNow(), raw + CLOCK_MAX_EXTRAP * rate);
-    audioClock.at = now;
-    audioClock.fresh = now;
+    // A rate transition invalidates the old interpolation slope. Adopt the
+    // measured position directly; only a subsequent sample can arm extrapolation.
+    resetMediaClock();
   }
 
   function pendingAudioTime() {
@@ -772,23 +764,41 @@
   }
 
   /**
-   * 画面 / 判定用的时间：再往前扣掉一个输出延迟。
-   * 音乐送进 WebAudio 之后，你听到的那一刻比「图里渲染的时刻」晚 outputLatency，
-   * 所以画面要提前这么多，marker 才和耳朵里的声音对上。
-   * 打点音不受影响 —— 它和音乐在同一条输出里，本来就是按音乐位置排的。
+   * WebAudio 的处理时钟领先实际设备输出，因此扣除该图的输出延迟。
+   * 原生媒体使用自己的播放时间，默认不借用另一条音频图的延迟估计。
+   * 显式 outms 校准仍对两个后端生效。
    */
   function renderMediaTime() {
     // 录制模式：时间由录制脚本直接给定（__player.setFrameTime），
     // 画面只由这个数决定，和音频时钟、音源有没有加载完全无关。
     if (forcedMediaTime != null) return Math.max(0, forcedMediaTime);
-    return Math.max(0, currentMediaTime() - outputLatency() * (backend.rate || 1));
+    return Math.max(0, currentMediaTime() + mediaPresentationLead() - outputLatency() * effectivePlaybackRate());
   }
 
-  /** 不做任何外推的原始谱面时间：排打点音用它，宁可差半帧也不要提前响 */
+  // Chromium's WSOLA clock counts discarded input, not the centre of the
+  // rendered search block. RemoveOldInputFrames retains half the 30ms search
+  // interval plus half the 20ms overlap window (~25ms of SOURCE time).
+  // This is 50ms wall time at 0.5x, not a device/output latency. Restore the
+  // source-time centre for presentation only; never feed it back into seeks.
+  // See docs/testing/speed-seek-sync.md for source derivation and output tests.
+  // The input-consumption clock landed in 2024; verified in Chromium 129.
+  const chromiumMajor = Number(/\b(?:Chrome|Chromium)\/(\d+)/.exec(globalThis.navigator?.userAgent || "")?.[1] || 0);
+  const chromiumWsola = chromiumMajor >= 129
+    && !/Android/.test(globalThis.navigator?.userAgent || "") && QUERY.get('wsolaclock') !== '0';
+  function mediaPresentationLead() {
+    const el = els.audio;
+    if (!chromiumWsola || forcedMediaTime != null || backend.mode !== 'element' || !state.playing
+      || state.scrubbing || el.paused || el.seeking || el.readyState < 3
+      || el.preservesPitch !== true || el.playbackRate === 1
+      || audioClock.fresh === -Infinity) return 0;
+    return 0.025;
+  }
+
+  /** 不做视觉外推的呈现谱面时间：SFX 与 marker 共用保调源时间映射。 */
   function rawMediaTime() {
     const off = (Number(els.offset.value) || 0) / 1000;
     const pos = rawAudioTime();
-    return pos + off - (state.baseOffset || 0);
+    return pos + off - (state.baseOffset || 0) + mediaPresentationLead();
   }
 
   // 换歌时不阻塞界面，音源可能还没就绪。这时要跳转（?t= 深链接）先记下来，
@@ -1065,6 +1075,7 @@
     loadElementSource,
     startBufferAt,
     applyPlaybackRate,
+    effectivePlaybackRate,
     keepAudioAlive,
     audioNow,
     currentMediaTime,

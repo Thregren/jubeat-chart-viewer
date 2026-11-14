@@ -36,9 +36,11 @@ def inspect(base):
         check('protected '+relative,request(relative,'HEAD')[0]==404)
     status,stats,body=request('api/visitors')
     statistics=json.loads(body)
-    # chart_loads / today_chart_loads were removed from the public aggregate;
-    # the viewer already treats their absence as "unavailable" (app-visitors.js).
-    check('aggregate statistics only',status==200 and set(statistics)=={'visitors','today_visitors','views','popular_songs'})
+    # Chart-load counters are public aggregates used by the current viewer.
+    required={'visitors','today_visitors','views','popular_songs'}
+    optional={'chart_loads','today_chart_loads'}
+    check('aggregate statistics only',status==200 and required <= set(statistics) <= required | optional
+          and all(type(statistics[k]) is int and statistics[k]>=0 for k in set(statistics)-{'popular_songs'}))
     check('bounded popular ranking',isinstance(statistics.get('popular_songs'),list) and len(statistics['popular_songs'])<=30)
     check('statistics not cached','no-store' in stats.get('cache-control',''))
     return dict(ok=not failures,failures=failures)

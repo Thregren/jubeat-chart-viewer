@@ -230,10 +230,8 @@ class Handler(BaseHTTPRequestHandler):
 
         # —— 与静态站点完全相同的路径布局 ——
         if path == "/data/library.json":
-            # 重新读取是显式的运维动作：默认关闭，避免任何 GET（含预取、被反代的
-            # 公共路径）都能触发一次全量重读。
-            if qs.get("reindex", [""])[0] and os.environ.get("JUBEAT_ALLOW_REINDEX") == "1":
-                LIB.load(force=True)
+            if qs.get("reindex", [""])[0]:
+                return self._error("Restart the local development server to reload its index", 403)
             return self._data_library()
         if path == "/data/markers.json":
             return self._json(markers.manifest(), cache="no-cache")
@@ -395,7 +393,7 @@ class Handler(BaseHTTPRequestHandler):
             ctype += "; charset=utf-8"
         # 静态文件开发时改动频繁：用 ETag 重新校验，别让浏览器拿旧的 JS
         stat = dest.stat()
-        tag = '"%s-%s"' % (int(stat.st_mtime), stat.st_size)
+        tag = '"%s-%s"' % (stat.st_mtime_ns, stat.st_size)
         if self.headers.get("If-None-Match") == tag:
             self.send_response(304)
             self.send_header("ETag", tag)

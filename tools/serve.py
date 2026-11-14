@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import functools
 import sys
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -22,6 +22,7 @@ REPO = Path(__file__).resolve().parent.parent
 # 直接复用，别再有第四份。
 sys.path.insert(0, str(REPO / "jubeat_viewer" / "player"))
 from media import parse_range  # noqa: E402
+from server import BoundedHTTPServer  # noqa: E402
 
 TEXT_SUFFIXES = {".html", ".js", ".css", ".json", ".svg"}
 
@@ -46,10 +47,23 @@ class RangeHandler(SimpleHTTPRequestHandler):
             ctype = f"{ctype}; charset=utf-8" if ctype else "text/plain; charset=utf-8"
         return ctype
 
+    def list_directory(self, path):
+        self.send_error(404, "File not found")
+        return None
+
     def send_head(self):
         """支持 Range 的 send_head：标准库只认 200，这里补 206。"""
         self._range_left = None  # keep-alive 复用时别把上一次的 Range 状态带过来
-        path = Path(self.translate_path(self.path))
+        path = Path(self.translate_path(self.path)).absolute()
+        lexical_root = Path(self.directory).absolute()
+        root = lexical_root.resolve()
+        # Validate the selected index as well: a directory's index may be a symlink.
+        if path.is_dir():
+            path = next((path / name for name in ('index.html', 'index.htm') if (path / name).is_file()), path)
+        resolved = path.resolve()
+        if not resolved.is_relative_to(root) or any(part.startswith('.') for part in path.relative_to(lexical_root).parts):
+            self.send_error(404, "File not found")
+            return None
         if path.is_dir():
             return super().send_head()
         if not path.is_file():
@@ -114,7 +128,7 @@ def main() -> int:
         print(f"{root} 里没有 index.html：先跑 python3 tools/build_site.py", file=sys.stderr)
         return 1
     handler = functools.partial(RangeHandler, directory=str(root))
-    httpd = ThreadingHTTPServer((args.host, args.port), handler)
+    httpd = BoundedHTTPServer((args.host, args.port), handler)
     httpd.daemon_threads = True
     print(f"静态站点 → http://{args.host}:{args.port}/   （{root}）")
     try:

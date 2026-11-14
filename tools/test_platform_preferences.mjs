@@ -6,15 +6,15 @@ import vm from 'node:vm';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 const {Preferences,KEYS,trustedSender}=createRequire(import.meta.url)('../electron/preferences.js');
-test('desktop preferences survive separate origins/process stores and reject extra capabilities',()=>{
+test('desktop preferences survive separate origins/process stores and reject extra capabilities',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'viewer-preferences-'));
  try{
   const file=path.join(dir,'preferences.json'),first=new Preferences(file);
-  first.setItem('jubeat.marker','tm0001');const reopened=new Preferences(file);
+  await first.setItem('jubeat.marker','tm0001');const reopened=new Preferences(file);
   assert.equal(reopened.getItem('jubeat.marker'),'tm0001');
   assert.throws(()=>reopened.setItem('../secret','x'));assert.throws(()=>reopened.setItem('jubeat.unlisted','x'));
   assert.throws(()=>reopened.setItem('jubeat.marker','x'.repeat(4097)));
-  reopened.removeItem('jubeat.marker');assert.equal(new Preferences(file).getItem('jubeat.marker'),null);
+  await reopened.removeItem('jubeat.marker');assert.equal(new Preferences(file).getItem('jubeat.marker'),null);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('IPC permits only the current main frame on the local server origin',()=>{

@@ -135,7 +135,7 @@ def profile() -> str:
             value = kind + ":unknown"
     elif kind == "sips":
         try:
-            value = kind + ":" + subprocess.check_output(["sips", "--version"], text=True).strip()
+            value = kind + ":" + subprocess.check_output(["sips", "--version"], text=True, timeout=10).strip()
         except Exception:
             value = kind
     else:

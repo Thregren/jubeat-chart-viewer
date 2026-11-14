@@ -14,7 +14,7 @@ function allowed(key, value = null) {
 }
 class Preferences {
   constructor(file) {
-    this.file = file; this.values = Object.create(null);
+    this.file = file; this.values = Object.create(null); this.writes = Promise.resolve(); this.lastError = null;
     try {
       if (fs.statSync(file).size > 128 * 1024) return;
       const values = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -27,16 +27,23 @@ class Preferences {
   setItem(key, value) {
     if (!allowed(key, value)) throw Error('Invalid preference');
     const next = { ...this.values }; if (value === null) delete next[key]; else next[key] = value;
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const encoded = JSON.stringify(next);
     if (Buffer.byteLength(encoded, 'utf8') > 128 * 1024) throw Error('Preference storage limit');
-    const temp = this.file + '.tmp';
-    try {
-      fs.writeFileSync(temp, encoded, { mode: 0o600 });
-      fs.renameSync(temp, this.file); this.values = next;
-    } finally { try { fs.unlinkSync(temp); } catch {} }
+    this.values = next;
+    const write = this.writes.then(async () => {
+      await fs.promises.mkdir(path.dirname(this.file), { recursive: true });
+      const temp = this.file + '.tmp';
+      try {
+        await fs.promises.writeFile(temp, encoded, { mode: 0o600 });
+        await fs.promises.rename(temp, this.file); this.lastError = null;
+      } finally { await fs.promises.unlink(temp).catch(() => {}); }
+    });
+    this.writes = write.then(() => undefined, error => { this.lastError = error; });
+    return write;
   }
-  removeItem(key) { this.setItem(key, null); }
+  async flush() { await this.writes; if (this.lastError) throw this.lastError; }
+
+  removeItem(key) { return this.setItem(key, null); }
 }
 function trustedSender(event, win, url) {
   try { return !!win && !win.isDestroyed() && event.sender === win.webContents &&
@@ -44,21 +51,21 @@ function trustedSender(event, win, url) {
   catch { return false; }
 }
 function registerPreferences(ipcMain, preferences, getWindow, getUrl) {
-  ipcMain.on('viewer-preference', (event, request) => {
-    let response = { ok: false };
-    if (trustedSender(event, getWindow(), getUrl()) && request && typeof request === 'object') {
-      try {
-        let value = null;
-        if (request.op === 'get') value = preferences.getItem(request.key);
-        else if (request.op === 'all') value = preferences.getAll();
-        else if (request.op === 'set') preferences.setItem(request.key, request.value);
-        else if (request.op === 'remove') preferences.removeItem(request.key);
-        else throw Error('Invalid operation');
-        response = { ok: true, value };
-      } catch { /* Never send filesystem paths or native exception details to the renderer. */ }
-    }
-    // Electron sends a synchronous reply as soon as this setter is called.
-    event.returnValue = response;
+  // One synchronous, memory-only bootstrap preserves the viewer's storage API.
+  ipcMain.on('viewer-preferences-snapshot', event => {
+    event.returnValue = trustedSender(event, getWindow(), getUrl())
+      ? { ok: true, value: { ...preferences.values } } : { ok: false };
+  });
+  ipcMain.handle('viewer-preference-write', async (event, request) => {
+    if (!trustedSender(event, getWindow(), getUrl()) || !request || typeof request !== 'object') return { ok: false };
+    try {
+      if (request.op === 'set') await preferences.setItem(request.key, request.value);
+      else if (request.op === 'remove') await preferences.removeItem(request.key);
+      else if (request.op === 'flush') await preferences.flush();
+      else throw Error('Invalid operation');
+      return { ok: true };
+    } catch { return { ok: false }; }
   });
 }
+
 module.exports = { Preferences, KEYS, MAX_VALUE, allowed, trustedSender, registerPreferences };

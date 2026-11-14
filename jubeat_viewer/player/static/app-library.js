@@ -95,13 +95,13 @@
     const started = performance.now();
     els.listCount.textContent = "加载中…";
     try {
-      const res = await fetch(PATHS.library + (force ? "?reindex=1" : ""),
+      const res = await fetch(PATHS.library,
                               { cache: force ? "reload" : "default", signal: request.signal });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const budget = new Runtime.ByteBudget(32 * 1024 * 1024);
       const manifest = await Runtime.readJSON(res, {budget});
       const assembled = await window.JubeatDirectory.loadCatalog(manifest, async (path) => {
-        const part = await fetch(A.resourcePath(path) + (force ? '?reindex=1' : ''),
+        const part = await fetch(A.resourcePath(path),
           { signal: request.signal, cache: force ? 'reload' : 'default' });
         if (part.status === 404) return null;
         if (!part.ok) throw new Error(`版本索引读取失败（${part.status}）`);
@@ -485,18 +485,6 @@
   // 40 份够来回切歌不重读，同时把最早用过的挤出去。
   const chartCacheGet = key => catalog.get(key);
   const chartCachePut = (key, payload) => catalog.put(key, payload);
-  // Parsing a dense chart is pure work over the cached JSON. Reuse that work
-  // while the same cached object is resident, and let the WeakMap release it
-  // together with the catalog entry instead of adding a second visible cache.
-  const parsedChartCache = new WeakMap();
-  function parseCachedChart(chartJson) {
-    let parsed = parsedChartCache.get(chartJson);
-    if (!parsed) {
-      parsed = parseNotes(chartJson);
-      parsedChartCache.set(chartJson, parsed);
-    }
-    return parsed;
-  }
 
   async function loadChart(code) {
     A.mode?.chartChanging?.();
@@ -537,7 +525,7 @@
       if (!chartRequests.current(request) || state.song !== song) return;
       A.metrics = A.metrics || {}; A.metrics.chartMs = performance.now() - started;
       const chartJson = payload.chart;
-      const parsed = parseCachedChart(chartJson);
+      const parsed = parseNotes(chartJson);
       if (!cached) chartCachePut(key, payload);
       state.chartMeta = payload.chartMeta;
       state.chart = chartJson;

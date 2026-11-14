@@ -5,8 +5,8 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),Runtime=require('../jubeat_viewer/player/static/runtime.js'),Core=require('../jubeat_viewer/player/static/core.js');
 const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-library.js',import.meta.url),'utf8');
-const functions=source.slice(source.indexOf('  const parsedChartCache ='),source.indexOf('  /** Rebuild note/pad visual state'));
-function fixture(fetch,parseNotes=Core.parseNotes) {
+const functions=source.slice(source.indexOf('  async function loadChart'),source.indexOf('  /** Rebuild note/pad visual state'));
+function fixture(fetch,parseNotes=Core.cachedChartParser()) {
   let paints=0,densityBuilds=0,parseCalls=0;
   const element=()=>({textContent:'old',dataset:{},classList:{remove(){},toggle(){}},setAttribute(){}});
   const els=Object.fromEntries(['btnShare','playIcon','btnPlay','statBpm','statNotes','statHolds','statTime','timeNow','timeTotal','panelGlow'].map(k=>[k,element()]));
@@ -51,13 +51,17 @@ test('successful chart loading restores chart, parsed state and sharing together
   assert(f.state._parsed);assert.equal(f.cache.size,1);assert.equal(f.els.btnShare.disabled,false);
 });
 
-test('reloading a resident chart reuses parsed notes without weakening cache ownership', async () => {
+test('reloading a resident chart reuses its time map and resets mutable render state', async () => {
   const chart={meta:{},time:[{beat:[0,0,1],bpm:120}],note:[{beat:[1,0,1],index:0}]};
   const f=fixture(async()=>new Response(JSON.stringify(chart)));
   await f.load();
   const first=f.state._parsed;
+  first.notes[0].scored=true;
   await f.load();
-  assert.equal(f.state._parsed,first);
-  assert.equal(f.counts().parseCalls,1);
+  assert.notEqual(f.state._parsed,first);
+  assert.equal(f.state._parsed.bpmAt,first.bpmAt);
+  assert.notEqual(f.state.notes,first.notes);
+  assert.equal(f.state.notes[0].scored,undefined);
+  assert.equal(f.counts().parseCalls,2);
   assert.equal(f.cache.size,1);
 });

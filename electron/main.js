@@ -306,3 +306,12 @@ app.on("window-all-closed", () => {
   shutdownServer();
   if (process.platform !== "darwin") app.quit();
 });
+
+let preferenceQuitReady = false;
+app.on('before-quit', event => {
+  if (preferenceQuitReady || !preferences) return;
+  event.preventDefault();
+  preferences.flush().catch(error => reportError('保存设置失败', error)).finally(() => {
+    preferenceQuitReady = true; app.quit();
+  });
+});

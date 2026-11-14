@@ -345,3 +345,14 @@ test("abTap：A → B → 清除；B 打在 A 前面就两点对调", () => {
   r = Core.abTap({ a: 20, b: null }, 20);
   assert.deepEqual(r, { a: 20, b: 20, phase: "B" });
 });
+
+test('cached chart parsing isolates playback mutations and reapplies numbering options',()=>{
+ const parse=Core.cachedChartParser();
+ const chart={meta:{},time:[{beat:[0,0,1],bpm:120}],note:[{beat:[0,0,1],index:0},{beat:[1,0,1],index:1}]};
+ const a=parse(chart,{max:1});assert.deepEqual(a.notes.map(n=>n.seq),[1,1]);
+ a.notes[0].state='done';a.notes[0].t=999;a.holdEnds.push(999);
+ // A cache hit must avoid rebuilding time maps from the raw beat array.
+ Object.defineProperty(chart.note[0],'beat',{get(){throw Error('reparsed raw chart')}});
+ const b=parse(chart,{max:0});assert.deepEqual(b.notes.map(n=>n.seq),[1,2]);
+ assert.equal(b.notes[0].state,'pending');assert.equal(b.notes[0].t,0);assert.equal(b.holdEnds.length,0);
+});

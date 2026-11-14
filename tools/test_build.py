@@ -1,12 +1,13 @@
 """Regression tests for failed builds and publication rollback."""
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent))
-from site_transaction import SiteTransaction
+from site_transaction import SiteTransaction, read_site
 
 class BuildTransactions(unittest.TestCase):
     def setUp(self):
@@ -39,5 +40,30 @@ class BuildTransactions(unittest.TestCase):
         with SiteTransaction(self.root):
             with self.assertRaises(RuntimeError):
                 with SiteTransaction(self.root): pass
+    def test_process_exit_mid_publish_recovers_before_next_build(self):
+        script = '''
+import os,sys
+from pathlib import Path
+from site_transaction import SiteTransaction
+with SiteTransaction(Path(sys.argv[1])) as build:
+    for name in ('asset.js','index.html','new.js'):
+        p=build.stage/name;p.unlink(missing_ok=True);p.write_text('new')
+    original=os.replace
+    def replace(src,dst):
+        original(src,dst)
+        if Path(dst).name=='asset.js':os._exit(73)
+    os.replace=replace
+    build.publish()
+'''
+        result = subprocess.run([sys.executable, '-c', script, str(self.root)],
+                                env={**os.environ, 'PYTHONPATH': str(Path(__file__).parent)})
+        self.assertEqual(result.returncode, 73)
+        with self.assertRaisesRegex(RuntimeError, '发布中断'):
+            with read_site(self.root): pass
+        with SiteTransaction(self.root):
+            self.assertEqual((self.root/'asset.js').read_text(), 'old asset')
+            self.assertEqual((self.root/'index.html').read_text(), 'old entry')
+            self.assertFalse((self.root/'new.js').exists())
+        self.assertFalse(list(self.root.parent.glob('.site.build-*')))
 
 if __name__ == "__main__": unittest.main()

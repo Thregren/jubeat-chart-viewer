@@ -295,6 +295,22 @@
     };
   }
 
+  function cachedChartParser() {
+    const cache = new WeakMap();
+    return (chart, opts = {}) => {
+      const key = JSON.stringify([opts.mult, opts.floor, opts.max, opts.lookback]);
+      let entry = cache.get(chart);
+      if (!entry) { entry = { parsed: parseNotes(chart, opts), key }; cache.set(chart, entry); }
+      else if (entry.key !== key) { numberNotes(entry.parsed.notes, entry.parsed.bpmAt, opts); entry.key = key; }
+      const template = entry.parsed;
+      // Rendering mutates note state. Never return the cached objects themselves.
+      const parsed = { ...template, notes: template.notes.map(note => ({ ...note })),
+        holdEnds: template.holdEnds.slice(), timeEvents: template.timeEvents.map(event => ({ ...event })),
+        type1: template.type1 && { ...template.type1 } };
+      return parsed;
+    };
+  }
+
   /** 按难度代号找谱面（BAS/ADV/EXT…）；兼容旧深链接里直接传 file 的写法 */
   function pickChart(charts, code) {
     const q = String(code || "").toLowerCase();
@@ -529,6 +545,7 @@
     numberNotes,
     parseNotes,
     formatBpm,
+    cachedChartParser,
     pickChart,
     firstAfter,
     firstAtOrAfter,

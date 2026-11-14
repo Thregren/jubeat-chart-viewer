@@ -247,6 +247,12 @@ class HttpIntegrity(unittest.TestCase):
                 self.assertIn("ref", json.loads(body))
         self.assertEqual(self.request("GET", "/ok")[0], 200)
 
+    def test_remote_reindex_is_denied_without_loading(self):
+        with patch.object(self.lib, 'load', side_effect=AssertionError('must not reindex')):
+            status, headers, body = self.request('GET', '/data/library.json?reindex=1')
+        self.assertEqual(status, 403)
+        self.assertEqual(headers['Cache-Control'], 'no-store')
+
     def test_library_get_head_and_304_use_precomputed_response(self):
         raw, compressed, tag = self.lib.published_response()
         with patch.object(server.json, "dumps", side_effect=AssertionError("request serialized JSON")), \

@@ -12,7 +12,8 @@
   const services = new window.JubeatServices.Services();
   A.services = services;
   const settings = services.register('settings', new window.JubeatServices.SettingsStore(
-    () => window.__recActive ? null : window.JubeatPreferences, () => localStorage));
+    () => window.__recActive ? null : window.JubeatPreferences, () => localStorage,
+    () => A.toast?.("设置保存失败，请重试")));
   const renderer = services.register('renderer', new window.JubeatServices.CanvasRenderer());
   const quality = settings.access('jubeat.renderQuality');
   if (['auto', 'sharp', 'eco'].includes(quality)) renderer.mode = quality;
@@ -514,8 +515,10 @@
   }
 
   /** .mc 谱面 JSON → note 列表：实现在 core.js（node 可测） */
+  let parseCachedNotes;
   function parseNotes(chart) {
-    return Core.parseNotes(chart, phraseParams());
+    parseCachedNotes ||= Core.cachedChartParser();
+    return parseCachedNotes(chart, phraseParams());
   }
 
   function fmtTime(sec) {

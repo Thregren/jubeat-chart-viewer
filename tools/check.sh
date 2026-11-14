@@ -81,6 +81,8 @@ run "iOS 15 CAF/Opus 与 WebM/Opus 兼容音源" "$PY" tools/test_audio_compat.p
 
 run "内容增量、封面门禁与缓存清理" "$PY" tools/test_asset_build.py
 
+run "预览路径隔离与 Range" "$PY" tools/test_preview_security.py
+
 run "构建失败与发布回滚" "$PY" tools/test_build.py
 
 # ── 3. Range / 路径穿越三实现一致性 ──────────────────────────

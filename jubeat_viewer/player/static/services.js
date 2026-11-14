@@ -20,8 +20,8 @@
     }
   }
   class SettingsStore {
-    constructor(bridge, storage) {
-      this.bridge = bridge; this.storage = storage;
+    constructor(bridge, storage, onError = () => {}) {
+      this.bridge = bridge; this.storage = storage; this.onError = onError; this.revisions = new Map();
       this.batchSource = null; this.batch = null;
     }
     /**
@@ -38,6 +38,18 @@
       } catch (_) { /* 取不到就逐键读，不影响功能 */ }
       return this.batch;
     }
+    persist(bridge, batch, key, value) {
+      const previous = batch?.get(key), revision = (this.revisions.get(key) || 0) + 1;
+      this.revisions.set(key, revision);
+      const result = value === null ? bridge.removeItem(key) : bridge.setItem(key, value);
+      if (batch) { if (value === null) batch.delete(key); else batch.set(key, value); }
+      Promise.resolve(result).catch(() => {
+        if (batch && this.revisions.get(key) === revision) {
+          if (previous === undefined) batch.delete(key); else batch.set(key, previous);
+        }
+        this.onError();
+      });
+    }
     access(key, value) {
       try {
         const bridge = this.bridge();
@@ -47,17 +59,15 @@
             const saved = batch ? batch.get(key) : bridge.getItem(key);
             if (saved != null) return saved;
             const legacy = this.storage().getItem(key);
-            if (legacy != null) { bridge.setItem(key, legacy); if (batch) batch.set(key, legacy); }
+            if (legacy != null) { this.persist(bridge, batch, key, legacy); }
             return legacy;
           }
           if (value === null) {
-            bridge.removeItem(key);
-            if (batch) batch.delete(key);
+            this.persist(bridge, batch, key, null);
             // Removal must clear both stores: a value written during recording
             // mode lives only in web storage and would otherwise survive.
           } else {
-            bridge.setItem(key, String(value));
-            if (batch) batch.set(key, String(value));
+            this.persist(bridge, batch, key, String(value));
             return;  // bridge 写成功即结束，与读分支对称；只有 bridge 抛错时才回退到 web storage
           }
         }
@@ -82,7 +92,7 @@
       const value = this.cache.get(key); this.cache.delete(key); this.cache.set(key, value); return value;
     }
     put(key, value) {
-      const bytes = value.bytes ?? JSON.stringify(value.chart).length * 4;
+      const bytes = (value.bytes ?? JSON.stringify(value.chart).length * 4) + (value.chart?.note?.length || 0) * 512;
       this.bytes -= this.sizes.get(key) || 0; this.cache.delete(key);
       this.cache.set(key, value); this.sizes.set(key, bytes); this.bytes += bytes;
       while (this.cache.size > 40 || this.bytes > 24 * 1024 * 1024) {

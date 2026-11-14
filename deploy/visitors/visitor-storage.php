@@ -93,8 +93,8 @@ function visitor_db(string $root): PDO {
                         chart_load_day=strftime('%Y-%m-%d','now','+8 hours'),
                         today_chart_loads=(
                             SELECT COUNT(*) FROM song_events
-                            WHERE bot=0 AND at>=strftime('%s','now','start of day','-8 hours')
-                                AND at<strftime('%s','now','start of day','+1 day','-8 hours')
+                            WHERE bot=0 AND at>=strftime('%s','now','+8 hours','start of day','-8 hours')
+                                AND at<strftime('%s','now','+8 hours','start of day','+1 day','-8 hours')
                         )
                     WHERE id=1;
                     PRAGMA user_version=5;");

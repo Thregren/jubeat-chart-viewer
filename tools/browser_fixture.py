@@ -59,6 +59,8 @@ def build(root, sync_audio=False, avsync=False, avsync_bed=False, avsync_opus=Fa
     (markers/'manifest.json').write_text(json.dumps(dict(designs=[dict(id='tm0004',num=4,dir=directory.name,prefix='TM0004',ma=24,h={'4':16},fr=0,name='Synthetic')],unit_ms=3.3333,units_per_frame=10,hit_window_units={'early':-155,'late':160})))
     env=os.environ|{'JUBEAT_MARKERS':str(markers),'JUBEAT_CACHE':str(root/'cache')}
     subprocess.run([sys.executable,str(REPO/'tools/build_directory.py'),'--library',str(library),'--out',str(out)],env=env,check=True)
+    # Optional external catalog is present even when the synthetic library has no stories.
+    (out/'data/background-stories.json').write_text(json.dumps({'schemaVersion':2,'records':{}}))
     return out
 
 if __name__=='__main__':

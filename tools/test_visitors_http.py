@@ -220,7 +220,7 @@ def main():
                      '(int)$db->query("SELECT chart_loads FROM counters WHERE id=1")->fetchColumn(),' \
                      '(int)$db->query("SELECT today_chart_loads FROM counters WHERE id=1")->fetchColumn()]);'
                 result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(v4)],capture_output=True,text=True)
-                assert result.returncode==0 and json.loads(result.stdout)==[5,7,4,3,2],result.stderr
+                assert result.returncode==0 and json.loads(result.stdout)==[5,7,4,3,2],(result.stdout,result.stderr)
                 backup_dir=pathlib.Path(tempfile.mkdtemp(prefix='jv-visitor-backup-'))
                 result=subprocess.run([args.php,str(maintenance),'--root',str(private),'--backup-dir',str(backup_dir),'--backup-keep','2'],capture_output=True,text=True)
                 assert result.returncode==0,result.stderr

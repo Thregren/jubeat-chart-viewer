@@ -12,7 +12,7 @@
 - **安卓签名口令不再有硬编码回退**：`android/build.sh` 原先在「已有 keystore 但没有口令文件」时会回落到字面量 `jubeatviewer`。现在这种情况直接报错退出；口令只从环境变量或权限 0600 的文件读，读到后顺手 `chmod 600`。
 - **nginx 示例补上点文件拦截**：`deploy/nginx-site.conf.example` 增加 `location ~ /\.(?!well-known/)`，且必须排在所有正则 location 之前（否则 `/data/`、`/static/` 会先命中）。照抄旧示例会把 `.asset-history.json`、`.build-sources.json` 暴露出去。`tools/check_deployment.py` 增加对这两个文件的探测。
 - **四端 CSP 逐条统一**：nginx、PHP、Electron、Android、Python 开发服务器现在同一串指令、同一顺序；`upgrade-insecure-requests` 只出现在确实走 HTTPS 的端；Electron / Android 去掉了多余的 `img-src 'self' data:`（前端确认零 `data:` 图片）。PHP 侧 `.htaccess` 与 `nginx-php.conf.example` 补齐安全头，后者改用 `expires` 避免 nginx「有子无父」导致静态资源发不出头。
-- **访客统计接口收紧**：`VISITOR_STATS_ORIGIN` 改为必填，缺失直接 503，不再靠 Referer 猜来源。
+- **访客统计接口收紧**：`VISITOR_STATS_ORIGIN` 改为必填，缺失直接 503，不再靠 `SERVER_NAME`（即请求 `Host`）猜来源；部署方要在 nginx 里加 `fastcgi_param`。同时事件写入改批量落盘、聚合结果按 `VISITOR_STATS_CACHE_TTL`（默认 45 秒）缓存、JSONL 导出移出请求路径交给 cron。谱面加载计数（`chart_loads` / `today_chart_loads`）照旧保留并继续实时读。
 - **安卓本地服务**：一次性 token 前缀（`/t/<32位hex>/`，`MessageDigest.isEqual` 常量时间比较），`network_security_config.xml` 的明文只对回环放行。
 - **CI 供应链**：四个 action 固定到 commit SHA（v4.4.0 / v4.4.0 / v5.6.0 / v4.6.2）；`tools/requirements.txt` 改为 `pillow==11.3.0` 并列出 PyPI 上全部 106 个产物的 sha256，CI 用 `--require-hashes` 安装；dependabot 同时盯 actions / npm / pip。
 
@@ -44,10 +44,13 @@
 - `audio_opus._valid()` 用「≥1 KiB」当有效性门槛，把 1 秒静音的合法 Opus（约 400 B）判成失败，精简库构建在短曲上直接崩。
 - `tools/build_directory.py` 的 marker 循环还在调已改名的 `asset_path()`，除 `--no-markers` 外的构建全部 `NameError`。
 - `test_pwa_assets.py` 仍在传已删除的 `--legacy-mcz`，`test_desktop_bundle.mjs` 的 fixture 少拷 `asset_hash.py`。
+- **访客统计重写时把 `chart_loads` / `today_chart_loads` 当死代码删了**（这两个字段只存在于线上副本、未回灌仓库，而前端「关于」面板正在读它们），照仓库版部署会让谱面加载数变成 `—`。已按线上语义补回（v5 迁移 + `visitor_chart_loads()` + 非 bot 首次插入才计数），并把热门榜的 30 条上限一并恢复（重写版曾被收窄到 10）。
+- **曲库 stat 签名漏记「当时还不存在」的版本索引**：`catalog:sources` 只存当时存在的文件，于是先写 `library.json`、后落版本索引的发布顺序下，新索引永远进不了签名，其曲目一直被判 `422 unknown_chart`。改为给缺失索引记哨兵，出现或消失都会让签名变化。
 
 ## 六、验证与发布
 
 - `tools/check.sh --full`：136 项 Python/Node 单测 + 31 项端到端冒烟全部通过（Android Java 单测含 token 鉴权与 CSP 断言）。
 - `tools/test_cache_headers.py` 从「只管缓存头」扩成缓存头 + CSP 双契约，用 `csp_region()` 先剥注释再断言，四端任一处漂移就会红。
 - 线上为增量部署：只替换 11 个内容哈希前端资源、入口页与 2628 个分享页里的别名引用，并同步 `static/release.json`；曲库、marker、私播扩展与其它带哈希资源未动。
+- 访客统计同步上线：先换 helper、再落新 endpoint 名并改 nginx（`SCRIPT_FILENAME` + `fastcgi_param VISITOR_STATS_ORIGIN`），补 `maintenance.sh flush` 的每分钟 cron；`test_visitors_http.py` 与 `php -l` 在服务器上用 PHP 8.5 跑通（本机无 php）。
 - 唯一**未做**的一项：审查清单 #21（四端「发文件」代码合并）。语义已由 `test_range` / `test_cache_headers` / PHP 冒烟 / 安卓单测钉住，但四份实现仍在，属后续结构性重构。

@@ -5,6 +5,15 @@ function catalog_identity(string $path): array {
     if (!$stat||$stat['size']>8*1024*1024) throw new RuntimeException('Invalid catalog file');
     return [$path,$stat['ino'],$stat['size'],$stat['mtime'],$stat['ctime']];
 }
+// An index listed by the catalog but absent on disk still has to take part in
+// the signature: otherwise a version index that appears later is invisible to
+// the stat-only fast path and its songs stay rejected as unknown forever.
+function catalog_absent(string $path): array {
+    return [$path,0,0,0,0];
+}
+function catalog_stat(string $path): array {
+    return is_file($path)?catalog_identity($path):catalog_absent($path);
+}
 function catalog_json(string $path): array {
     $data=json_decode(file_get_contents($path),true,64,JSON_THROW_ON_ERROR);
     if (!is_array($data)||!is_array($data['songs']??null)) throw new RuntimeException('Invalid catalog');
@@ -20,7 +29,7 @@ function catalog_cached_signature($sources,array $first): ?string {
         $identities=[];$bytes=0;
         foreach ($paths as $path) {
             if (!is_string($path)||strlen($path)>4096) return null;
-            $identity=catalog_identity($path);
+            $identity=catalog_stat($path);
             $bytes+=$identity[2];
             if ($bytes>32*1024*1024) return null;
             $identities[]=$identity;
@@ -42,7 +51,7 @@ function visitor_catalog(PDO $db,string $catalog,string $song,string $chart): ?a
         $data=catalog_json($catalog);
         $site=realpath(basename(dirname($catalog))==='data'?dirname($catalog,2):dirname($catalog));
         if (!$site) throw new RuntimeException('Catalog root unavailable');
-        $sources=[$catalog];$identities=[$first];$bytes=$first[2];
+        $sources=[$catalog];$listing=[$catalog];$identities=[$first];$identityOf=[$catalog=>$first];$bytes=$first[2];
         $indexes=$data['versionIndexes']??[];
         if (!is_array($indexes)||count($indexes)>256) throw new RuntimeException('Invalid version indexes');
         $seen=[];
@@ -52,12 +61,17 @@ function visitor_catalog(PDO $db,string $catalog,string $song,string $chart): ?a
                 ||preg_match('/[\\\\\x00-\x1f?#]/',$relative)||array_intersect(['','.','..'],explode('/',$relative)))
                 throw new RuntimeException('Unsafe version index');
             $seen[$relative]=true;$path=$site.'/'.$relative;
-            if (!file_exists($path)) continue;
-            $resolved=realpath($path);
-            if (!$resolved||!str_starts_with($resolved,$site.DIRECTORY_SEPARATOR)) throw new RuntimeException('Escaped index');
+            $resolved=file_exists($path)?realpath($path):null;
+            if ($resolved===false) throw new RuntimeException('Escaped index');
+            $entry=$resolved??$path;
+            if (!str_starts_with($entry,$site.DIRECTORY_SEPARATOR)) throw new RuntimeException('Escaped index');
+            // A missing index is part of the signature too, so that publishing
+            // it later invalidates the cache instead of being ignored.
+            $listing[]=$entry;
+            if ($resolved===null) {$identities[]=catalog_absent($entry);continue;}
             $identity=catalog_identity($resolved);$bytes+=$identity[2];
             if ($bytes>32*1024*1024) throw new RuntimeException('Catalog budget exceeded');
-            $sources[]=$resolved;$identities[]=$identity;
+            $sources[]=$resolved;$identities[]=$identity;$identityOf[$resolved]=$identity;
         }
         $signature=hash('sha256',json_encode($identities));
         if ($stored!==$signature) {
@@ -70,7 +84,7 @@ function visitor_catalog(PDO $db,string $catalog,string $song,string $chart): ?a
                         ||count($item['charts'])>32||count($rows)>=50000) throw new RuntimeException('Invalid catalog song');
                     $rows[$item['id']]=[$item['id'],$item['title'],json_encode(array_column($item['charts'],'code'))];
                 }
-                if (catalog_identity($file)!==$identities[$i]) throw new RuntimeException('Catalog changed');
+                if (catalog_identity($file)!==$identityOf[$file]) throw new RuntimeException('Catalog changed');
             }
             $db->exec('BEGIN IMMEDIATE');
             try {
@@ -78,7 +92,7 @@ function visitor_catalog(PDO $db,string $catalog,string $song,string $chart): ?a
                 foreach ($rows as $row) $q->execute($row);
                 $q=$db->prepare("INSERT INTO meta VALUES('catalog',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");$q->execute([$signature]);
                 $q=$db->prepare("INSERT INTO meta VALUES('catalog:sources',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
-                $q->execute([json_encode(array_column($identities,0))]);
+                $q->execute([json_encode($listing)]);
                 $db->exec('COMMIT');
             } catch (Throwable $error) {$db->exec('ROLLBACK');throw $error;}
         } else {
@@ -88,7 +102,7 @@ function visitor_catalog(PDO $db,string $catalog,string $song,string $chart): ?a
             // costs speed, never correctness.
             try {
                 $q=$db->prepare("INSERT INTO meta VALUES('catalog:sources',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
-                $q->execute([json_encode(array_column($identities,0))]);
+                $q->execute([json_encode($listing)]);
             } catch (Throwable $ignored) {}
         }
     }

@@ -77,6 +77,31 @@ function visitor_db(string $root): PDO {
             $db->exec('COMMIT');
         } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
     }
+    if ((int)$db->query('PRAGMA user_version')->fetchColumn() < 5) {
+        $db->exec('BEGIN IMMEDIATE');
+        try {
+            // Recheck under the lock. Chart-load totals are a deduplicated
+            // projection of non-bot song events, so an older database can seed
+            // them from the rows that are still retained (deleted retention
+            // logs cannot be recovered).
+            if ((int)$db->query('PRAGMA user_version')->fetchColumn() < 5) {
+                $db->exec("ALTER TABLE counters ADD COLUMN chart_loads INTEGER NOT NULL DEFAULT 0;
+                    ALTER TABLE counters ADD COLUMN chart_load_day TEXT NOT NULL DEFAULT '';
+                    ALTER TABLE counters ADD COLUMN today_chart_loads INTEGER NOT NULL DEFAULT 0;
+                    UPDATE counters SET chart_loads=(SELECT COUNT(*) FROM song_events WHERE bot=0) WHERE id=1;
+                    UPDATE counters SET
+                        chart_load_day=strftime('%Y-%m-%d','now','+8 hours'),
+                        today_chart_loads=(
+                            SELECT COUNT(*) FROM song_events
+                            WHERE bot=0 AND at>=strftime('%s','now','start of day','-8 hours')
+                                AND at<strftime('%s','now','start of day','+1 day','-8 hours')
+                        )
+                    WHERE id=1;
+                    PRAGMA user_version=5;");
+            }
+            $db->exec('COMMIT');
+        } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
+    }
     // The meta table is created by the version 2 migration. A database that was
     // upgraded out of band can lack it, so check once per request and repair it
     // instead of failing the whole endpoint.
@@ -93,6 +118,15 @@ function visitor_today(PDO $db, int $now): int {
     $q=$db->prepare('SELECT COUNT(*) FROM visitors WHERE last_seen>=? AND last_seen<?');
     $q->execute([$day->getTimestamp(),$day->modify('+1 day')->getTimestamp()]);
     return (int)$q->fetchColumn();
+}
+function visitor_chart_loads(PDO $db, int $now): array {
+    // Chart-load totals are a single indexed row, so they stay live instead of
+    // riding the 45-second aggregate cache.
+    $row=$db->query('SELECT chart_loads,chart_load_day,today_chart_loads FROM counters WHERE id=1')->fetch(PDO::FETCH_ASSOC);
+    return [
+        'chart_loads'=>(int)$row['chart_loads'],
+        'today_chart_loads'=>$row['chart_load_day']===visitor_day_key($now)?(int)$row['today_chart_loads']:0,
+    ];
 }
 function visitor_secret(string $root): string {
     foreach (['secret','secret.lock'] as $name) private_file($root.'/'.$name);
@@ -141,7 +175,7 @@ function visitor_admit_cookie(PDO $db,string $visitor,int $now): bool {
 function visitor_popular(PDO $db,int $now): array {
     $q=$db->prepare('SELECT song,title,COUNT(*) selections,MAX(at) last_at FROM song_events
         WHERE at>=? AND bot=0 GROUP BY song,title
-        ORDER BY selections DESC,last_at DESC,song ASC LIMIT 10');
+        ORDER BY selections DESC,last_at DESC,song ASC LIMIT 30');
     $q->execute([$now-7*86400]);
     $rows=[];
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -228,6 +262,7 @@ function visitor_public_stats(PDO $db,int $now): array {
         'visitors'=>(int)$counts['visitors'],
         'today_visitors'=>visitor_cached_today($db,$now),
         'views'=>(int)$counts['views'],
+        ...visitor_chart_loads($db,$now),
         'popular_songs'=>visitor_cached_popular($db,$now),
     ];
 }

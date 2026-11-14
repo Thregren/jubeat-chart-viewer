@@ -12,7 +12,13 @@ def main():
             {'id':'version/retry.mcz','title':'Retry Song','charts':[{'code':'EXT'}]}
         ]}))
         with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
-        env=os.environ|{'VISITOR_STATS_ROOT':str(private),'VISITOR_STATS_ORIGIN':'https://viewer.test','VISITOR_STATS_CATALOG':str(catalog)}
+        env=os.environ|{'VISITOR_STATS_ROOT':str(private),'VISITOR_STATS_ORIGIN':'https://viewer.test','VISITOR_STATS_CATALOG':str(catalog),
+            # Aggregates are cached for 45 s in production; the assertions below
+            # expect every request to observe its own effect immediately.
+            'VISITOR_STATS_CACHE_TTL':'0'}
+        maintenance=ROOT/'deploy/visitors/maintenance.php'
+        def flush(*extra):
+            return subprocess.run([args.php,str(maintenance),'--root',str(private),*extra],capture_output=True,text=True)
         with (root/'php.log').open('wb') as log:
             process=subprocess.Popen([args.php,'-S',f'127.0.0.1:{port}','-t',str(root)],env=env,stdout=log,stderr=log)
             def request(event=None,cookie=None,origin='https://viewer.test',raw=None,ua='Fixture UA\t1'):
@@ -24,8 +30,10 @@ def main():
                 for _ in range(100):
                     try:status,_,counts=request();break
                     except OSError:time.sleep(.05)
-                # Public aggregate exposes 4 fields; chart-load counters are gone.
-                assert status==200 and counts=={'visitors':0,'today_visitors':0,'views':0,'popular_songs':[]},(status,counts)
+                # Public aggregate exposes exactly these fields; the chart-load
+                # counters are part of the "about" panel contract.
+                assert status==200 and counts=={'visitors':0,'today_visitors':0,'views':0,'chart_loads':0,
+                    'today_chart_loads':0,'popular_songs':[]},(status,counts)
                 before=request()[2]
                 status,headers,counts=request({'event':'page'});assert status==200
                 assert counts['visitors']==before['visitors']+1 and counts['today_visitors']==before['today_visitors']+1 and counts['views']==before['views']+1,(before,counts)
@@ -33,11 +41,13 @@ def main():
                 cookie=headers['Set-Cookie'].split(';')[0];assert all(k in headers['Set-Cookie'].lower() for k in ['secure','httponly','samesite=lax'])
                 dedup_before=request()[2]
                 assert request({'event':'page'},cookie)[2]==dedup_before  # repeated page: delta 0
-                # Song selection is still recorded into song_events (public 7-day
-                # ranking) even though the aggregate no longer exposes load counts.
+                # Song selection feeds both the public 7-day ranking and the
+                # chart-load counters; one browser's repeat does neither twice.
                 before=request()[2]
                 status,_,loaded=request({'event':'song','song':'version/song.mcz','chart':'EXT'},cookie)
                 assert status==200 and loaded['visitors']==before['visitors'],(status,loaded,before)
+                assert loaded['chart_loads']==before['chart_loads']+1,(before,loaded)
+                assert loaded['today_chart_loads']==before['today_chart_loads']+1,(before,loaded)
                 # Repeated selections from one browser within the deduplication
                 # window must not inflate visitors or the ranking projection.
                 dedup_before=request()[2]
@@ -63,6 +73,9 @@ def main():
                 forged=request({'event':'page'},'jv_visitor=forged')
                 assert forged[0]==200 and forged[2]['visitors']==before['visitors']+1,(before,forged)
                 assert 'jv_visitor=' in forged[1].get('Set-Cookie','')
+                # Events sit in the outbox until cron drains them: flush first,
+                # then the daily JSONL must contain every accepted event once.
+                assert flush('--flush').returncode==0
                 logs=list(private.glob('visits-*.log'));assert len(logs)==1
                 records=[json.loads(line) for line in logs[0].read_text().splitlines()];assert len(records)==7,records
                 song=next(x for x in records if x['event']=='song');assert song['ip']=='127.0.0.1' and song['song']=='version/song.mcz' and song['title']=='Test Song' and song['chart']=='EXT' and song['ua']=='Fixture UA\t1'
@@ -78,7 +91,7 @@ def main():
                     db.executemany('INSERT INTO song_events(event_id,at,song,title,chart,bot) VALUES(?,?,?,?,?,0)',
                         [(f'hot-{index:02d}',int(time.time())-index,f'hot/song-{index:02d}',f'Hot {index:02d}','EXT') for index in range(35)])
                 ranked=request()[2]['popular_songs']
-                assert len(ranked)==10,len(ranked)
+                assert len(ranked)==30,len(ranked)
                 # Shanghai midnight boundary and daily unique identities; do not alter cumulative counts.
                 boundary_before=request()[2]
                 with sqlite3.connect(private/'visitors.sqlite') as db:
@@ -122,12 +135,14 @@ def main():
                 before=database_snapshot()
                 request();request()
                 assert database_snapshot()==before
+                # Drain whatever the request path left pending, so the snapshot
+                # below is the complete log the replay has to reproduce.
+                assert flush('--flush').returncode==0
                 # Replay after a crash between append and outbox acknowledgement; recover partial tails.
                 with sqlite3.connect(private/'visitors.sqlite') as db:db.execute('UPDATE events SET exported=0')
                 records_before=logs[0].read_bytes()
                 with logs[0].open('ab') as file:file.write(b'{"partial":')
-                maintenance=ROOT/'deploy/visitors/maintenance.php'
-                result=subprocess.run([args.php,str(maintenance),'--root',str(private),'--flush'],capture_output=True,text=True)
+                result=flush('--flush')
                 assert result.returncode==0,result.stderr
                 assert logs[0].read_bytes()==records_before
                 # Export failure leaves a durable event for the next flush, without changing counters twice.
@@ -180,8 +195,9 @@ def main():
                 code='require $argv[1]; $db=visitor_db($argv[2]); echo json_encode([visitor_today($db,(int)$argv[3]),(int)$db->query("SELECT visitors FROM counters")->fetchColumn()]);'
                 result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(v2),str(shanghai_today+100)],capture_output=True,text=True)
                 assert result.returncode==0 and json.loads(result.stdout)==[1,2],result.stderr
-                # v4 is the current schema: opening it must keep cumulative
-                # counters and the song-event ranking projection untouched.
+                # Opening a v4 database must keep cumulative counters and the
+                # ranking projection while seeding the chart-load totals from
+                # the retained non-bot song events (never from bots).
                 v4=root/'v4';v4.mkdir()
                 with sqlite3.connect(v4/'visitors.sqlite') as db:
                     db.executescript('''
@@ -200,14 +216,16 @@ def main():
                 code='require $argv[1]; $db=visitor_db($argv[2]); echo json_encode([' \
                      '(int)$db->query("PRAGMA user_version")->fetchColumn(),' \
                      '(int)$db->query("SELECT visitors FROM counters WHERE id=1")->fetchColumn(),' \
-                     '(int)$db->query("SELECT COUNT(*) FROM song_events")->fetchColumn()]);'
+                     '(int)$db->query("SELECT COUNT(*) FROM song_events")->fetchColumn(),' \
+                     '(int)$db->query("SELECT chart_loads FROM counters WHERE id=1")->fetchColumn(),' \
+                     '(int)$db->query("SELECT today_chart_loads FROM counters WHERE id=1")->fetchColumn()]);'
                 result=subprocess.run([args.php,'-r',code,str(ROOT/'deploy/visitors/visitor-storage.php'),str(v4)],capture_output=True,text=True)
-                assert result.returncode==0 and json.loads(result.stdout)==[4,7,4],result.stderr
+                assert result.returncode==0 and json.loads(result.stdout)==[5,7,4,3,2],result.stderr
                 backup_dir=pathlib.Path(tempfile.mkdtemp(prefix='jv-visitor-backup-'))
                 result=subprocess.run([args.php,str(maintenance),'--root',str(private),'--backup-dir',str(backup_dir),'--backup-keep','2'],capture_output=True,text=True)
                 assert result.returncode==0,result.stderr
                 backups=list(backup_dir.glob('jubeat-visitors-*.sqlite'));assert len(backups)==1 and (backups[0].with_suffix('.sqlite.secret')).is_file()
-                with sqlite3.connect(backups[0]) as db:assert db.execute('PRAGMA user_version').fetchone()[0]==4
+                with sqlite3.connect(backups[0]) as db:assert db.execute('PRAGMA user_version').fetchone()[0]==5
                 shutil.rmtree(backup_dir)
                 assert (private/'secret').stat().st_mode & 0o077==0 and logs[0].stat().st_mode & 0o077==0
                 print('Visitor HTTP checks passed: deduplication, funnel, popular ranking, signed cookies, whitelist, origin, bounds, backup, concurrency, persistence and private permissions.')

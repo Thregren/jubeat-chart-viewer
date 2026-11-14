@@ -98,6 +98,16 @@ try {
                     $bot=preg_match('/headlesschrome|bot\\b|spider|crawler|playwright|puppeteer|jubeatdeploymentcheck|jubeatstatsqa|statsqa|python-requests|python-urllib|curl\\//',$ua)?1:0;
                     $q=$db->prepare('INSERT OR IGNORE INTO song_events(event_id,at,song,title,chart,bot) VALUES(?,?,?,?,?,?)');
                     $q->execute([$eventId,$now,$song,$title,$chart,$bot]);
+                    // Count only genuinely new, non-bot loads: the stable event
+                    // ID keeps retries idempotent, and crawlers would otherwise
+                    // dominate the public "chart loads" number.
+                    if ($q->rowCount()&&!$bot) {
+                        $day=visitor_day_key($now);
+                        $q=$db->prepare('UPDATE counters SET chart_loads=chart_loads+1,
+                            today_chart_loads=CASE WHEN chart_load_day=? THEN today_chart_loads+1 ELSE 1 END,
+                            chart_load_day=? WHERE id=1');
+                        $q->execute([$day,$day]);
+                    }
                 }
                 $q=$db->prepare('UPDATE visitors SET last_key=?,last_at=? WHERE id=?');$q->execute([$key,$now,$visitor]);
                 if ($event['event']==='page') $db->exec('UPDATE counters SET views=views+1 WHERE id=1');

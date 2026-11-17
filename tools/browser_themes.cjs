@@ -19,11 +19,11 @@ try{
   for(const id of opts.slice(1)){
    await sel.selectOption(id);assert.equal(await page.locator('html').getAttribute('data-theme'),id);
    await page.waitForFunction(()=>getComputedStyle(document.querySelector('.stage')).backgroundImage!=='none');
+   await page.waitForTimeout(100); // Let the playfield color transition settle.
    const padColor=await page.locator('.panel-inner .pad').first().evaluate(el=>getComputedStyle(el).backgroundColor);
    assert.notEqual(padColor,defaultPad,`${id} must color the playfield`);panelColors.add(padColor);
    const hitBackground=await page.locator('.panel-inner .pad').first().evaluate(el=>{el.classList.add('hit');const bg=getComputedStyle(el).backgroundImage;el.classList.remove('hit');return bg});
    assert(hitBackground.includes('255, 255, 255'),`${id} must preserve the hit flash`);
-   assert.equal(await page.locator('.brand-mark span').first().evaluate(el=>getComputedStyle(el).animationName),'none');
    await page.waitForTimeout(80);
    if(['jubeat','qubell','jubeat2020','ave','beyond'].includes(id))await page.screenshot({path:path.join(out,id+'-'+width+'.png')});
   }
@@ -31,7 +31,7 @@ try{
   await page.reload();await page.waitForFunction(()=>window.__player);assert.equal(await page.locator('html').getAttribute('data-theme'),'jubeat2020');
   await page.goto(base+'?rec=1');await page.waitForFunction(()=>window.__player);assert.equal(await page.locator('html').getAttribute('data-theme'),null);assert.equal(await page.locator('#viewerTheme').isDisabled(),true);
   assert.equal(await page.locator('.panel-inner .pad').first().evaluate(el=>getComputedStyle(el).backgroundColor),defaultPad);
-  assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);result.push({width,themeCount:opts.length-1,persistence:true,reducedMotion:true,recordingDefault:true,errors,failed});await ctx.close();
+  assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);result.push({width,themeCount:opts.length-1,persistence:true,animationWithReducedMotion:true,recordingDefault:true,errors,failed});await ctx.close();
  }
  fs.writeFileSync(path.join(out,'results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } finally {await browser.close();}

@@ -15,6 +15,55 @@
      toast, setPlaying, ctx, layoutCanvas, buildDensity, layoutDensity, resetCombo, clearAB,
      normalizeSearch } = A;
 
+  /** Decorative artwork is CSS-only; each marker also has a concise accessible label. */
+  function createHoldMarker(label) {
+    const marker = el("span", "hold-marker");
+    marker.setAttribute("role", "img");
+    marker.setAttribute("aria-label", label);
+    marker.title = label;
+    const cells = el("span", "hold-cells");
+    for (let i = 0; i < 16; i++) cells.appendChild(el("i"));
+    const grid = el("span", "hold-grid");
+    for (const axis of ["vx", "hy"]) for (let n = 1; n < 4; n++) {
+      const line = el("b", "hold-" + axis);
+      line.style.setProperty("--n", n);
+      grid.appendChild(line);
+    }
+    marker.append(cells, grid);
+    for (const direction of ["horizontal", "vertical"]) {
+      const lane = el("span", "hold-lane hold-" + direction);
+      for (const part of ["tail", "beam", "head"]) lane.appendChild(el("b", "hold-" + part));
+      marker.appendChild(lane);
+    }
+    marker.appendChild(el("span", "hold-frame"));
+    return marker;
+  }
+
+  let viewerHoldMarker;
+  let coverHoldObserver;
+  function setCoverHold(on) {
+    if (!viewerHoldMarker && on) {
+      viewerHoldMarker = createHoldMarker("当前谱面含长押");
+      const wrap = els.cover.parentElement;
+      wrap.appendChild(viewerHoldMarker);
+      // The mobile cover is centered within a rectangular grid cell. Anchor the
+      // badge to the square artwork rather than to the outside of that cell.
+      const place = () => {
+        const w = wrap.clientWidth, h = wrap.clientHeight;
+        const side = Math.min(w, h);
+        viewerHoldMarker.style.fontSize = Math.max(18, Math.min(38, side * .24)) + "px";
+        viewerHoldMarker.style.right = ((w - side) / 2 + 3) + "px";
+        viewerHoldMarker.style.top = ((h - side) / 2 + 3) + "px";
+      };
+      if (typeof ResizeObserver !== "undefined") {
+        coverHoldObserver = new ResizeObserver(place);
+        coverHoldObserver.observe(wrap);
+      }
+      place();
+    }
+    if (viewerHoldMarker) viewerHoldMarker.hidden = !on;
+  }
+
   function lockZoom() {
     const stop = (e) => e.preventDefault();
     for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
@@ -385,6 +434,7 @@
       im.setAttribute("fetchpriority", "low");
       cv.appendChild(im);
     }
+    if (hasHold(s)) cv.appendChild(createHoldMarker("含长押谱面"));
     const sm = el("span", "sm");
     const rank = popularMode ? popularSongs.findIndex(item => item.id === s.id) : -1;
     if (rank >= 0) sm.append(el("span", "hot-rank", `#${rank + 1}`));
@@ -422,6 +472,7 @@
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
     state.song = song;
+    setCoverHold(false);
     // 首次有效选曲即进入播放器，资源缺失与加载错误仍交给原界面展示。
     document.querySelector('.stage')?.classList.remove('is-welcome');
     window.JubeatBackgroundStories?.select(song);
@@ -493,6 +544,7 @@
     if (!state.song) return;
     const song = state.song;
     A.clearRadar?.();
+    setCoverHold(false);
     els.btnShare.disabled = true;
     const request = chartRequests.start();
     const started = performance.now();
@@ -573,6 +625,7 @@
       // 长押头尾各算一颗 note（和实机 / 上面的 nTotal 同一口径）
       els.statNotes.textContent = String(parsed.nTotal);
       els.statHolds.textContent = String(parsed.nHold);
+      setCoverHold(parsed.nHold > 0);
       els.statTime.textContent = fmtTime(state.duration);
       els.timeTotal.textContent = fmtTime(state.duration);
 

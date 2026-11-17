@@ -22,7 +22,7 @@ function fixture(fetch,parseNotes=Core.cachedChartParser()) {
   const context={A,els,state,Core,Runtime,chartRequests,fetch,performance,TextDecoder,console:{error(){}},window:{},ctx:null,
     audioUrl:()=> 'song.ogg',chartPath:()=> 'chart.json',pickChart:Core.pickChart,parseNotes:countedParseNotes,
     chartCacheGet:key=>cache.get(key),chartCachePut:(key,value)=>cache.set(key,value),
-    setPlaying(){},clearAB(){},resetCombo(){},toast(){},layoutCanvas(){},computeDuration:()=>10,fmtTime:String,
+    setCoverHold(){},setPlaying(){},clearAB(){},resetCombo(){},toast(){},layoutCanvas(){},computeDuration:()=>10,fmtTime:String,
     buildDensity(){densityBuilds++;}};
   vm.runInNewContext(functions+'\nglobalThis.loadChart = loadChart;',context);
   return {state,els,cache,chartRequests,load:()=>context.loadChart('EXT'),counts:()=>({paints,densityBuilds,parseCalls})};

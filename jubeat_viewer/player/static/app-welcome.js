@@ -8,13 +8,12 @@
   if (!A || !stage || !mark || window.__recActive) return;
   const pads = [...mark.children];
   if (pads.length !== 16) return;
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const controller = new AbortController();
   const lastHit = new Float64Array(16).fill(-Infinity);
   const levels = new Int16Array(16).fill(-1);
   let notes = [], period = 0, cursor = 0, elapsed = 0, started = null;
   let frame = 0, disposed = false, timeout = 0, attempted = false;
-  const visible = () => stage.classList.contains('is-welcome') && !document.hidden && !reduced.matches;
+  const visible = () => stage.classList.contains('is-welcome') && !document.hidden;
 
   function draw(time) {
     while (cursor < notes.length && notes[cursor].t <= time) {
@@ -48,10 +47,9 @@
   }
   function sync() {
     if (!stage.classList.contains('is-welcome')) { dispose(); return; }
-    if (!notes.length && !reduced.matches && !attempted) void load();
+    if (!notes.length && !attempted) void load();
     if (!notes.length || !visible()) {
       pause();
-      if (reduced.matches) mark.classList.remove('is-playing');
       return;
     }
     mark.classList.add('is-playing');
@@ -62,7 +60,6 @@
     disposed = true; pause(); clearTimeout(timeout); controller.abort();
     observer.disconnect();
     document.removeEventListener('visibilitychange', sync);
-    reduced.removeEventListener('change', sync);
     window.removeEventListener('pagehide', onPageHide);
     window.removeEventListener('pageshow', sync);
     mark.classList.remove('is-playing');
@@ -73,14 +70,13 @@
   const observer = new MutationObserver(sync);
   observer.observe(stage, {attributes: true, attributeFilter: ['class']});
   document.addEventListener('visibilitychange', sync);
-  reduced.addEventListener('change', sync);
   window.addEventListener('pagehide', onPageHide);
   window.addEventListener('pageshow', sync);
   A.services.register('welcome', {dispose});
 
   async function load() {
     await window.__player?.ready;
-    if (attempted || disposed || !stage.classList.contains('is-welcome') || reduced.matches) return;
+    if (attempted || disposed || !stage.classList.contains('is-welcome')) return;
     attempted = true;
     const candidates = A.state.songs.filter(song => song.title.toUpperCase() === 'FLOWER'
       && song.charts.some(chart => chart.code === 'EXT'));

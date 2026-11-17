@@ -1594,6 +1594,21 @@ body:not(.private-play-active) .stage .pad .idx {
   border-color: var(--amber-dim);
   background: color-mix(in srgb, var(--amber) 18%, var(--cabinet));
 }
+/* The static motif remains the fallback while FLOWER is loading or unavailable. */
+.welcome-mark.is-playing span {
+  position: relative;
+  background: var(--cabinet-2);
+  border-color: var(--line);
+}
+.welcome-mark.is-playing span::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: var(--amber);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--amber) 28%, transparent);
+  opacity: var(--welcome-flash, 0);
+}
 .welcome-eyebrow { margin: 0 0 14px; color: var(--amber); font: 500 11px var(--mono); letter-spacing: .22em; }
 .welcome h2 { margin: 0; color: var(--ink); font-size: clamp(26px, 3vw, 36px); font-weight: 600; letter-spacing: .04em; line-height: 1.4; }
 .welcome-description { margin: 16px 0 0; color: var(--muted); font-size: 14px; line-height: 1.9; text-wrap: pretty; }

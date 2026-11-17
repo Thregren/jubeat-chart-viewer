@@ -1552,3 +1552,82 @@ body:not(.private-play-active) .stage .pad .idx {
   bottom: calc(var(--panel-size, 460px) * .0083);
   font-size: calc(var(--panel-size, 460px) * .0187);
 }
+
+/* 启动页直接出现在首屏；选曲后移除 is-welcome，恢复播放器原布局。 */
+.welcome { display: none; }
+.stage.is-welcome { grid-template-rows: minmax(0, 1fr); overflow: auto; }
+.stage.is-welcome > :is(#nowPlaying, .panel-stage, #transport) { display: none; }
+.stage.is-welcome > .welcome {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 48px 28px;
+}
+.welcome-content {
+  width: min(100%, 560px);
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--cabinet);
+  background: color-mix(in srgb, var(--cabinet) 92%, transparent);
+}
+.welcome-mark {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  width: 112px;
+  margin: 0 auto 32px;
+  transform: rotate(-8deg);
+}
+.welcome-mark span {
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--cabinet-2);
+}
+.welcome-mark span:is(:nth-child(3), :nth-child(6), :nth-child(10), :nth-child(15)) {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+.welcome-mark span:is(:nth-child(2), :nth-child(11)) {
+  border-color: var(--amber-dim);
+  background: color-mix(in srgb, var(--amber) 18%, var(--cabinet));
+}
+.welcome-eyebrow { margin: 0 0 14px; color: var(--amber); font: 500 11px var(--mono); letter-spacing: .22em; }
+.welcome h2 { margin: 0; color: var(--ink); font-size: clamp(26px, 3vw, 36px); font-weight: 600; letter-spacing: .04em; line-height: 1.4; }
+.welcome-description { margin: 16px 0 0; color: var(--muted); font-size: 14px; line-height: 1.9; text-wrap: pretty; }
+.welcome-features { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 18px; margin: 36px 0 0; padding: 22px 0 0; border-top: 1px solid var(--line); list-style: none; color: var(--muted); font-size: 11px; letter-spacing: .08em; }
+.welcome-mobile { display: none; }
+.welcome-button {
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  min-height: 46px;
+  margin: 26px auto 0;
+  padding: 0 24px;
+  border: 1px solid var(--amber);
+  border-radius: 12px;
+  background: var(--amber);
+  color: var(--void);
+  font: 600 14px var(--font);
+  cursor: pointer;
+}
+.welcome-button:hover { background: var(--ink); border-color: var(--ink); }
+.welcome-button:active { transform: translateY(1px); }
+.welcome-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+@media (max-width: 900px) {
+  .stage.is-welcome { grid-template-rows: auto minmax(0, 1fr); }
+  .stage.is-welcome > .welcome { padding: 24px 22px max(32px, env(safe-area-inset-bottom)); }
+  .welcome-content { padding: 36px 20px; border-radius: 20px; }
+  .welcome-mark { width: 100px; gap: 6px; margin-bottom: 28px; }
+  .welcome-desktop { display: none; }
+  .welcome-description.welcome-mobile { display: block; }
+  .welcome-button.welcome-mobile { display: flex; }
+  .welcome-features { margin-top: 30px; gap: 8px 14px; }
+}
+@media (max-height: 600px) {
+  .stage.is-welcome > .welcome { padding-block: 20px; }
+  .welcome-content { padding-block: 24px; }
+  .welcome-mark { width: 76px; gap: 5px; margin-bottom: 20px; }
+}

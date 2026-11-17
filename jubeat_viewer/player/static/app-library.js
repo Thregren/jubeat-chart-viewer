@@ -422,6 +422,8 @@
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
     state.song = song;
+    // 首次有效选曲即进入播放器，资源缺失与加载错误仍交给原界面展示。
+    document.querySelector('.stage')?.classList.remove('is-welcome');
     window.JubeatBackgroundStories?.select(song);
     els.btnShare.disabled = false;
     els.btnShare.dataset.chart = "";
@@ -490,6 +492,7 @@
     A.mode?.chartChanging?.();
     if (!state.song) return;
     const song = state.song;
+    A.clearRadar?.();
     els.btnShare.disabled = true;
     const request = chartRequests.start();
     const started = performance.now();

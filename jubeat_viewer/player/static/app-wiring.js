@@ -297,11 +297,21 @@
       // 统一迁移为 "click"（点击）并写回，避免升级后下拉框落到「关」、音效突然静音。
       // 必须先迁移再 restoreSelectValue —— 后者只在 option 存在时才赋值，传脏值会什么都不做。
       let metroSound = saved.metroSound == null ? null : textOf(saved.metroSound);
-      if (metroSound != null && !["", "click", "taiko"].includes(metroSound)) {
+      if (metroSound != null && !["", "abc", "click", "taiko"].includes(metroSound)) {
         metroSound = "click";
         store(STORAGE.metroSound, "click");
       }
+      // One-time ABC rollout; preserve an explicitly muted selection.
+      if (store("jubeat.abcRollout") !== "1") {
+        if (metroSound !== "") {
+          metroSound = "abc";
+          store(STORAGE.metroSound, "abc");
+        }
+        store("jubeat.abcRollout", "1");
+      }
       if (metroSound != null) restoreSelectValue(els.metroSound, metroSound);
+      // Explicit audition link selects ABC without overwriting saved preferences.
+      if (new URLSearchParams(location.search).get("sfx") === "abc") els.metroSound.value = "abc";
       els.metroVolume.value = String(window.JubeatCore.soundEffectVolume(saved.metroVolume));
       // 设置版本 9：「同押独立音效」改为默认打开。老浏览器存着的 "0" 几乎都是旧默认值
       // （用户从没动过这个开关），只清一次让新默认露出来；之后照旧记住用户的选择。
@@ -442,6 +452,9 @@
     };
     els.btnSidebarOpen.addEventListener("click", openSidebar);
     els.btnSidebarOpen.addEventListener("pointerup", openSidebar);
+    const welcomeLibrary = document.getElementById('btnWelcomeLibrary');
+    welcomeLibrary?.addEventListener('click', openSidebar);
+    welcomeLibrary?.addEventListener('pointerup', openSidebar);
 
     // —— 物量条：按住拖动 = 拖进度 ——
     // 拖动期间只做「预览」：更新画面和时间显示，但**不动 <audio>**。

@@ -270,7 +270,36 @@
     taiko:  { normal: soundDon,        sixteenth: soundKa16,     chord: soundTaikoChord },
   };
 
+function soundABC(ctx,t,name,dest=ctx.destination,volume=0.65){
+ // B: high tick. C: bright metallic pair with one shared onset.
+ // Inharmonic partials distinguish C without a dull bass attack or extra hit.
+ if(name==='C'){
+   for(const [frequency,level] of [[1250,0.80],[2970,0.55]]){
+     const o=ctx.createOscillator(),g=ctx.createGain();
+     o.type='sine';o.frequency.setValueAtTime(frequency,t);
+     o.frequency.exponentialRampToValueAtTime(frequency*0.97,t+0.045);
+     g.gain.setValueAtTime(0,t);
+     g.gain.linearRampToValueAtTime(volume*level,t+0.0008);
+     g.gain.exponentialRampToValueAtTime(0.0001,t+0.045);
+     o.connect(g);g.connect(dest);o.start(t);o.stop(t+0.05);
+   }
+   return;
+ }
+ const settings={
+   A:{frequency:420,type:'triangle',duration:0.075,end:0.82,level:1},
+   B:{frequency:2000,type:'triangle',duration:0.045,end:0.88,level:1},
+ };
+ const s=settings[name]||settings.A;
+ const o=ctx.createOscillator(),g=ctx.createGain();
+ o.type=s.type;o.frequency.setValueAtTime(s.frequency,t);
+ o.frequency.exponentialRampToValueAtTime(s.frequency*s.end,t+s.duration);
+ g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(volume*s.level,t+0.0015);
+ g.gain.exponentialRampToValueAtTime(0.0001,t+s.duration);
+ o.connect(g);g.connect(dest);o.start(t);o.stop(t+s.duration+0.005);
+}
+
   window.JubeatSfx = {
+    soundABC,
     noiseBuffer,
     SFX_VOICES,
     SFX_LEVELS,

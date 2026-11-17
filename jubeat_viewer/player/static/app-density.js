@@ -144,6 +144,7 @@
   }
 
   function buildDensity() {
+    A.updateRadar?.();
     // 还没量过画布（第一次加载就走这条路）：先量一遍，别拿 0 宽去算
     if (!density.rect) {
       layoutDensity();

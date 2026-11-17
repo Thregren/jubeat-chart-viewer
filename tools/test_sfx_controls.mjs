@@ -35,11 +35,10 @@ function boot(missing, opts = {}) {
 
   const listeners = {};
   const controls = {
-    // v5：只有 关 / 点击 / 太鼓 三项，「拍手」组已删除。
-    // 下拉框初始值取「点击」——和 index.html 的默认一致。
+    // ABC 上线后的完整音色选项；初始值与页面一致。
     metroSound: {
-      value: 'click',
-      options: [{value: ''}, {value: 'click'}, {value: 'taiko'}],
+      value: 'abc',
+      options: [{value: ''}, {value: 'abc'}, {value: 'click'}, {value: 'taiko'}],
       addEventListener() {},
     },
   };
@@ -58,7 +57,7 @@ function boot(missing, opts = {}) {
 
   const calls = {prepareSfx: 0, previewSfx: [], setCollapsed: []};
   const writes = [];
-  const saved = opts.saved || {};
+  const saved = {'jubeat.abcRollout': '1', ...opts.saved};
   // 单参 = 读，双参 = 写；把键名做成有意义的字符串，而不是全 '' 的 Proxy
   function store(key, value) {
     if (value === undefined) return Object.prototype.hasOwnProperty.call(saved, key) ? saved[key] : null;
@@ -154,7 +153,7 @@ test('旧 clap / billy / nyan 等非法 metroSound 设置恢复时迁移为 clic
 });
 
 test('合法的 metroSound 值（含「关」）不需要迁移、不被改写', () => {
-  for (const good of ['', 'click', 'taiko']) {
+  for (const good of ['', 'abc', 'click', 'taiko']) {
     const h = boot([], {saved: {metroSound: good}});
     assert.doesNotThrow(() => h.A.bindEvents(), `${good}: 恢复设置不得抛错`);
     assert.ok(!h.writes.some(w => w.key === 'metroSound'),
@@ -206,8 +205,8 @@ test('同押开关的默认状态与 index.html 的 checked 属性一致', () =>
   const input = html.match(/<input[^>]*id=["']chordSound["'][^>]*>/);
   assert.ok(input, 'index.html 必须有 #chordSound');
   assert.match(input[0], /\bchecked\b/, '默认打开就必须在 HTML 上写 checked，避免首帧闪一下未勾选');
-  assert.match(html, /title="默认开启。开启后，一批同押只发一次/,
-    '同押开关的 title 必须说明默认开启');
+  assert.match(html, /title="仅对原版音色有效；ABC 交替始终保留 A\/B\/C"/,
+    '同押开关必须说明 ABC 不受原版同押音色开关影响');
 });
 
 /** app-base.js 启动自检：模拟分享页缺 #chordSound 的情形。 */
@@ -279,4 +278,19 @@ test('壳回数字 / 布尔时恢复设置不得抛错（旧版 saved[key].trim(
     // 布尔按存储约定折成 "1"/"0"：直接 String(true) 会得到 "true"，「开着」被读成关
     assert.deepEqual(h.calls.setCollapsed, [flag], `布尔 ${flag} 必须折成 ${flag ? '"1"' : '"0"'} 再比较`);
   }
+});
+
+
+test('ABC rollout upgrades once, preserves mute and later explicit choices', () => {
+  for (const before of [null, 'click', 'taiko', 'abc', '']) {
+    const h = boot([], {saved: {'jubeat.abcRollout': null, metroSound: before}});
+    h.A.bindEvents();
+    assert.equal(h.controls.metroSound.value, before === '' ? '' : 'abc');
+    assert.ok(h.writes.some(w => w.key === 'jubeat.abcRollout' && w.value === '1'));
+    if (before === '') assert.ok(!h.writes.some(w => w.key === 'metroSound'));
+  }
+  const migrated = boot([], {saved: {'jubeat.abcRollout': '1', metroSound: 'taiko'}});
+  migrated.A.bindEvents();
+  assert.equal(migrated.controls.metroSound.value, 'taiko');
+  assert.ok(!migrated.writes.some(w => w.key === 'metroSound'));
 });

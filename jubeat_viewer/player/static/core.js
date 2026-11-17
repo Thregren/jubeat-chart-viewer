@@ -207,6 +207,29 @@
     return Math.abs(eighth - Math.round(eighth)) >= 1e-6;
   }
 
+  /** Precompute dense runs in chart beats; simultaneous heads count once.
+   * Stored on each note so seeking, looping and speed changes preserve parity.
+   */
+  function assignHitSoundVoices(notes) {
+    const groups = [];
+    for (const note of notes) {
+      const last = groups[groups.length - 1];
+      if (last && Math.abs(note.t - last.t) < 1e-4) last.notes.push(note);
+      else groups.push({ t: note.t, beat: note.beat, notes: [note] });
+    }
+    const connected = (a, b) => a && b && Number.isFinite(a.beat) && Number.isFinite(b.beat)
+      && b.beat - a.beat > 1e-6 && b.beat - a.beat <= 0.25 + 1e-6;
+    let ordinal = 0;
+    groups.forEach((group, i) => {
+      const previous = connected(groups[i - 1], group);
+      const next = connected(group, groups[i + 1]);
+      ordinal = previous ? ordinal + 1 : 0;
+      const voice = previous || next ? (ordinal % 2 ? "C" : "B") : "A";
+      for (const note of group.notes) note.hitSoundVoice = voice;
+    });
+    return notes;
+  }
+
   /** 按键音档位：只有三档（同押 > 16 分及更密 > 普通），不再有按拍位交替的重音。 */
   function hitSoundKind(beat, { chord = false, chordSound = false } = {}) {
     if (chord && chordSound) return "chord";
@@ -273,6 +296,7 @@
     holdEnds.sort((a, b) => a - b);
 
     numberNotes(notes, map.bpmAt, opts);
+    assignHitSoundVoices(notes);
 
     const bpms = timeEvents.map((e) => e.bpm).filter((b) => b > 0);
     const baseBpm = bpms.length ? bpms[0] : 0;
@@ -542,6 +566,7 @@
     buildTimeMap,
     isSixteenthOrFiner,
     hitSoundKind,
+    assignHitSoundVoices,
     numberNotes,
     parseNotes,
     formatBpm,

@@ -7,16 +7,17 @@
         content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.7.5" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.5" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.5" />
+  <link rel="manifest" href="static/manifest.json?v=0.7.6" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.6" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.6" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/style.css?v=0.7.5&ui=version-picker-20261112" />
-  <link rel="stylesheet" href="static/theme-early.css?v=0.7.5" />
-  <link rel="stylesheet" href="static/theme-late.css?v=0.7.5" />
-  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.5" />
-  <link rel="stylesheet" href="static/record.css?v=0.7.5" />
+  <link rel="stylesheet" href="static/radar.css?v=0.7.6">
+  <link rel="stylesheet" href="static/style.css?v=0.7.6&ui=welcome-20261117" />
+  <link rel="stylesheet" href="static/theme-early.css?v=0.7.6" />
+  <link rel="stylesheet" href="static/theme-late.css?v=0.7.6" />
+  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.6" />
+  <link rel="stylesheet" href="static/record.css?v=0.7.6" />
 </head>
 <body>
   <div id="app">
@@ -33,7 +34,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.5</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.6</span>
           </h1>
           <p class="brand-credit">由 Thregren 开发</p>
         </div>
@@ -90,13 +91,32 @@
       <ul id="versionList" class="marker-list version-list" aria-label="版本图选列表" hidden></ul>
     </aside>
 
-    <main class="stage">
+    <main class="stage is-welcome">
       <!-- 手机上曲库是抽屉，默认收起；这里整条都是按钮：面积大、右半边还能避开
            内置浏览器自己放在左上角的 ✕ / 返回 按钮 -->
       <button id="btnSidebarOpen" class="mobile-bar" type="button" aria-label="打开曲库">
         <span class="mobile-bar-icon" aria-hidden="true">☰</span>
-        <span class="mobile-bar-title">谱面确认</span>
       </button>
+      <section class="welcome" aria-labelledby="welcomeTitle">
+        <div class="welcome-content">
+          <div class="welcome-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <p class="welcome-eyebrow">JUBEAT VIEWER</p>
+          <h2 id="welcomeTitle">从一首歌开始</h2>
+          <p class="welcome-description welcome-desktop">从左侧曲库选择一首曲目，开始探索谱面的节奏。</p>
+          <p class="welcome-description welcome-mobile">打开曲库，找到你想看的那首歌。<br>让每一个节奏，都清晰可见。</p>
+          <button id="btnWelcomeLibrary" class="welcome-button welcome-mobile" type="button" aria-controls="sidebar">
+            打开曲库 <span aria-hidden="true">↗</span>
+          </button>
+          <ul class="welcome-features" aria-label="支持的功能">
+            <li>谱面预览</li><li>变速播放</li><li>段落循环</li>
+          </ul>
+        </div>
+      </section>
       <section class="now-playing" id="nowPlaying">
         <div class="cover-wrap">
           <img id="cover" alt="" decoding="async" />
@@ -106,6 +126,7 @@
           <div class="np-actions" aria-label="歌曲操作">
             <button id="btnShare" class="song-share-btn" type="button" aria-label="分享歌曲" title="分享歌曲，从头开始" disabled>分享</button>
             <button id="btnBackgroundStory" class="song-share-btn" type="button" aria-label="查看歌曲背景故事" aria-expanded="false" aria-haspopup="dialog" hidden>背景故事</button>
+            <button id="btnRadar" class="song-share-btn" type="button" aria-label="查看谱面能力图" aria-haspopup="dialog" disabled>能力图</button>
           </div>
           <div class="np-kicker" id="npVersion">选择一首曲目</div>
           <h2 id="npTitle">未加载谱面</h2>
@@ -210,10 +231,11 @@
                         <span class="unit">ms</span></span></label>
           <label class="ctl"><span class="setting-label">按键音效</span>
           <span class="setting-control"><select id="metroSound" aria-label="节拍音"
-                                title="按键音只有三档：普通 / 16 分及更密 / 同押；落在 16 分或更密节奏位置的 note 自动使用 16 分档，四分和八分位置用普通档">
+                                title="ABC 交替：普通段用 A，十六分及更密连续段从 B 开始交替 B/C；同押不覆盖">
                           <option value="">关</option>
-                          <option value="click">点击</option>
-                          <option value="taiko">太鼓</option>
+                          <option value="abc" selected>ABC 交替</option>
+                          <option value="click">点击（原版）</option>
+                          <option value="taiko">太鼓（原版）</option>
                         </select></span></label>
           <label class="ctl ctl-vol"><span class="setting-label">音效音量</span>
           <span class="setting-control"><select id="metroVolume" aria-label="音效音量">
@@ -231,9 +253,9 @@
                         <input id="autoLoop" type="checkbox" />
                         循环播放
                       </label>
-          <label class="ctl checkbox" title="默认开启。开启后，一批同押只发一次当前音色的加厚版提示，不再叠加普通或 16 分音效">
+          <label class="ctl checkbox" title="仅对原版音色有效；ABC 交替始终保留 A/B/C">
                         <input id="chordSound" type="checkbox" autocomplete="off" checked />
-                        同押独立音效
+                        同押独立音效（仅原版）
                       </label>
           <label class="ctl checkbox" title="选歌后等待试听片段加载完成，自动循环播放；没有试听片段时不自动播放">
           <input id="autoPreview" type="checkbox" /> 选曲后自动循环试听
@@ -387,35 +409,48 @@
 
   <div id="toast" class="toast" hidden></div>
   <audio id="audio" preload="none"></audio>
-  <script src="static/sfx.js?v=0.7.5"></script>
-  <script src="static/song-links.js?v=0.7.5"></script>
-  <script src="static/background-stories-data.js?v=0.7.5"></script>
-  <script src="static/background-stories.js?v=0.7.5"></script>
-  <script src="static/core.js?v=0.7.5"></script>
-  <script src="static/runtime.js?v=0.7.5"></script>
-  <script src="static/services.js?v=0.7.5"></script>
+  <dialog class="radar-dialog" id="radarPanel" aria-labelledby="radarTitle" aria-describedby="radarSong">
+    <div class="radar-head">
+      <div><h2 id="radarTitle">谱面能力图</h2><p id="radarSong"></p></div>
+      <button class="story-close" id="radarClose" type="button" aria-label="关闭能力图">关闭</button>
+    </div>
+    <div class="radar-body">
+      <svg class="radar-plot" id="radarPlot" viewBox="0 0 420 340" role="img" aria-label="尚未加载谱面"></svg>
+    </div>
+  </dialog>
+
+  <script src="static/sfx.js?v=0.7.6"></script>
+  <script src="static/song-links.js?v=0.7.6"></script>
+  <script src="static/background-stories-data.js?v=0.7.6"></script>
+  <script src="static/background-stories.js?v=0.7.6"></script>
+  <script src="static/core.js?v=0.7.6"></script>
+  <script src="static/runtime.js?v=0.7.6"></script>
+  <script src="static/services.js?v=0.7.6"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.7.5"></script>
+  <script src="static/record.js?v=0.7.6"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.7.5"></script>
-<script src="static/app-base.js?v=0.7.5"></script>
-  <script src="static/app-audio.js?v=0.7.5"></script>
-  <script src="static/first-marker.js?v=0.7.5"></script>
-  <script src="static/app-marker.js?v=0.7.5&ui=hold-countdown-20261102"></script>
-  <script src="static/app-density.js?v=0.7.5"></script>
-  <script src="static/rhythm-timeline.js?v=0.7.5"></script>
-  <script src="static/app-timeline.js?v=0.7.5"></script>
-  <script src="static/directory.js?v=0.7.5"></script>
-  <script src="static/list-images.js?v=0.7.5"></script>
-  <script src="static/visitor-queue.js?v=0.7.5"></script>
-  <script src="static/app-visitors.js?v=0.7.5&ui=chart-loads-20261102"></script>
-  <script src="static/app-library.js?v=0.7.5&ui=version-picker-20261112"></script>
-  <script src="static/library-filters.js?v=0.7.5&ui=version-picker-20261112"></script>
-  <script src="static/marker-library.js?v=0.7.5&ui=version-picker-20261112"></script>
-  <script src="static/version-library.js?v=0.7.5&ui=version-picker-20261112-2"></script>
-  <script src="static/app-player.js?v=0.7.5"></script>
-  <script src="static/app-render.js?v=0.7.5"></script>
-  <script src="static/app-wiring.js?v=0.7.5&ui=background-stories-20261101"></script>
-  <script src="static/app.js?v=0.7.5"></script>
+  <script src="static/version-data.js?v=0.7.6"></script>
+<script src="static/app-base.js?v=0.7.6"></script>
+  <script src="static/app-audio.js?v=0.7.6"></script>
+  <script src="static/first-marker.js?v=0.7.6"></script>
+  <script src="static/app-marker.js?v=0.7.6&ui=hold-countdown-20261102"></script>
+  <script src="static/radar.js?v=0.7.6"></script>
+  <script src="static/radar-references.js?v=0.7.6"></script>
+  <script src="static/app-radar.js?v=0.7.6"></script>
+  <script src="static/app-density.js?v=0.7.6&radar=20261117"></script>
+  <script src="static/rhythm-timeline.js?v=0.7.6"></script>
+  <script src="static/app-timeline.js?v=0.7.6"></script>
+  <script src="static/directory.js?v=0.7.6"></script>
+  <script src="static/list-images.js?v=0.7.6"></script>
+  <script src="static/visitor-queue.js?v=0.7.6"></script>
+  <script src="static/app-visitors.js?v=0.7.6&ui=chart-loads-20261102"></script>
+  <script src="static/app-library.js?v=0.7.6&ui=welcome-20261117"></script>
+  <script src="static/library-filters.js?v=0.7.6&ui=version-picker-20261112"></script>
+  <script src="static/marker-library.js?v=0.7.6&ui=version-picker-20261112"></script>
+  <script src="static/version-library.js?v=0.7.6&ui=version-picker-20261112-2"></script>
+  <script src="static/app-player.js?v=0.7.6"></script>
+  <script src="static/app-render.js?v=0.7.6"></script>
+  <script src="static/app-wiring.js?v=0.7.6&ui=welcome-20261117"></script>
+  <script src="static/app.js?v=0.7.6"></script>
 </body>
 </html>

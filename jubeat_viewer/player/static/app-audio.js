@@ -205,7 +205,7 @@
    * 真正的设置迁移在 app-wiring.js 完成。
    */
   function normalizedKind(value) {
-    if (value === "click" || value === "taiko") return value;
+    if (value === "abc" || value === "click" || value === "taiko") return value;
     return "";
   }
 
@@ -229,6 +229,13 @@
       const t = when != null ? when : audioCtx.currentTime + 0.005;
       const gain = metroGain(SFX_GAIN);   // 三档、两组统一响度，无任何档位增益差
       if (gain <= 0) return;
+      if (kind === "abc") {
+        // ABC input gain measured through the shared limiter: about +8 dB
+        // at 60% versus the first audition, with peaks capped at -1.06 dBFS.
+        const voice = variant === "B" || variant === "C" ? variant : "A";
+        SFX.soundABC?.(audioCtx, t, voice, dest || sfxBus() || audioCtx.destination, gain * 1.8);
+        return;
+      }
       // 试听 / 兼容入口没给 dest 时也走音效总线，否则响度会和排程路径不一致。
       const out = dest || sfxBus() || audioCtx.destination;
 
@@ -294,6 +301,10 @@
    */
   function playHitSound(note, when = null, dest = null, chord = false) {
     if (!els.metroSound.value || !note) return;
+    if (normalizedKind(els.metroSound.value) === "abc") {
+      playSoundVariant(note.hitSoundVoice || "A", when, dest);
+      return; // Chords never override ABC or advance the precomputed ordinal.
+    }
     const parsed = state._parsed;
     const beat = Number.isFinite(note.beat) ? note.beat
       : parsed && parsed.secToBeat ? parsed.secToBeat(note.t) : NaN;

@@ -340,7 +340,7 @@ button:focus-visible,
 /* —— stage —— */
 .stage {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   background:
@@ -781,7 +781,7 @@ button:focus-visible,
   left: 50%;
   bottom: calc(100% + 8px);
   transform: translateX(-50%);
-  z-index: 45;             /* 要压过手机上那个选项浮层（40） */
+  z-index: 39;             /* 设置打开时，加载提示让出紧贴控制条的页签。 */
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1022,43 +1022,96 @@ input[type="range"] {
   backdrop-filter: blur(2px);
 }
 
-/* 手机上用来打开曲库的整条按钮：桌面端不显示（桌面端曲库常驻在左边） */
+/* The same theme selector is available above the welcome screen and player. */
+.stage-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  min-height: 37px;
+  padding: 0 24px;
+  background: var(--cabinet);
+  border-bottom: 1px solid var(--line);
+}
+.stage-theme { position: relative; flex-shrink: 0; }
+.stage-theme > button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--cabinet);
+  color: var(--ink);
+  cursor: pointer;
+}
+.stage-theme > button:hover,
+.stage-theme > button[aria-expanded="true"] { background: var(--cabinet-2); }
+.theme-icon {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+}
+.theme-picker {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 164px;
+  max-height: min(460px, calc(100dvh - 56px - env(safe-area-inset-top)));
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--cabinet);
+  color: var(--ink);
+  box-shadow: 0 8px 24px #0004;
+}
+.theme-picker button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+.theme-picker button:hover,
+.theme-picker button[aria-pressed="true"] { background: var(--cabinet-2); }
+.theme-picker button:focus-visible { outline-offset: -2px; }
+.theme-picker button[aria-pressed="true"]::after { content: "✓" / ""; color: var(--amber); }
 .mobile-bar { display: none; }
 
 /* —— 移动端：曲库变抽屉，面板占满，控件加大 —— */
 @media (max-width: 900px) {
-  /* 抽屉默认收起，这个按钮是唯一入口 */
+  .stage-toolbar {
+    padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 0;
+  }
   .mobile-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
-    width: 100%;
-    margin: 0;
-    /* 顶部要避开刘海/状态栏（viewport-fit=cover 时页面会伸到状态栏下面） */
-    padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
+    align-self: stretch;
+    flex: 1;
+    min-height: 36px;
+    padding: 0 0 0 max(12px, env(safe-area-inset-left));
     border: 0;
-    border-bottom: 1px solid var(--line);
-    background: var(--cabinet);
-    color: inherit;
-    font: inherit;
-    text-align: left;
+    background: transparent;
+    color: var(--ink);
     cursor: pointer;
   }
   .mobile-bar:active { background: var(--cabinet-2); }
-  .mobile-bar-icon { font-size: 18px; line-height: 1; color: var(--ink); }
-  .mobile-bar-title {
-    font-size: 12px;
-    letter-spacing: 0.1em;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
-  .mobile-bar-hint {
-    margin-left: auto;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--amber);
-  }
-  .stage { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .mobile-bar:focus-visible { outline-offset: -2px; }
+  .mobile-bar-icon { font-size: 18px; line-height: 1; }
 
   #app {
     grid-template-columns: 1fr;
@@ -1202,8 +1255,6 @@ input[type="range"] {
 
 /* —— 特别矮的屏（老机型、或浏览器工具栏吃掉很多高度）：再压一档，保证面板不被裁 —— */
 @media (max-height: 620px) {
-  .mobile-bar { padding: calc(4px + env(safe-area-inset-top)) 12px 4px; }
-  .mobile-bar .icon-btn { height: 34px; min-width: 34px; }
   .np-kicker { display: none; }        /* 版本那行省掉 */
   .np-artist { display: none; }        /* 作曲那行省掉 */
   .diff-btn { padding: 2px 9px; font-size: 10px; }
@@ -1220,57 +1271,132 @@ input[type="range"] {
 .brand-source a { color: inherit; font-weight: 600; text-decoration: none; }
 .brand-source a:hover { color: var(--text); text-decoration: underline; }
 
-/* Compact settings keep labels beside controls and wrap by available width. */
+/* Keep the tabs next to transport while the active settings group grows upward. */
 .options {
-  display: block;
-  max-height: min(60vh, 420px);
+  --settings-accent: var(--knit-yellow, var(--amber));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   max-height: min(60dvh, 420px);
-  padding: 4px 14px 8px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--cabinet);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 16px 16px 0 0;
+}
+.settings-tabs {
+  order: 1;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.settings-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 9px 8px;
+  background: var(--void);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.settings-tabs button[aria-selected="true"] {
+  background: var(--cabinet);
+  border-top-color: transparent;
+  border-radius: 0 0 15px 15px;
+  box-shadow: inset 0 -3px var(--settings-accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+.settings-tabs button:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -3px;
+}
+.settings-group {
+  min-height: 0;
+  overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
-.settings-group + .settings-group { border-top: 1px solid var(--line); }
-.settings-group > summary {
-  display: flex; align-items: center; justify-content: space-between;
-  min-height: 34px; padding: 6px 2px;
-  color: var(--ink); font-size: 12px; font-weight: 600;
-  list-style: none; cursor: pointer; user-select: none;
+.settings-group:not([open]) { display: none; }
+.settings-group > summary { display: none; }
+.settings-body {
+  padding: 4px 18px 18px;
 }
-.settings-group > summary::-webkit-details-marker { display: none; }
-.settings-group > summary::after {
-  content: ""; width: 6px; height: 6px; margin: 0 5px 3px 10px;
-  border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+.settings-subtitle {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
 }
-.settings-group[open] > summary { color: var(--amber); }
-.settings-group[open] > summary::after { margin-bottom: -3px; transform: rotate(225deg); }
-.settings-group > summary:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; border-radius: 6px; }
-.settings-body { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 2px 2px 10px; }
-.settings-fields, .settings-switches { display: contents; }
-.settings-fields > .ctl { display: inline-flex; align-items: center; flex: 0 1 244px; gap: 7px; min-width: 0; max-width: 100%; }
-.settings-fields > .setting-wide { flex-basis: 450px; }
-.setting-label { flex-shrink: 0; font-size: 12px; }
+.settings-fields, .settings-switches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 20px;
+}
+.settings-fields + .settings-switches,
+.settings-switches + .settings-fields { margin-top: 8px; }
+.settings-fields > .ctl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ink);
+}
+.settings-fields > .setting-wide { grid-column: 1 / -1; }
+.setting-label {
+  flex: 0 0 6em;
+  font-size: 12px;
+  line-height: 1.3;
+}
 .setting-control { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; }
 .options .setting-control > select, .options .setting-control > input[type="number"] {
-  width: 100%; min-width: 0; min-height: 30px; padding: 5px 7px; font-size: 12px; text-overflow: ellipsis;
+  width: 100%; min-width: 0; min-height: 34px; padding: 6px 8px; font-size: 12px; text-overflow: ellipsis;
 }
-.options .setting-control > .unit { flex-shrink: 0; min-width: 20px; font-size: 11px; }
+.options .setting-control > .unit { flex-shrink: 0; min-width: 20px; color: var(--muted); font-size: 11px; }
 .options .setting-control > [hidden] { display: none; }
-.options .setting-control > input[type="color"] { width: 46px; height: 30px; }
-.settings-switches .checkbox { min-height: 30px; line-height: 1.35; font-size: 12px; }
-.settings-switches input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; margin: 0 2px 0 0; accent-color: var(--amber); }
-.settings-subtitle { display: none; }
+.options .setting-control > input[type="color"] { width: 46px; height: 34px; }
+.settings-switches .checkbox {
+  min-width: 0;
+  min-height: 34px;
+  line-height: 1.4;
+  color: var(--ink);
+  font-size: 12px;
+}
+.settings-switches input[type="checkbox"] {
+  width: 15px; height: 15px; flex-shrink: 0; margin: 0 2px 0 0; accent-color: var(--amber);
+}
+.settings-switches .checkbox[hidden] { display: none; }
 @media (max-width: 900px) {
   .options, .transport.collapsed .options { max-height: 58vh; max-height: 58dvh; }
-  .options { padding: 3px 10px 6px; }
+  .options { padding: 0; }
 }
 @media (max-width: 560px) {
-  .settings-body { gap: 6px 10px; padding-bottom: 8px; }
-  .settings-fields > .ctl { flex: 0 0 calc((100% - 10px) / 2); gap: 5px; }
-  .settings-fields > .setting-wide { flex-basis: 100%; }
-  .setting-label { max-width: 5em; font-size: 11px; line-height: 1.25; }
-  .options .setting-control > select, .options .setting-control > input[type="number"] { min-height: 34px; padding: 5px; font-size: 12px; }
-  .settings-switches .checkbox { min-height: 32px; }
-  .settings-group > summary { min-height: 36px; }
+  .options, .transport.collapsed .options { max-height: none; overflow: visible; }
+  .settings-group { overflow: visible; }
+  .settings-body { padding: 2px 10px 10px; }
+  .settings-subtitle { margin: 9px 0 4px; font-size: 11px; }
+  .settings-fields, .settings-switches {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 8px;
+  }
+  .settings-fields + .settings-switches,
+  .settings-switches + .settings-fields { margin-top: 4px; }
+  .settings-fields > .ctl { gap: 4px; }
+  .settings-fields > .setting-wide { grid-column: 1 / -1; }
+  .setting-label { flex: 0 0 6em; font-size: 11px; }
+  .options .setting-control > select,
+  .options .setting-control > input[type="number"] { min-height: 32px; padding: 4px; font-size: 12px; }
+  .settings-switches .checkbox { min-height: 32px; font-size: 11px; }
+  .settings-tabs button { min-height: 42px; padding: 7px 4px; font-size: 11px; }
 }
 
 /* The picker occupies the same scrolling area as the song list. */
@@ -1460,37 +1586,8 @@ input[type="range"] {
 }
 .library-filter-row > #listCount { white-space:nowrap; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; }
 
-/* 浏览器主题：配色与装饰素材来自对应版本，默认主题保持现有外观。 */
-:root[data-theme] .stage {
-  background-color: var(--void);
-  background-image: radial-gradient(ellipse at 80% 30%, rgba(var(--theme-rgb), .20), transparent 52%),
-    linear-gradient(90deg, rgba(7, 9, 15, .94), rgba(7, 9, 15, .65)), var(--theme-art);
-  background-position: center, center, right 6% center;
-  background-repeat: no-repeat;
-  background-size: auto, auto, var(--theme-art-size);
-}
-/* Keep each version's motif visible above the playfield on narrow screens. */
-:root[data-theme] .now-playing { position: relative; isolation: isolate; }
-:root[data-theme] .now-playing::after {
-  content: ""; position: absolute; inset: 0 0 0 auto; width: min(42%, 260px);
-  background: var(--theme-art) right center / contain no-repeat;
-  opacity: .24; pointer-events: none; z-index: -1;
-}
-:root[data-theme] .brand-mark span:nth-child(1) { box-shadow: 0 0 12px rgba(var(--theme-rgb), .65); animation: theme-accent 4s ease-in-out infinite; }
-@keyframes theme-accent { 50% { box-shadow: 0 0 18px rgba(var(--theme-rgb), .85); } }
-:root[data-theme="jubeat"] { --amber:#7d9dff; --amber-dim:#4057ae; --theme-rgb:91,125,255; --cabinet:#0c1021; --cabinet-2:#151b30; --line:#273354; --theme-art:url("theme-art-v1-jubeat.webp"); --theme-art-size:cover; }
-:root[data-theme="ripples"] { --amber:#b6e863; --amber-dim:#668f26; --theme-rgb:141,205,63; --cabinet:#111a16; --cabinet-2:#17251b; --line:#324631; --theme-art:url("theme-art-v1-ripples.webp"); --theme-art-size:cover; }
-:root[data-theme="knit"] { --amber:#c9ed42; --amber-dim:#7b9c14; --theme-rgb:190,235,46; --cabinet:#171b13; --cabinet-2:#21291a; --line:#3e4c28; --theme-art:url("theme-art-v1-knit.webp"); --theme-art-size:48% auto; }
-:root[data-theme="copious"] { --amber:#ffca42; --amber-dim:#aa791c; --theme-rgb:247,144,54; --cabinet:#1a151c; --cabinet-2:#281d29; --line:#503446; --theme-art:url("theme-art-v1-copious.webp"); --theme-art-size:42% auto; }
-:root[data-theme="saucer"] { --amber:#ffb365; --amber-dim:#ae6d32; --theme-rgb:255,171,101; --cabinet:#1a1718; --cabinet-2:#292120; --line:#473730; --theme-art:url("theme-art-v1-saucer.webp"); --theme-art-size:cover; }
-:root[data-theme="fulfill"] { --amber:#f5bd71; --amber-dim:#a77a37; --theme-rgb:229,162,87; --cabinet:#1b181b; --cabinet-2:#2a232a; --line:#4c3b46; --theme-art:url("theme-art-v1-fulfill.webp"); --theme-art-size:55% auto; }
-:root[data-theme="prop"] { --amber:#ff6bb6; --amber-dim:#a73d7c; --theme-rgb:255,82,164; --cabinet:#1c1421; --cabinet-2:#2a1b2c; --line:#513149; --theme-art:url("theme-art-v1-prop.webp"); --theme-art-size:24% auto; }
-:root[data-theme="qubell"] { --amber:#83ceff; --amber-dim:#4186b9; --theme-rgb:102,186,240; --cabinet:#111a29; --cabinet-2:#19263b; --line:#304561; --theme-art:url("theme-art-v1-qubell.webp"); --theme-art-size:50% auto; }
-:root[data-theme="clan"] { --amber:#8de9d8; --amber-dim:#459c91; --theme-rgb:83,204,185; --cabinet:#101c25; --cabinet-2:#192a36; --line:#314a56; --theme-art:url("theme-art-v1-clan.webp"); --theme-art-size:50% auto; }
-:root[data-theme="jubeat2020"] { --amber:#85ead2; --amber-dim:#398c82; --theme-rgb:85,230,191; --cabinet:#151a24; --cabinet-2:#202933; --line:#3d5055; --theme-art:url("theme-art-v1-jubeat2020.webp"); --theme-art-size:cover; }
-:root[data-theme="festo"] { --amber:#c7e67d; --amber-dim:#77993e; --theme-rgb:168,209,89; --cabinet:#182016; --cabinet-2:#242e20; --line:#40523a; --theme-art:url("theme-art-v1-festo.webp"); --theme-art-size:38% auto; }
-:root[data-theme="ave"] { --amber:#74e6ef; --amber-dim:#348d99; --theme-rgb:67,210,225; --cabinet:#101e27; --cabinet-2:#192e37; --line:#304d55; --theme-art:url("theme-art-v1-ave.webp"); --theme-art-size:cover; }
-:root[data-theme="beyond"] { --amber:#ffc578; --amber-dim:#ae7b37; --theme-rgb:238,163,65; --cabinet:#201815; --cabinet-2:#30231c; --line:#503b2d; --theme-art:url("theme-art-v1-beyond.webp"); --theme-art-size:cover; }
+/* A static accent ties the header mark to the selected CSS palette. */
+:root[data-theme] .brand-mark span:nth-child(1) { box-shadow: 0 0 12px rgba(var(--theme-rgb), .65); }
 
 /* 桌面端也把曲目参数放在难度下方，封面占据两行。 */
 @media (min-width: 901px) {
@@ -1543,7 +1640,7 @@ body:not(.private-play-active) .stage .pad .idx {
 
 /* 启动页直接出现在首屏；选曲后移除 is-welcome，恢复播放器原布局。 */
 .welcome { display: none; }
-.stage.is-welcome { grid-template-rows: minmax(0, 1fr); overflow: auto; }
+.stage.is-welcome { grid-template-rows: auto minmax(0, 1fr); overflow: auto; }
 .stage.is-welcome > :is(#nowPlaying, .panel-stage, #transport) { display: none; }
 .stage.is-welcome > .welcome {
   display: grid;
@@ -1620,7 +1717,6 @@ body:not(.private-play-active) .stage .pad .idx {
 .welcome-button:active { transform: translateY(1px); }
 .welcome-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
 @media (max-width: 900px) {
-  .stage.is-welcome { grid-template-rows: auto minmax(0, 1fr); }
   .stage.is-welcome > .welcome { padding: 24px 22px max(32px, env(safe-area-inset-bottom)); }
   .welcome-content { padding: 36px 20px; border-radius: 20px; }
   .welcome-mark { width: 100px; gap: 6px; margin-bottom: 28px; }

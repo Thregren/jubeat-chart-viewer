@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
@@ -311,4 +313,13 @@ serialTest("invalid external catalogs keep the built-in catalog", async t => {
       assert.equal(button.hidden, false);
     });
   }
+});
+
+
+test("the first-paint story index covers the complete built-in catalog", () => {
+  const context = {window: {}};
+  runInNewContext(readFileSync(new URL(
+    "../jubeat_viewer/player/static/background-stories-index.js", import.meta.url), "utf8"), context);
+  assert.deepEqual(Array.from(context.window.JUBEAT_BACKGROUND_STORY_IDS).sort(),
+    Object.keys(builtInCatalog.records).sort());
 });

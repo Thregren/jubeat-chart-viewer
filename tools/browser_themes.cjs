@@ -10,14 +10,14 @@ try{
   const ctx=await browser.newContext({viewport:{width,height:900},deviceScaleFactor:1,reducedMotion:'reduce'}),page=await ctx.newPage(),errors=[],failed=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)failed.push([r.status(),r.url()]);});
   await page.goto(base+'?song=v0%2Fsong000&chart=EXT&paused=1');await page.waitForFunction(()=>window.__player&&JubeatApp.state.chart);
-  const sel=page.locator('#viewerTheme');if (await page.locator('#transport').evaluate(el=>el.classList.contains('collapsed'))) await page.locator('#btnCollapse').click();await page.locator('[data-settings-group="marker"] summary').click();
-  const opts=await sel.locator('option').evaluateAll(os=>os.map(o=>o.value));assert.equal(opts.length,14);
+  const toggle=page.locator('#themeToggle'),choices=page.locator('#themePicker [data-theme-value]');
+  const opts=await choices.evaluateAll(buttons=>buttons.map(button=>button.dataset.themeValue));assert.equal(opts.length,14);
   assert.equal(opts.at(-1),'jubeat2020');
-  assert.equal(await sel.locator('option').last().textContent(),'音乐魔方');
+  assert.equal(await choices.last().textContent(),'音乐魔方');
   const defaultPad=await page.locator('.panel-inner .pad').first().evaluate(el=>getComputedStyle(el).backgroundColor);
   const panelColors=new Set();
   for(const id of opts.slice(1)){
-   await sel.selectOption(id);assert.equal(await page.locator('html').getAttribute('data-theme'),id);
+   await toggle.click();await page.locator('#themePicker [data-theme-value="'+id+'"]').click();assert.equal(await page.locator('html').getAttribute('data-theme'),id);
    await page.waitForFunction(()=>getComputedStyle(document.querySelector('.stage')).backgroundImage!=='none');
    await page.waitForTimeout(100); // Let the playfield color transition settle.
    const padColor=await page.locator('.panel-inner .pad').first().evaluate(el=>getComputedStyle(el).backgroundColor);
@@ -29,7 +29,7 @@ try{
   }
   assert.equal(panelColors.size,13,'each theme must have its own playfield color');
   await page.reload();await page.waitForFunction(()=>window.__player);assert.equal(await page.locator('html').getAttribute('data-theme'),'jubeat2020');
-  await page.goto(base+'?rec=1');await page.waitForFunction(()=>window.__player);assert.equal(await page.locator('html').getAttribute('data-theme'),null);assert.equal(await page.locator('#viewerTheme').isDisabled(),true);
+  await page.goto(base+'?rec=1');await page.waitForFunction(()=>window.__player);assert.equal(await page.locator('html').getAttribute('data-theme'),null);assert.equal(await page.locator('#themeToggle').isDisabled(),true);
   assert.equal(await page.locator('.panel-inner .pad').first().evaluate(el=>getComputedStyle(el).backgroundColor),defaultPad);
   assert.deepEqual(errors,[]);assert.deepEqual(failed,[]);result.push({width,themeCount:opts.length-1,persistence:true,animationWithReducedMotion:true,recordingDefault:true,errors,failed});await ctx.close();
  }

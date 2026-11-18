@@ -12,7 +12,12 @@
   let activeSong=null;
   let restoreFocusOnClose=false;
   let catalogRequest=null;
+  let externalCatalog=null;
+  let builtinLoaded=false;
   let catalogFailed=false;
+
+  const index = {records: Object.fromEntries((root.JUBEAT_BACKGROUND_STORY_IDS || [])
+    .map(id => [id, {documents: [true]}]))};
 
   function recordFor(song,catalog=root.JUBEAT_BACKGROUND_STORIES){
     catalog=catalog||root.JUBEAT_BACKGROUND_STORIES;
@@ -141,7 +146,7 @@
   function sync(song=activeSong){
     activeSong=song||null;
     if(!button)return;
-    const available=!!recordFor(activeSong)&&!root.__recActive;
+    const available=!!(recordFor(activeSong)||recordFor(activeSong,index))&&!root.__recActive;
     button.hidden=!available;
     button.disabled=!available;
     button.setAttribute('aria-expanded','false');
@@ -153,8 +158,19 @@
     sync(song);
   }
 
-  function open(){
+  async function open(){
     const song=app?.state?.song||activeSong;
+    try {
+      if (!builtinLoaded && root.JubeatLoadScript && recordFor(song,index)) {
+        await root.JubeatLoadScript('story-data');
+        builtinLoaded=true;
+        mergeExternal();
+      }
+    } catch (_) {
+      app?.toast?.('背景故事加载失败，请重试');
+      return;
+    }
+    if (song !== (app?.state?.song||activeSong)) return;
     const record=recordFor(song);
     if(!record||root.__recActive)return;
     render(record,song);
@@ -187,6 +203,16 @@
     return true;
   }
 
+  function mergeExternal(){
+    if(!externalCatalog)return;
+    const builtin=root.JUBEAT_BACKGROUND_STORIES||{};
+    root.JUBEAT_BACKGROUND_STORIES=Object.freeze({
+      ...builtin,
+      schemaVersion:externalCatalog.schemaVersion,
+      records:{...(builtin.records||{}),...externalCatalog.records},
+    });
+  }
+
   function loadExternalCatalog(force=false){
     if(force){catalogRequest=null;catalogFailed=false;}
     if(catalogRequest||catalogFailed||typeof root.fetch!=='function')return catalogRequest;
@@ -201,13 +227,8 @@
       })
       .then(catalog=>{
         if(!validCatalog(catalog))throw new Error('background catalog invalid');
-        // 内置 2449 篇是权威数据：外部记录按 id 覆盖/补充，整体合并而非整体替换，
-        // 这样外部文件再小也不会把内置文档清空。
-        const builtin=root.JUBEAT_BACKGROUND_STORIES||{};
-        root.JUBEAT_BACKGROUND_STORIES=Object.freeze({
-          ...builtin,
-          records:{...(builtin.records||{}),...catalog.records},
-        });
+        externalCatalog=catalog;
+        mergeExternal();
         sync(activeSong);
       })
       .catch(()=>{

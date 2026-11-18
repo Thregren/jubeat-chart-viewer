@@ -2,7 +2,7 @@
    the white hit flash keeps its original rule, so timing feedback remains clear. */
 :root[data-theme="jubeat"]     { --board-top:#315e99; --board-base:#142e56; --board-line:#6b95c3; --board-well:#142b4b; --board-pad:#325a85; --board-edge:#81add0; --board-index:#d8eeff; }
 :root[data-theme="ripples"]    { --board-top:#a9ddcc; --board-base:#70b49f; --board-line:#d5f5eb; --board-well:#4e8e7c; --board-pad:#72b9a3; --board-edge:#cdf1e2; --board-index:#123f34; }
-:root[data-theme="knit"]       { --board-top:#f5d66f; --board-base:#b9912f; --board-line:#ffecad; --board-well:#8a6a27; --board-pad:#c8a54c; --board-edge:#f9e39a; --board-index:#3f300a; }
+:root[data-theme="knit"]       { --board-top:var(--knit-yellow); --board-base:#e9a900; --board-line:#fff1ad; --board-well:#16171a; --board-pad:#303136; --board-edge:#a9954b; --board-index:#fff5c9; }
 :root[data-theme="copious"]    { --board-top:#4a6bab; --board-base:#1c2c63; --board-line:#8da6db; --board-well:#1b2a54; --board-pad:#38588c; --board-edge:#93addc; --board-index:#edf4ff; }
 :root[data-theme="saucer"]     { --board-top:#f1f3f2; --board-base:#aab1b2; --board-line:#fff; --board-well:#7b8588; --board-pad:#b7c0c0; --board-edge:#e9efed; --board-index:#293436; }
 :root[data-theme="fulfill"]   { --board-top:#55565b; --board-base:#1d1e22; --board-line:#a6a8ae; --board-well:#25262a; --board-pad:#4c4e55; --board-edge:#a0a2aa; --board-index:#f3f4f5; }

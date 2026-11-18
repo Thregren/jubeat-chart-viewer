@@ -15,8 +15,6 @@
     () => window.__recActive ? null : window.JubeatPreferences, () => localStorage,
     () => A.toast?.("设置保存失败，请重试")));
   const renderer = services.register('renderer', new window.JubeatServices.CanvasRenderer());
-  const quality = settings.access('jubeat.renderQuality');
-  if (['auto', 'sharp', 'eco'].includes(quality)) renderer.mode = quality;
   const coarsePointer = window.matchMedia?.('(pointer: coarse)');
   A.renderRatio = (width, height) => renderer.ratio(width, height, {
     dpr: window.devicePixelRatio, recording: !!window.__recActive,
@@ -266,7 +264,6 @@
   const abLoop = { a: null, b: null };
 
   const STORAGE = {
-    renderQuality: "jubeat.renderQuality",
     autoPreview: "jubeat.autoPreview",
     markerNormalSpeed: "jubeat.markerNormalSpeed",
     marker: "jubeat.marker",   // 选中的 marker 设计 id（如 tm0001）

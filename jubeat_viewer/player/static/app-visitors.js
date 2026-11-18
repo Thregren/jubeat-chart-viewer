@@ -6,7 +6,7 @@
   const value=document.getElementById('chartLoadValue'),today=document.getElementById('todayChartLoadValue');
   let currentSong=null,currentChart=null;
   const sentOnce=new Set();
-  // 上一次已下发的热门列表签名：/api/visitors 每个里程碑都会回一条，
+  // 上一次已下发的热门列表签名：页面访问及选歌的回执会附带列表，
   // 列表没变就别再触发 setPopularSongs → 重建封面预取。
   let popularSignature=null;
   // 播放里程碑已推进到的档位（0=未开始 … 4=complete）：只在跨过阈值时调用 event()，
@@ -20,10 +20,14 @@
   const queue=new window.JubeatVisitorQueue.EventQueue(async event=>{
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4000);
     try {
+      const ackOnly=event.event!=='page'&&event.event!=='song';
+      const headers={'Content-Type':'application/json'};
+      if(ackOnly)headers['X-Jubeat-Ack']='1';
       const response=await fetch('/api/visitors',{method:'POST',credentials:'same-origin',cache:'no-store',keepalive:true,
-        headers:{'Content-Type':'application/json'},body:JSON.stringify(event),signal:controller.signal});
+        headers,body:JSON.stringify(event),signal:controller.signal});
       if(!response.ok)return response.status===429||response.status>=500?'retry':'drop';
       const data=await response.json();
+      if(ackOnly&&data.ok===true)return 'ok';
       if(!Number.isSafeInteger(data.visitors)||data.visitors<0)return 'retry';
       if(value)value.textContent=Number.isSafeInteger(data.chart_loads)&&data.chart_loads>=0?data.chart_loads.toLocaleString('zh-CN'):'—';
       if(today)today.textContent=Number.isSafeInteger(data.today_chart_loads)&&data.today_chart_loads>=0?data.today_chart_loads.toLocaleString('zh-CN'):'—';

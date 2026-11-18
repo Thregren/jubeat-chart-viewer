@@ -126,30 +126,41 @@
   function bindEvents() {
     window.JubeatSongLinks.install(A);
     window.JubeatBackgroundStories?.install(A);
-    const theme = document.getElementById('viewerTheme');
-    if (theme) {
+    const themeToggle = document.getElementById('themeToggle');
+    const themePicker = document.getElementById('themePicker');
+    if (themeToggle && themePicker) {
+      const choices = [...themePicker.querySelectorAll('[data-theme-value]')];
       const applyTheme = value => {
-        const valid = [...theme.options].some(option => option.value === value);
-        const chosen = valid ? value : 'default';
-        theme.value = chosen;
+        const selected = choices.find(choice => choice.dataset.themeValue === value) || choices[0];
+        const chosen = selected.dataset.themeValue;
         if (chosen === 'default') delete document.documentElement.dataset.theme;
         else document.documentElement.dataset.theme = chosen;
+        for (const choice of choices) choice.setAttribute('aria-pressed', String(choice === selected));
       };
-      // Recording output stays independent of the viewer preference.
+      const setPickerOpen = open => {
+        themePicker.hidden = !open;
+        themeToggle.setAttribute('aria-expanded', String(open));
+      };
       applyTheme(window.__recActive ? 'default' : store('jubeat.viewerTheme'));
-      theme.disabled = !!window.__recActive;
-      theme.addEventListener('change', () => {
-        applyTheme(theme.value);
-        if (!window.__recActive) store('jubeat.viewerTheme', theme.value);
+      themeToggle.disabled = !!window.__recActive;
+      themeToggle.addEventListener('click', () => setPickerOpen(themePicker.hidden));
+      themePicker.addEventListener('click', event => {
+        const choice = event.target.closest('[data-theme-value]');
+        if (!choice) return;
+        applyTheme(choice.dataset.themeValue);
+        store('jubeat.viewerTheme', choice.dataset.themeValue);
+        setPickerOpen(false);
+        themeToggle.focus();
       });
-    }
-    const quality = document.getElementById('renderQuality');
-    if (quality) {
-      quality.value = A.services.renderer.mode;
-      quality.addEventListener('change', () => {
-        A.services.renderer.mode = ['sharp', 'eco'].includes(quality.value) ? quality.value : 'auto';
-        store('jubeat.renderQuality', A.services.renderer.mode);
-        layoutCanvas(); layoutDensity(); A.requestPaint();
+      document.addEventListener('pointerdown', event => {
+        if (themePicker.hidden || themePicker.contains(event.target) || themeToggle.contains(event.target)) return;
+        setPickerOpen(false);
+      }, { capture: true });
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || themePicker.hidden) return;
+        event.preventDefault();
+        setPickerOpen(false);
+        themeToggle.focus();
       });
     }
     // 兜底重画：暂停时渲染循环是停着的（见 updateFrame / requestPaint），
@@ -417,6 +428,12 @@
       renderList();
     });
     els.btnCollapse.addEventListener("click", () => setCollapsed(!els.transport.classList.contains("collapsed")));
+    const settingsPanel = document.getElementById("optionsPanel");
+    document.addEventListener("pointerdown", event => {
+      if (els.transport.classList.contains("collapsed")) return;
+      if (settingsPanel?.contains(event.target) || els.btnCollapse.contains(event.target)) return;
+      setCollapsed(true);
+    }, { capture: true });
     // 窄屏：曲库做成抽屉，点 ☰ 开关，点遮罩/选曲自动收起
     const scrim = document.createElement("div");
     scrim.className = "scrim";
@@ -694,12 +711,12 @@
     const mainInfo = header?.querySelector('.np-main');
     const sideInfo = header?.querySelector('.np-side');
     const stage = header?.closest('.stage');
-    const mobileBar = stage?.querySelector('.mobile-bar');
+    const toolbar = stage?.querySelector('.stage-toolbar');
     const panelStage = stage?.querySelector('.panel-stage');
     const transport = stage?.querySelector('.transport');
     const overview = transport?.querySelector('.chart-overview');
     const timeline = overview?.querySelector('.timeline-wrap');
-    if (window.ResizeObserver && header && mainInfo && sideInfo && stage && mobileBar && panelStage && transport && overview && timeline) {
+    if (window.ResizeObserver && header && mainInfo && sideInfo && stage && toolbar && panelStage && transport && overview && timeline) {
       let frame = 0;
       const updateHeader = () => {
         frame = 0;
@@ -714,7 +731,7 @@
           const occupied = overview.classList.contains('timeline-roomy') && !timeline.hidden
             ? timeline.getBoundingClientRect().height + 8 : 0;
           const baseTransportHeight = transport.offsetHeight - occupied;
-          const extra = Math.max(0, stage.clientHeight - mobileBar.offsetHeight - baseTransportHeight - contentHeight - maxPanel);
+          const extra = Math.max(0, stage.clientHeight - toolbar.offsetHeight - baseTransportHeight - contentHeight - maxPanel);
           const headerGap = Math.min(44, Math.max(20, extra * .2));
           const boardGap = Math.min(48, Math.max(12, extra * .23));
           overview.classList.toggle('timeline-roomy', extra - headerGap - boardGap - 8 >= timelineHeight);
@@ -731,7 +748,7 @@
       };
       const scheduleHeader = () => { if (!frame) frame = requestAnimationFrame(updateHeader); };
       const headerObserver = new ResizeObserver(scheduleHeader);
-      [header, mainInfo, sideInfo, stage, mobileBar, panelStage, transport, overview, timeline].forEach(el => headerObserver.observe(el));
+      [header, mainInfo, sideInfo, stage, toolbar, panelStage, transport, overview, timeline].forEach(el => headerObserver.observe(el));
       window.addEventListener('resize', scheduleHeader);
       document.getElementById('timelineFlatten')?.addEventListener('change', scheduleHeader);
       document.getElementById('btnTimeline')?.addEventListener('change', scheduleHeader);
@@ -797,6 +814,31 @@
   }
 
 
+
+  const settingsTabs = [...(document.querySelectorAll?.('.settings-tabs [role="tab"]') || [])];
+  function selectSettingsTab(tab, focus = false) {
+    for (const item of settingsTabs) {
+      const selected = item === tab;
+      item.setAttribute('aria-selected', String(selected));
+      item.tabIndex = selected ? 0 : -1;
+      document.getElementById(item.getAttribute('aria-controls')).open = selected;
+    }
+    if (focus) tab.focus();
+  }
+  for (const tab of settingsTabs) {
+    tab.addEventListener('click', () => selectSettingsTab(tab));
+    tab.addEventListener('keydown', event => {
+      const index = settingsTabs.indexOf(tab);
+      let next = index;
+      if (event.key === 'ArrowRight') next = (index + 1) % settingsTabs.length;
+      else if (event.key === 'ArrowLeft') next = (index + settingsTabs.length - 1) % settingsTabs.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = settingsTabs.length - 1;
+      else return;
+      event.preventDefault();
+      selectSettingsTab(settingsTabs[next], true);
+    });
+  }
 
   A.services.register('versionCheck', {dispose: () => versionRequests.cancel()});
   // —— 对外接口 ——

@@ -7,17 +7,17 @@
         content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.7.7" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.7" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.7" />
+  <link rel="manifest" href="static/manifest.json?v=0.7.8" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.8" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.8" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/radar.css?v=0.7.7">
-  <link rel="stylesheet" href="static/style.css?v=0.7.7&ui=welcome-20261117" />
-  <link rel="stylesheet" href="static/theme-early.css?v=0.7.7" />
-  <link rel="stylesheet" href="static/theme-late.css?v=0.7.7" />
-  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.7" />
-  <link rel="stylesheet" href="static/record.css?v=0.7.7" />
+  <link rel="stylesheet" href="static/radar.css?v=0.7.8">
+  <link rel="stylesheet" href="static/style.css?v=0.7.8&ui=welcome-20261117" />
+  <link rel="stylesheet" href="static/theme-early.css?v=0.7.8" />
+  <link rel="stylesheet" href="static/theme-late.css?v=0.7.8" />
+  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.8" />
+  <template id="record-style"><link rel="stylesheet" href="static/record.css?v=0.7.8" /></template>
 </head>
 <body>
   <div id="app">
@@ -34,7 +34,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.7</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.8</span>
           </h1>
           <p class="brand-credit">由 Thregren 开发</p>
         </div>
@@ -92,11 +92,32 @@
     </aside>
 
     <main class="stage is-welcome">
-      <!-- 手机上曲库是抽屉，默认收起；这里整条都是按钮：面积大、右半边还能避开
-           内置浏览器自己放在左上角的 ✕ / 返回 按钮 -->
-      <button id="btnSidebarOpen" class="mobile-bar" type="button" aria-label="打开曲库">
-        <span class="mobile-bar-icon" aria-hidden="true">☰</span>
-      </button>
+      <div class="stage-toolbar">
+        <button id="btnSidebarOpen" class="mobile-bar" type="button" aria-label="打开曲库">
+          <span class="mobile-bar-icon" aria-hidden="true">☰</span>
+        </button>
+        <div class="stage-theme">
+          <button id="themeToggle" type="button" aria-label="切换主题" aria-expanded="false" aria-controls="themePicker">
+            <span class="theme-icon" aria-hidden="true"></span>
+          </button>
+          <div id="themePicker" class="theme-picker" role="group" aria-label="界面主题" hidden>
+            <button type="button" data-theme-value="default" aria-pressed="true">默认</button>
+            <button type="button" data-theme-value="jubeat" aria-pressed="false">初代</button>
+            <button type="button" data-theme-value="ripples" aria-pressed="false">ripples</button>
+            <button type="button" data-theme-value="knit" aria-pressed="false">knit</button>
+            <button type="button" data-theme-value="copious" aria-pressed="false">copious</button>
+            <button type="button" data-theme-value="saucer" aria-pressed="false">saucer</button>
+            <button type="button" data-theme-value="fulfill" aria-pressed="false">saucer fulfill</button>
+            <button type="button" data-theme-value="prop" aria-pressed="false">prop</button>
+            <button type="button" data-theme-value="qubell" aria-pressed="false">Qubell</button>
+            <button type="button" data-theme-value="clan" aria-pressed="false">clan</button>
+            <button type="button" data-theme-value="festo" aria-pressed="false">festo</button>
+            <button type="button" data-theme-value="ave" aria-pressed="false">Ave</button>
+            <button type="button" data-theme-value="beyond" aria-pressed="false">beyond the Ave</button>
+            <button type="button" data-theme-value="jubeat2020" aria-pressed="false">音乐魔方</button>
+          </div>
+        </div>
+      </div>
       <section class="welcome" aria-labelledby="welcomeTitle">
         <div class="welcome-content">
           <div class="welcome-mark" aria-hidden="true">
@@ -183,11 +204,16 @@
         </div>
 
         <div class="options" id="optionsPanel" aria-label="查看设置">
-          <details class="settings-group" name="viewer-settings" data-settings-group="playback" open>
+          <div class="settings-tabs" role="tablist" aria-label="设置分类">
+            <button type="button" role="tab" aria-selected="true" aria-controls="settings-playback" id="tab-playback">播放与声音</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="settings-marker" id="tab-marker" tabindex="-1">Marker 与外观</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="settings-numbers" id="tab-numbers" tabindex="-1">音符序号</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="settings-timeline" id="tab-timeline" tabindex="-1">节奏轴</button>
+          </div>
+          <details class="settings-group" name="viewer-settings" data-settings-group="playback" id="settings-playback" role="tabpanel" aria-labelledby="tab-playback" open>
           <summary>播放与声音</summary>
           <div class="settings-body">
-          <div class="settings-fields">
-          <label class="ctl"><span class="setting-label">播放速度</span>
+<p class="settings-subtitle">播放</p><div class="settings-fields"><label class="ctl"><span class="setting-label">播放速度</span>
           <span class="setting-control"><select id="rate" title="变速保持原音调">
                           <option value="0.25">0.25×</option>
                           <option value="0.3">0.30×</option>
@@ -226,18 +252,25 @@
                           <option value="1.95">1.95×</option>
                           <option value="2">2.00×</option>
                         </select></span></label>
-          <label class="ctl"><span class="setting-label">声画偏移</span>
-          <span class="setting-control"><input id="offset" type="number" value="0" step="5" min="-500" max="500" />
-                        <span class="unit">ms</span></span></label>
-          <label class="ctl"><span class="setting-label">按键音效</span>
-          <span class="setting-control"><select id="metroSound" aria-label="节拍音"
+<label class="ctl"><span class="setting-label">画面偏移</span>
+          <span class="setting-control"><input id="offset" title="正值使画面延后，负值使画面提前" type="number" value="0" step="5" min="-500" max="500" />
+                        <span class="unit">ms</span></span></label></div>
+<p class="settings-subtitle">播放选项</p><div class="settings-switches"><label class="ctl checkbox">
+                        <input id="autoLoop" type="checkbox" />
+                        循环播放
+                      </label>
+<label class="ctl checkbox" title="选歌后等待试听片段加载完成，自动循环播放；没有试听片段时不自动播放">
+          <input id="autoPreview" type="checkbox" /> 选曲后自动试听并循环
+          </label></div>
+<p class="settings-subtitle">按键音效</p><div class="settings-fields"><label class="ctl"><span class="setting-label">按键音效</span>
+          <span class="setting-control"><select id="metroSound" aria-label="按键音效"
                                 title="ABC 交替：普通段用 A，十六分及更密连续段从 B 开始交替 B/C；同押不覆盖">
                           <option value="">关</option>
                           <option value="abc" selected>ABC 交替</option>
                           <option value="click">点击（原版）</option>
                           <option value="taiko">太鼓（原版）</option>
                         </select></span></label>
-          <label class="ctl ctl-vol"><span class="setting-label">音效音量</span>
+<label class="ctl ctl-vol"><span class="setting-label">音效音量</span>
           <span class="setting-control"><select id="metroVolume" aria-label="音效音量">
                           <option value="0">0%（静音）</option>
                           <option value="25">25%</option>
@@ -247,144 +280,121 @@
                           <option value="100">100%</option>
                           <option value="150">150%</option>
                           <option value="200">200%</option>
-                        </select></span></label>
-          </div><div class="settings-switches">
-          <label class="ctl checkbox">
-                        <input id="autoLoop" type="checkbox" />
-                        循环播放
-                      </label>
-          <label class="ctl checkbox" title="仅对原版音色有效；ABC 交替始终保留 A/B/C">
+                        </select></span></label></div>
+<div class="settings-switches"><label class="ctl checkbox" title="仅对原版音色有效；ABC 交替始终保留 A/B/C">
                         <input id="chordSound" type="checkbox" autocomplete="off" checked />
-                        同押独立音效（仅原版）
-                      </label>
-          <label class="ctl checkbox" title="选歌后等待试听片段加载完成，自动循环播放；没有试听片段时不自动播放">
-          <input id="autoPreview" type="checkbox" /> 选曲后自动循环试听
-          </label>
-          </div>
+                        同押使用独立音效（原版）
+                      </label></div>
           </div>
           </details>
-          <details class="settings-group" name="viewer-settings" data-settings-group="marker">
+          <details class="settings-group" name="viewer-settings" data-settings-group="marker" id="settings-marker" role="tabpanel" aria-labelledby="tab-marker">
           <summary>Marker 与外观</summary>
           <div class="settings-body">
-          <div class="settings-fields">
-          <label class="ctl ctl-wide setting-wide"><span class="setting-label">marker（按键动画）</span>
-          <span class="setting-control"><select id="markerSelect" aria-label="marker（按键动画样式）"
+<p class="settings-subtitle">按键动画</p><div class="settings-fields"><label class="ctl ctl-wide setting-wide"><span class="setting-label">Marker 样式</span>
+          <span class="setting-control"><select id="markerSelect" aria-label="Marker 样式"
                                 title="街机原版提取的逐帧贴图；本查看器按「全 PERFECT」播放，命中爆发用第 4 档（PERFECT）">
                           <option value="">无（仅面板灯）</option>
                         </select>
-                        <span class="ctl-hint" id="markerHint" hidden>素材载入中…</span></span></label>
-          <label class="ctl"><span class="setting-label">界面主题</span><span class="setting-control"><select id="viewerTheme" aria-label="界面主题"><option value="default">默认</option><option value="jubeat">初代</option><option value="ripples">ripples</option><option value="knit">knit</option><option value="copious">copious</option><option value="saucer">saucer</option><option value="fulfill">saucer fulfill</option><option value="prop">prop</option><option value="qubell">Qubell</option><option value="clan">clan</option><option value="festo">festo</option><option value="ave">Ave</option><option value="beyond">beyond the Ave</option><option value="jubeat2020">音乐魔方</option></select></span></label>
-          <label class="ctl"><span class="setting-label">画质</span><span class="setting-control"><select id="renderQuality" aria-label="画质"><option value="auto">自动</option><option value="sharp">清晰</option><option value="eco">省电</option></select></span></label>
-          </div><div class="settings-switches">
-          <label class="ctl checkbox" title="接近和命中动画保持 1× 时长，拍点仍跟随歌曲速度；刷新后保留开关状态">
+                        <span class="ctl-hint" id="markerHint" hidden>素材载入中…</span></span></label></div>
+<div class="settings-switches"><label class="ctl checkbox" title="接近和命中动画保持 1× 时长，拍点仍跟随歌曲速度；刷新后保留开关状态">
                         <input id="markerNormalSpeed" type="checkbox" checked autocomplete="off" />
-                        Marker 保持常速
+                        动画保持原速
                       </label>
-          <label class="ctl checkbox"><input id="firstMarker" type="checkbox" checked /> 首 marker 提示</label>
-          <label class="ctl checkbox"><input id="showCombo" type="checkbox" checked /> 总连击数</label>
-          </div><p class="settings-subtitle">同押提示</p><div class="settings-switches">
-          <label class="ctl checkbox"><input id="showChordGlow" type="checkbox" checked /> 同押高亮</label>
-          </div><div class="settings-fields">
-          <label class="ctl"><span class="setting-label">高亮样式</span>
+<label class="ctl checkbox"><input id="firstMarker" type="checkbox" checked /> 提示第一个 Marker</label>
+<label class="ctl checkbox"><input id="showCombo" type="checkbox" checked /> 显示总连击数</label>
+<label class="ctl checkbox">
+                        <input id="longHoldCountdown" type="checkbox" />
+                        长押结束倒计时
+                      </label></div>
+<p class="settings-subtitle">同押高亮</p><div class="settings-switches"><label class="ctl checkbox"><input id="showChordGlow" type="checkbox" checked /> 显示同押高亮</label></div>
+<div class="settings-fields"><label class="ctl"><span class="setting-label">高亮样式</span>
           <span class="setting-control"><select id="chordGlowStyle" aria-label="同押高亮的样式"
                                 title="光晕 = 数字背后的彩色光晕；加粗面板框（默认） = 沿这一格描一圈亮框；两者可同时开">
                           <option value="glow">光晕</option>
                           <option value="frame" selected>加粗面板框</option>
                           <option value="both">光晕＋面板框</option>
                         </select></span></label>
-          <label class="ctl"><span class="setting-label">高亮配色</span>
+<label class="ctl"><span class="setting-label">高亮配色</span>
           <span class="setting-control"><select id="chordGlowPair" aria-label="同押光晕配色"></select>
                         <span class="pair-chips" id="glowPairChips" aria-hidden="true"><i></i><i></i></span></span></label>
-          <label class="ctl ctl-vol"><span class="setting-label">光晕透明度</span>
-          <span class="setting-control"><select id="numGlowAlpha" aria-label="同押光晕的透明度"
-                               title="只淡「同押高亮」这一层：光晕 + 两圈波纹 + 数字的霓虹描边（选「加粗面板框」时淡的是那圈框）；数字本身跟着「序号透明度」走"><option value="0">0%</option><option value="25">25%</option><option value="50">50%</option><option value="70" selected>70%</option><option value="80">80%</option><option value="90">90%</option><option value="100">100%</option></select>
-                        <span class="unit" id="numGlowAlphaLabel" hidden>70%</span></span></label>
-          </div>
+<label class="ctl ctl-vol"><span class="setting-label">高亮不透明度</span>
+          <span class="setting-control"><select id="numGlowAlpha" aria-label="同押高亮的不透明度"
+                               title="只淡「同押高亮」这一层：光晕 + 两圈波纹 + 数字的霓虹描边（选「加粗面板框」时淡的是那圈框）；数字本身跟着「序号不透明度」走"><option value="0">0%</option><option value="25">25%</option><option value="50">50%</option><option value="70" selected>70%</option><option value="80">80%</option><option value="90">90%</option><option value="100">100%</option></select>
+                        <span class="unit" id="numGlowAlphaLabel" hidden>70%</span></span></label></div>
           </div>
           </details>
-          <details class="settings-group" name="viewer-settings" data-settings-group="numbers">
+          <details class="settings-group" name="viewer-settings" data-settings-group="numbers" id="settings-numbers" role="tabpanel" aria-labelledby="tab-numbers">
           <summary>音符序号</summary>
           <div class="settings-body">
-          <div class="settings-switches">
-          <label class="ctl checkbox"><input id="showNumbers" type="checkbox" checked /> 音符序号</label>
-          <label class="ctl checkbox"><input id="numPerfectOnly" type="checkbox" /> Perfect 帧时显示</label>
-          <label class="ctl checkbox">
+<p class="settings-subtitle">显示</p><div class="settings-switches"><label class="ctl checkbox"><input id="showNumbers" type="checkbox" checked /> 显示音符序号</label>
+<label class="ctl checkbox"><input id="numPerfectOnly" type="checkbox" /> 接近命中时才显示</label>
+<label class="ctl checkbox">
                         <input id="numCorner" type="checkbox" checked />
-                        序号放右下角
-                      </label>
-          <label class="ctl checkbox">
-                        <input id="longHoldCountdown" type="checkbox" />
-                        长押结束倒计时
-                      </label>
-          </div><p class="settings-subtitle">断句规则</p><div class="settings-fields">
-          <label class="ctl"><span class="setting-label">序号断句</span>
+                        序号显示在右下角
+                      </label></div>
+<p class="settings-subtitle">断句灵敏度</p><div class="settings-fields"><label class="ctl"><span class="setting-label">断句灵敏度</span>
           <span class="setting-control"><select id="phraseMult" aria-label="音符序号的断句灵敏度"
                                 title="空档比周围大多少就算换气：倍数越小断得越勤">
                           <option value="1.1">灵敏（小换气就重数）</option>
                           <option value="1.25" selected>标准</option>
-                          <option value="1.6">迟钝（大换气才重数）</option>
+                          <option value="1.6">较低（大换气才重数）</option>
                         </select></span></label>
-          <label class="ctl"><span class="setting-label">最小换气</span>
+<label class="ctl"><span class="setting-label">最小间隔</span>
           <span class="setting-control"><select id="phraseFloor" aria-label="换气的最小空档"
                                 title="空档小于这个拍数就不算换气，免得密的地方乱切">
                           <option value="0.25">0.25 拍</option>
                           <option value="0.5" selected>0.5 拍</option>
                           <option value="1">1 拍</option>
                         </select></span></label>
-          <label class="ctl"><span class="setting-label">序号上限</span>
+<label class="ctl"><span class="setting-label">最大序号</span>
           <span class="setting-control"><select id="phraseMax" aria-label="音符序号的最大值"
                                 title="一句话最多数到几，到点重新从 1 数">
                           <option value="9" selected>9（个位）</option>
                           <option value="12">12</option>
                           <option value="16">16</option>
                           <option value="0">不限</option>
-                        </select></span></label>
-          </div><p class="settings-subtitle">序号外观</p><div class="settings-fields">
-          <label class="ctl ctl-vol"><span class="setting-label">序号字号</span>
-          <span class="setting-control"><select id="numScale" aria-label="音符序号的字号"><option value="50">50%</option><option value="75">75%</option><option value="100" selected>100%</option><option value="125">125%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option></select>
+                        </select></span></label></div>
+<p class="settings-subtitle">序号外观</p><div class="settings-fields"><label class="ctl ctl-vol"><span class="setting-label">序号大小</span>
+          <span class="setting-control"><select id="numScale" aria-label="音符序号的大小"><option value="50">50%</option><option value="75">75%</option><option value="100" selected>100%</option><option value="125">125%</option><option value="150">150%</option><option value="175">175%</option><option value="200">200%</option></select>
                         <span class="unit" id="numScaleLabel" hidden>100%</span></span></label>
-          <label class="ctl ctl-vol"><span class="setting-label">序号透明度</span>
-          <span class="setting-control"><select id="numAlpha" aria-label="音符序号的透明度"><option value="10">10%</option><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="90">90%</option><option value="100" selected>100%</option></select>
+<label class="ctl ctl-vol"><span class="setting-label">序号不透明度</span>
+          <span class="setting-control"><select id="numAlpha" aria-label="音符序号的不透明度"><option value="10">10%</option><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="90">90%</option><option value="100" selected>100%</option></select>
                         <span class="unit" id="numAlphaLabel" hidden>100%</span></span></label>
-          <label class="ctl"><span class="setting-label">序号配色</span>
+<label class="ctl"><span class="setting-label">序号配色</span>
           <span class="setting-control"><select id="numColorMode" aria-label="音符序号的配色方式">
                           <option value="custom" selected>自选颜色</option>
                           <option value="rhythm">节奏分组</option>
                         </select></span></label>
-          <label class="ctl"><span class="setting-label">序号颜色</span>
+<label class="ctl"><span class="setting-label">序号颜色</span>
           <span class="setting-control"><input id="numColor" type="color" value="#ffffff"
                                aria-label="音符序号的颜色"
-                               title="音符序号（顺序数字）的颜色；数字边缘会自动配一圈对比色描边" /></span></label>
-          </div>
+                               title="音符序号（顺序数字）的颜色；数字边缘会自动配一圈对比色描边" /></span></label></div>
           </div>
           </details>
-          <details class="settings-group" name="viewer-settings" data-settings-group="timeline">
+          <details class="settings-group" name="viewer-settings" data-settings-group="timeline" id="settings-timeline" role="tabpanel" aria-labelledby="tab-timeline">
           <summary>节奏轴</summary>
           <div class="settings-body">
-          <div class="settings-switches">
-          <label class="ctl checkbox" id="timelineToggle">
+<p class="settings-subtitle">显示</p><div class="settings-switches"><label class="ctl checkbox" id="timelineToggle">
             <input id="btnTimeline" type="checkbox" aria-controls="timelineWrap" aria-expanded="false" />
             显示节奏轴
           </label>
-          <label class="ctl checkbox">
+<label class="ctl checkbox">
             <input id="timelineFlatten" type="checkbox" aria-controls="timelineCanvas" />
-            全部 marker 合并一行
-          </label>
-          </div><div class="settings-fields">
-          <label class="ctl"><span class="setting-label">拍线</span>
+            所有按键合并为一行
+          </label></div>
+<p class="settings-subtitle">刻度</p><div class="settings-fields"><label class="ctl"><span class="setting-label">拍线细分</span>
           <span class="setting-control"><select id="timelineDivision" aria-label="节奏轴拍线细分">
                           <option value="1" selected>四分音符</option>
                           <option value="2">八分音符（2 等分）</option>
                           <option value="3">十二分音符（3 等分）</option>
                           <option value="4">十六分音符（4 等分）</option>
                         </select></span></label>
-          <label class="ctl"><span class="setting-label">可见拍数</span>
+<label class="ctl"><span class="setting-label">可见拍数</span>
           <span class="setting-control"><select id="timelineSpan" aria-label="节奏轴可见拍数">
                           <option value="4" selected>4 拍</option>
                           <option value="8">8 拍</option>
                           <option value="16">16 拍</option>
-                        </select></span></label>
-          </div>
+                        </select></span></label></div>
           </div>
           </details>
         </div>
@@ -419,39 +429,41 @@
     </div>
   </dialog>
 
-  <script src="static/sfx.js?v=0.7.7"></script>
-  <script src="static/song-links.js?v=0.7.7"></script>
-  <script src="static/background-stories-data.js?v=0.7.7"></script>
-  <script src="static/background-stories.js?v=0.7.7"></script>
-  <script src="static/core.js?v=0.7.7"></script>
-  <script src="static/runtime.js?v=0.7.7"></script>
-  <script src="static/services.js?v=0.7.7"></script>
+  <script src="static/sfx.js?v=0.7.8"></script>
+  <script src="static/song-links.js?v=0.7.8"></script>
+  <template id="story-data"><script src="static/background-stories-data.js?v=0.7.8"></script></template>
+  <script src="static/background-stories-index.js?v=0.7.8"></script>
+  <script src="static/background-stories.js?v=0.7.8"></script>
+  <script src="static/core.js?v=0.7.8"></script>
+  <script src="static/runtime.js?v=0.7.8"></script>
+  <script src="static/services.js?v=0.7.8"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <script src="static/record.js?v=0.7.7"></script>
+  <template id="record-code"><script src="static/record.js?v=0.7.8"></script></template>
+  <script src="static/optional-assets.js?v=0.7.8"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.7.7"></script>
-<script src="static/app-base.js?v=0.7.7"></script>
-  <script src="static/app-audio.js?v=0.7.7"></script>
-  <script src="static/first-marker.js?v=0.7.7"></script>
-  <script src="static/app-marker.js?v=0.7.7&ui=hold-countdown-20261102"></script>
-  <script src="static/radar.js?v=0.7.7"></script>
-  <script src="static/radar-references.js?v=0.7.7"></script>
-  <script src="static/app-radar.js?v=0.7.7"></script>
-  <script src="static/app-density.js?v=0.7.7&radar=20261117"></script>
-  <script src="static/rhythm-timeline.js?v=0.7.7"></script>
-  <script src="static/app-timeline.js?v=0.7.7"></script>
-  <script src="static/directory.js?v=0.7.7"></script>
-  <script src="static/list-images.js?v=0.7.7"></script>
-  <script src="static/visitor-queue.js?v=0.7.7"></script>
-  <script src="static/app-visitors.js?v=0.7.7&ui=chart-loads-20261102"></script>
-  <script src="static/app-library.js?v=0.7.7&ui=welcome-20261117"></script>
-  <script src="static/library-filters.js?v=0.7.7&ui=version-picker-20261112"></script>
-  <script src="static/marker-library.js?v=0.7.7&ui=version-picker-20261112"></script>
-  <script src="static/version-library.js?v=0.7.7&ui=version-picker-20261112-2"></script>
-  <script src="static/app-player.js?v=0.7.7"></script>
-  <script src="static/app-render.js?v=0.7.7"></script>
-  <script src="static/app-wiring.js?v=0.7.7&ui=welcome-20261117"></script>
-  <script src="static/app.js?v=0.7.7"></script>
-  <script src="static/app-welcome.js?v=0.7.7"></script>
+  <script src="static/version-data.js?v=0.7.8"></script>
+<script src="static/app-base.js?v=0.7.8"></script>
+  <script src="static/app-audio.js?v=0.7.8"></script>
+  <script src="static/first-marker.js?v=0.7.8"></script>
+  <script src="static/app-marker.js?v=0.7.8&ui=hold-countdown-20261102"></script>
+  <template id="radar-core"><script src="static/radar.js?v=0.7.8"></script></template>
+  <template id="radar-references"><script src="static/radar-references.js?v=0.7.8"></script></template>
+  <script src="static/app-radar.js?v=0.7.8"></script>
+  <script src="static/app-density.js?v=0.7.8&radar=20261117"></script>
+  <script src="static/rhythm-timeline.js?v=0.7.8"></script>
+  <script src="static/app-timeline.js?v=0.7.8"></script>
+  <script src="static/directory.js?v=0.7.8"></script>
+  <script src="static/list-images.js?v=0.7.8"></script>
+  <script src="static/visitor-queue.js?v=0.7.8"></script>
+  <script src="static/app-visitors.js?v=0.7.8&ui=chart-loads-20261102"></script>
+  <script src="static/app-library.js?v=0.7.8&ui=welcome-20261117"></script>
+  <script src="static/library-filters.js?v=0.7.8&ui=version-picker-20261112"></script>
+  <script src="static/marker-library.js?v=0.7.8&ui=version-picker-20261112"></script>
+  <script src="static/version-library.js?v=0.7.8&ui=version-picker-20261112-2"></script>
+  <script src="static/app-player.js?v=0.7.8"></script>
+  <script src="static/app-render.js?v=0.7.8"></script>
+  <script src="static/app-wiring.js?v=0.7.8&ui=welcome-20261117"></script>
+  <script src="static/app.js?v=0.7.8"></script>
+  <script src="static/app-welcome.js?v=0.7.8"></script>
 </body>
 </html>

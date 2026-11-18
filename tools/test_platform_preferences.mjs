@@ -27,7 +27,9 @@ test('every viewer preference is explicitly supported by desktop and Android',()
  const base=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-base.js',import.meta.url),'utf8');
  const keys=[...base.slice(base.indexOf('  const STORAGE = {'),base.indexOf('\n  };',base.indexOf('  const STORAGE = {'))).matchAll(/"(jubeat\.[A-Za-z]+)"/g)].map(m=>m[1]);
  const java=fs.readFileSync(new URL('../android/app/src/world/thregren/jubeatviewer/PreferenceRules.java',import.meta.url),'utf8');
- assert.equal(keys.length,KEYS.size);for(const key of keys){assert(KEYS.has(key));assert(java.includes('"'+key.slice(7)+'"'));}
+ const retired = new Set(['jubeat.renderQuality']);
+ assert.deepEqual(new Set(keys), new Set([...KEYS].filter(key => !retired.has(key))));
+ for(const key of keys) assert(java.includes('"'+key.slice(7)+'"'));
 });
 
 test('desktop bridge serves startup reads from one batch call, writes stay per key',()=>{

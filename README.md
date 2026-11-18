@@ -4,7 +4,7 @@
 
 **[在线使用](https://ub.thregren.world/)** · **[下载轻量客户端](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.1)** · **[完整曲库与客户端网盘下载](https://pan.quark.cn/s/e9c12157e039)**
 
-当前源码版本：**[v0.7.7](docs/release-v0.7.7.md)**（仅源码发布）。
+当前源码版本：**[v0.7.8](docs/release-v0.7.8.md)**（仅源码发布）。
 
 ## 主要功能
 

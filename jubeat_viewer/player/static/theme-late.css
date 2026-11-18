@@ -35,10 +35,6 @@
   --theme-rgb:225,151,79;
 }
 
-/* Remove the previous shared black veil and stock header texture. */
-:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="clan"],[data-theme="jubeat2020"],[data-theme="festo"],[data-theme="ave"],[data-theme="beyond"]) .now-playing::after { background: none; }
-:root:is([data-theme="prop"],[data-theme="qubell"],[data-theme="clan"],[data-theme="jubeat2020"],[data-theme="festo"],[data-theme="ave"],[data-theme="beyond"]) .brand-mark span:nth-child(1) { animation: none; }
-
 /* prop: light pink with small floating dots. */
 :root[data-theme="prop"] .stage {
   background:
@@ -46,17 +42,22 @@
     radial-gradient(circle at 20px 20px, rgba(94,151,195,.12) 0 2px, transparent 3px) 0 0 / 105px 105px,
     linear-gradient(135deg,#fffafd,#ffe6f2);
 }
-/* Qubell: ice-blue space with translucent extracted cubes. */
+/* Qubell: three sets of edges form an isometric grid. */
 :root[data-theme="qubell"] .stage {
   background:
-    url("theme-art-v1-qubell.webp") right 8% center / min(42%, 480px) auto no-repeat,
+    repeating-linear-gradient(30deg, rgba(37,129,178,.14) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(150deg, rgba(37,129,178,.14) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(90deg, rgba(37,129,178,.13) 0 1px, transparent 1px 83.14px),
     radial-gradient(ellipse at 85% 48%, #c1e7fa 0, transparent 50%),
     linear-gradient(135deg,#f7fcff,#d5edf9);
 }
 /* clan: the four towns are represented together, including in the header mark. */
 :root[data-theme="clan"] .stage {
   background:
-    url("theme-art-v1-clan.webp") right 3% center / min(48%, 500px) auto no-repeat,
+    radial-gradient(ellipse at 6% 10%, rgba(229,93,104,.27), transparent 48%),
+    radial-gradient(ellipse at 95% 12%, rgba(124,189,97,.26), transparent 49%),
+    radial-gradient(ellipse at 3% 98%, rgba(85,191,211,.24), transparent 46%),
+    radial-gradient(ellipse at 98% 96%, rgba(164,119,189,.27), transparent 48%),
     linear-gradient(145deg,#191b20,#0b0c0e);
 }
 :root[data-theme="clan"] .brand-mark span:nth-child(1) { background:#e55d68; box-shadow:none; }
@@ -67,13 +68,16 @@
 /* JAEPO 2020: pink and mint grid from the local prototype backdrop. */
 :root[data-theme="jubeat2020"] .stage {
   background:
-    url("theme-art-v1-jubeat2020.webp") right center / auto 100% no-repeat,
+    linear-gradient(rgba(226,122,176,.18) 1px, transparent 1px) 0 0 / 30px 30px,
+    linear-gradient(90deg, rgba(51,166,143,.17) 1px, transparent 1px) 0 0 / 30px 30px,
+    radial-gradient(ellipse at 85% 20%, rgba(246,163,205,.42), transparent 48%),
     linear-gradient(145deg,#fff8fb 0%,#f1fff9 65%,#c9f4e7 100%);
 }
 /* festo: yellow, cyan and pink triangles plus a botanical accent. */
 :root[data-theme="festo"] .stage {
   background:
-    url("theme-art-v1-festo.webp") right 2% bottom 6% / min(25%, 250px) auto no-repeat,
+    radial-gradient(ellipse at 97% 98%, rgba(91,164,88,.23), transparent 35%),
+    radial-gradient(ellipse at 87% 100%, rgba(250,167,103,.35), transparent 31%),
     linear-gradient(135deg,transparent 75%,rgba(0,154,164,.14) 75%) 0 0 / 90px 90px,
     linear-gradient(315deg,transparent 75%,rgba(224,103,152,.15) 75%) 0 0 / 90px 90px,
     linear-gradient(135deg,#fff9da,#ffe690);

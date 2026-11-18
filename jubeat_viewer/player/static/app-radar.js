@@ -1,13 +1,14 @@
 /* Screenshot reference + chart estimate. No work is done on the playback loop. */
 (()=>{
   'use strict';
-  const A=window.JubeatApp,R=window.JubeatRadar,panel=document.getElementById('radarPanel');
+  const A=window.JubeatApp,panel=document.getElementById('radarPanel');
   const plot=document.getElementById('radarPlot'),song=document.getElementById('radarSong'),button=document.getElementById('btnRadar');
-  if(!A||!R||!panel||!button)return;
+  if(!A||!panel||!button)return;
   const ns='http://www.w3.org/2000/svg',cache=new WeakMap();let current=null,result=null;
   const node=(tag,attrs={},text)=>{const el=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))el.setAttribute(k,String(v));if(text!=null)el.textContent=text;return el;};
   function clear(){current=null;result=null;plot.replaceChildren();plot.setAttribute('aria-label','尚未加载谱面');button.disabled=true;song.textContent='';}
   function draw(data){
+    const R=window.JubeatRadar;
     plot.replaceChildren();
     // Only the four reference rings are drawn. The polygon is never clamped to
     // the outer hexagon: extra space in the SVG accommodates overflowing axes.
@@ -22,9 +23,17 @@
     plot.setAttribute('aria-label','六维谱面倾向：物量、尖峰、钢琴、出张、长押、同时押；轮廓可超出参考外圈。');
     song.textContent=[A.state.song?.title,A.state.chartMeta?.code,A.state.chartMeta?.level&&`Lv. ${A.state.chartMeta.level}`].filter(Boolean).join(' · ');
   }
-  function update(){const notes=A.state.notes;if(!A.state.chart||!notes?.length){clear();return;}button.disabled=false;if(current!==notes){current=notes;result=null;}if(!panel.open)return;if(!result){result=cache.get(notes);if(!result){result=R.analyze(notes,window.JubeatRadarReferences);cache.set(notes,result);}}draw(result);}
+  function update(){const notes=A.state.notes;if(!A.state.chart||!notes?.length){clear();return;}button.disabled=false;if(current!==notes){current=notes;result=null;}if(!panel.open||!window.JubeatRadar||!window.JubeatRadarReferences)return;if(!result){result=cache.get(notes);if(!result){result=window.JubeatRadar.analyze(notes,window.JubeatRadarReferences);cache.set(notes,result);}}draw(result);}
   button.hidden=!!window.__recActive;
-  button.addEventListener('click',()=>{if(!panel.open)panel.showModal();update();});
+  button.addEventListener('click',async()=>{
+    const notes=A.state.notes;
+    try {
+      await Promise.all(['radar-core','radar-references'].map(window.JubeatLoadScript));
+      if (notes!==A.state.notes||button.disabled) return;
+      if(!panel.open)panel.showModal();
+      update();
+    } catch (_) { A.toast?.('雷达加载失败，请重试'); }
+  });
   document.getElementById('radarClose').addEventListener('click',()=>panel.close());
   panel.addEventListener('click',event=>{if(event.target!==panel)return;const rect=panel.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)panel.close();});
   Object.assign(A,{updateRadar:update,clearRadar:clear,radarResult:()=>result});clear();

@@ -93,7 +93,7 @@ function boot(missing, opts = {}) {
   const document = {
     hidden: false, fonts: null,
     querySelector: () => null, querySelectorAll: () => [],
-    getElementById: () => any, createElement: () => any,
+    getElementById: id => id === "themePicker" ? null : any, createElement: () => any,
     addEventListener() {}, body: {appendChild() {}, classList: {contains: () => false}},
     documentElement: {dataset: {}},
   };

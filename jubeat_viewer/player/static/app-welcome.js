@@ -12,7 +12,7 @@
   const lastHit = new Float64Array(16).fill(-Infinity);
   const levels = new Int16Array(16).fill(-1);
   let notes = [], period = 0, cursor = 0, elapsed = 0, started = null;
-  let frame = 0, disposed = false, timeout = 0, attempted = false;
+  let frame = 0, wake = 0, disposed = false, timeout = 0, attempted = false;
   const visible = () => stage.classList.contains('is-welcome') && !document.hidden;
 
   function draw(time) {
@@ -38,12 +38,22 @@
       started = now; cursor = 0; lastHit.fill(-Infinity);
       draw(elapsed / 1000);
     } else draw(time);
-    frame = requestAnimationFrame(tick);
+    const position = time % period;
+    if (lastHit.some(hit => position - hit < .16)) {
+      frame = requestAnimationFrame(tick);
+    } else {
+      const next = notes[cursor]?.t ?? period;
+      wake = setTimeout(() => {
+        wake = 0;
+        frame = requestAnimationFrame(tick);
+      }, Math.max(1, (next - position) * 1000));
+    }
   }
   function pause() {
     if (started !== null) elapsed += performance.now() - started;
     started = null;
     cancelAnimationFrame(frame); frame = 0;
+    clearTimeout(wake); wake = 0;
   }
   function sync() {
     if (!stage.classList.contains('is-welcome')) { dispose(); return; }
@@ -53,7 +63,7 @@
       return;
     }
     mark.classList.add('is-playing');
-    if (!frame) frame = requestAnimationFrame(tick);
+    if (!frame && !wake) frame = requestAnimationFrame(tick);
   }
   function dispose() {
     if (disposed) return;

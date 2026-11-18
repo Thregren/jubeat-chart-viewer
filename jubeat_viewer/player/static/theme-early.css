@@ -11,9 +11,11 @@
   --amber: #08755f; --amber-dim: #398f7d; --theme-rgb: 28, 148, 120;
 }
 :root[data-theme="knit"] {
-  --void: #fff9df; --cabinet: #fff8d5; --cabinet-2: #f8edb8;
-  --line: #dec875; --ink: #40320b; --muted: #6f602d;
-  --amber: #745300; --amber-dim: #96741c; --theme-rgb: 203, 155, 0;
+  /* Bright yellow, charcoal and white from KONAMI's cabinet and key visual. */
+  --knit-yellow: #ffca00;
+  --void: #fffdf5; --cabinet: #fff; --cabinet-2: #ffefaf;
+  --line: #c5ad5b; --ink: #202124; --muted: #5c5134;
+  --amber: #684900; --amber-dim: #8b6b14; --theme-rgb: 255, 202, 0;
 }
 :root[data-theme="copious"] {
   --void: #080e24; --cabinet: #101b39; --cabinet-2: #192848;
@@ -34,8 +36,11 @@
 /* Each stage has its own visual grammar. Static gradients avoid extra animation
    and do not interfere with timing-sensitive markers. */
 :root[data-theme="jubeat"] .stage {
-  background: linear-gradient(110deg, rgba(3,10,24,.80), rgba(5,18,38,.25)),
-    url("theme-art-v1-jubeat.webp") center / cover no-repeat, #08172e;
+  background:
+    radial-gradient(ellipse at 84% 30%, rgba(50,139,239,.38), transparent 62%),
+    linear-gradient(rgba(126,193,255,.12) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(126,193,255,.12) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(130deg, #060e20, #102f56);
 }
 :root[data-theme="ripples"] .stage {
   background:
@@ -45,10 +50,12 @@
 }
 :root[data-theme="knit"] .stage {
   background:
-    repeating-linear-gradient(125deg, transparent 0 68px, rgba(174,137,14,.085) 69px 71px, transparent 72px 91px),
-    repeating-linear-gradient(55deg, transparent 0 91px, rgba(197,157,17,.10) 92px 94px, transparent 95px 130px),
-    linear-gradient(145deg, #fffdf0, #f4dc78);
+    repeating-linear-gradient(128deg, rgba(95,67,0,.07) 0 1px, transparent 1px 10px),
+    repeating-linear-gradient(52deg, rgba(95,67,0,.07) 0 1px, transparent 1px 10px),
+    linear-gradient(142deg, #fff 0 22%, #fff0ac 50%, var(--knit-yellow) 83%);
 }
+:root[data-theme="knit"] .brand-mark span:nth-child(1) { background: var(--knit-yellow); }
+:root[data-theme="knit"] .brand { border-bottom: 3px solid var(--knit-yellow); }
 :root[data-theme="copious"] .stage {
   background:
     radial-gradient(circle at 12% 24%, #e7f3ff 0 1px, transparent 2px),
@@ -66,11 +73,6 @@
   background: radial-gradient(ellipse at 75% 12%, rgba(255,255,255,.09), transparent 48%),
     linear-gradient(145deg, #18181b, #050506);
 }
-
-/* The old theme header used a cropped single asset for all versions. It is not
-   a reliable representation of the complete original interface. */
-:root:is([data-theme="jubeat"], [data-theme="ripples"], [data-theme="knit"], [data-theme="copious"], [data-theme="saucer"], [data-theme="fulfill"]) .now-playing::after { display: none; }
-:root:is([data-theme="jubeat"], [data-theme="ripples"], [data-theme="knit"], [data-theme="copious"], [data-theme="saucer"], [data-theme="fulfill"]) .brand-mark span:nth-child(1) { animation: none; }
 
 /* Light-era colors must cover fixed dark UI surfaces as well as the tokens. */
 :root:is([data-theme="ripples"], [data-theme="knit"], [data-theme="saucer"]) .transport { background: var(--cabinet); }

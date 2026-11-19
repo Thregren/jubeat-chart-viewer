@@ -28,7 +28,8 @@
     // Sweep hold starts/ends rather than quadratic note × hold comparisons.
     const starts=notes.filter(n=>n.endT!=null).map(n=>n.t);let si=0,ei=0,heldHits=0;
     for(const n of notes){while(si<starts.length&&starts[si]<n.t-.001)si++;while(ei<ends.length&&ends[ei]<=n.t+.001)ei++;heldHits+=Math.max(0,si-ei);}
-    const raw=[.13632444*(notes.length+holds)/span,.00346954*peak*peak,1.15237138*(slide/span)**2,(.44977575*tripSide+3.11863587*trip4+.31832805*heldHits)/span,(1.34879987*holds+.42081863*heldHits)/span,1.21178688*chordNotes/notes.length+.17338621*chord3/span];
+    // A subquadratic response avoids exaggerating long piano-heavy charts.
+    const raw=[.13632444*(notes.length+holds)/span,.00346954*peak*peak,0.9956*(slide/span)**1.2,(.44977575*tripSide+3.11863587*trip4+.31832805*heldHits)/span,(1.34879987*holds+.42081863*heldHits)/span,1.21178688*chordNotes/notes.length+.17338621*chord3/span];
     const estimate=raw.map(v=>Math.max(0,v*100));const key=fingerprint(notes),ref=Object.prototype.hasOwnProperty.call(references,key)?references[key]:null;
     const values=ref?estimate.map((v,i)=>finite(ref.values[i])?ref.values[i]*100:v):estimate;
     return {values,estimate,source:ref?(ref.values.every(finite)?'reference':'mixed'):'estimated',reference:ref,fingerprint:key,features:{heads:notes.length,holds,judgments:notes.length+holds,span,peak,chordNotes,chord3,trip4,tripSide,slide,heldHits}};

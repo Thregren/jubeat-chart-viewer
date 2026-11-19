@@ -639,8 +639,8 @@ button:focus-visible,
 #timelineCanvas:active { cursor: grabbing; }
 #timelineCanvas:focus-visible { outline: 2px solid #66dcff; outline-offset: -2px; }
 @media (max-width: 600px) {
-  .timeline-wrap { height: 80px; margin-bottom: 6px; }
-  .timeline-wrap.timeline-flattened { height: 96px; }
+  .timeline-wrap { height: 66px; margin-bottom: 6px; }
+  .timeline-wrap.timeline-flattened { height: 80px; }
 }
 .density-wrap {
   position: relative;

@@ -19,7 +19,7 @@
     for(const value of [25,50,75,100])plot.append(node('polygon',{points:points(R.axes.map(()=>value)),class:value===100?'radar-grid radar-reference-ring':'radar-grid'}));
     for(let i=0;i<6;i++){const p=point(i,100);plot.append(node('line',{x1:210,y1:170,x2:p[0],y2:p[1],class:'radar-grid'}));}
     plot.append(node('polygon',{points:points(data.values),class:'radar-shape'}));
-    R.axes.forEach(([en,cn],i)=>{const p=point(i,extent),x=p[0]+(i===1||i===2?10:i===4||i===5?-10:0),y=p[1]+(i===0?-12:i===3?12:0);const anchor=i===1||i===2?'start':i===4||i===5?'end':'middle';plot.append(node('text',{x,y,'text-anchor':anchor,class:'radar-label'},cn));plot.append(node('text',{x,y:y+15,'text-anchor':anchor,class:'radar-en'},en));});
+    R.axes.forEach(([en,cn],i)=>{const p=point(i,extent),baseX=p[0]+(i===1||i===2?10:i===4||i===5?-10:0),x=i===2?Math.max(baseX,Math.min(360,point(i,data.values[i])[0]+12)):baseX,y=p[1]+(i===0?-12:i===3?12:0);const anchor=i===1||i===2?'start':i===4||i===5?'end':'middle';plot.append(node('text',{x,y,'text-anchor':anchor,class:'radar-label'},cn));plot.append(node('text',{x,y:y+15,'text-anchor':anchor,class:'radar-en'},en));});
     plot.setAttribute('aria-label','六维谱面倾向：物量、尖峰、钢琴、出张、长押、同时押；轮廓可超出参考外圈。');
     song.textContent=[A.state.song?.title,A.state.chartMeta?.code,A.state.chartMeta?.level&&`Lv. ${A.state.chartMeta.level}`].filter(Boolean).join(' · ');
   }

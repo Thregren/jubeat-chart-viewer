@@ -1,4 +1,4 @@
-/* Measured from 22 user-supplied screenshots; 100 = outer reference ring.
+/* Measured from 23 user-supplied screenshots; 100 = outer reference ring.
  * null = clipped vertex, which must fall back to an estimate. */
 window.JubeatRadarReferences = {
   "488-7c42c87e-2cd140b2": {
@@ -286,5 +286,18 @@ window.JubeatRadarReferences = {
       0.7707
     ],
     "sample": 22
+  },
+  "764-1e376d9d-4168311": {
+    "title": "Conflict",
+    "code": "EXT",
+    "values": [
+      0.865,
+      1.026,
+      1.789,
+      0.173,
+      0.824,
+      0.283
+    ],
+    "sample": 23
   }
 };

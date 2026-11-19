@@ -51,11 +51,11 @@
   const OFFICIAL_ROWS = 8;      // 官方 replace_if(> 8U, 8)：柱高封顶 8 层
   // 条子再宽也不放大格子：官方那张图是按 768 宽的屏设计的（574/768 ≈ 75%），
   // 宽屏上要是照样等比放大，条子会高到 90px 以上，把面板挤扁。按 1024 封顶后
-  // 最宽 7px 一格、条子最高 68px。
+  // 最宽 7px 一格，避免条子占用过多高度。
   const MAX_REF_W = 1024;
   const GAP = 1;                // 方块之间的暗缝
   const PAD_TOP = 3;            // 条子顶部留白
-  const LABEL_H = 10;           // 底部留给时间刻度的高度
+  const PAD_BOTTOM = 3;         // 物量方块与底边保持间距
   // 暗金边 + 金芯：格子小的时候 1px 的边色占了大部分面积，缩到几 px 也看得出是方格。
   // 长押和普通 note 用同一个颜色（用户定的），长押靠「头尾各多一格」来认。
   const TILE = { edge: "#8f6c05", face: "#ffd94a" };
@@ -78,9 +78,9 @@
     return OFFICIAL_ROWS * pitch - GAP;
   }
 
-  /** 条子该多高：官方那张图的高度 + 顶部留白 + 底部时间刻度（不再是写死的 36px） */
+  /** 条子高度：物量图高度加上下留白。 */
   function densityHeight(w) {
-    return densityPlotH(densityPitch(w)) + PAD_TOP + (density.cropSides ? 0 : LABEL_H);
+    return densityPlotH(densityPitch(w)) + PAD_TOP + (density.cropSides ? 0 : PAD_BOTTOM);
   }
 
   /**
@@ -201,32 +201,6 @@
       density.baseReady = true;
       return true;
     }
-    const dur = density.dur || 1;
-    const baseY = h - (density.cropSides ? 0 : LABEL_H);                     // 方块从这条线往上码，贴底
-    // 官方把整张图按「条子宽 / 768」等比放大后水平居中：768 宽时 115 列正好 575px（75%）。
-    // 时间轴（刻度 / 播放头 / A–B / 点击跳转）全都按同一张图的左右边界换算，
-    // 否则播放头走到两端时会和柱子错开一截。
-    const ox = density.graphX;
-    const graphW = density.graphW;
-    const xOf = (sec) => ox + (sec / dur) * graphW;
-
-    // 时间网格：每 30 秒一条淡竖线，够高才写刻度（矮条子上字会糊住方块）
-    ctx2.strokeStyle = "rgba(255,255,255,0.07)";
-    ctx2.fillStyle = "#5b6478";
-    ctx2.font = "9px monospace";
-    ctx2.lineWidth = 1;
-    const showTicks = h >= 40 && !density.cropSides;
-    const tickStep = Math.max(30, Math.ceil(dur / (30 * 512)) * 30);
-    for (let tick = 1; tick <= 512 && tick * tickStep < dur; tick++) {
-      const sec = tick * tickStep;
-      const x = Math.round(xOf(sec)) + 0.5;
-      ctx2.beginPath();
-      ctx2.moveTo(x, PAD_TOP);
-      ctx2.lineTo(x, baseY);
-      ctx2.stroke();
-      if (showTicks) ctx2.fillText(fmtTime(sec).slice(0, 5), x + 3, h - 2);
-    }
-
     drawDensityBlocks(ctx2, PENDING_TILE);
     // 两种颜色各缓存一次，逐帧只按播放位置裁切黄色层。
     density.played ||= document.createElement("canvas");
@@ -244,7 +218,7 @@
     const pitch = density.pitch;
     const block = Math.max(1, pitch - GAP);
     const bevel = block >= 4;
-    const baseY = density.rect.h - (density.cropSides ? 0 : LABEL_H);
+    const baseY = density.rect.h - (density.cropSides ? 0 : PAD_BOTTOM);
     const ox = density.graphX;
     // 方块：底部对齐、由下往上码，几层就是这一列的 note 数（封顶 8 层，不归一化）。
     // 长押的头判、尾判各自所在的列各 +1，中间那段什么都不画 —— 和官方一模一样。

@@ -9,6 +9,12 @@
   const ctx=canvas.getContext("2d"), colors=["#66dcff","#b9a0ff","#ffd16a","#7ce3a5"];
   let shown=false, model=null, notes=null, events=null, chart=null, view=null, drag=null;
   const recording=!!window.__recActive;
+  const quickButton=document.createElement("button");
+  quickButton.id="btnTimelineQuick";quickButton.type="button";quickButton.className="icon-btn";
+  quickButton.textContent="节奏轴";quickButton.title="显示 / 隐藏节奏轴";
+  quickButton.setAttribute("aria-controls","timelineWrap");
+  quickButton.hidden=recording;
+  document.querySelector(".transport-top").append(quickButton);
   let activeBefore=null, size={w:0,h:0,dirty:true}, ariaAt=null;
   let background=null, backgroundKey="";
   // Consumed by rhythm_timeline_smoke.js and dense-performance.mjs via
@@ -166,9 +172,11 @@
     activeBefore=null;size.dirty=true;
     button.checked=shown;
     button.setAttribute("aria-expanded",String(shown));
+    quickButton.setAttribute("aria-pressed",String(shown));
     repaint();
   }
   button.addEventListener("change",()=>setShown(button.checked));
+  quickButton.addEventListener("click",()=>button.click());
   for(const select of [division,span])select.addEventListener("change",repaint);
   flatten.checked=A.store(A.STORAGE.timelineFlatten)==="1";
   wrap.classList.toggle("timeline-flattened",flatten.checked);

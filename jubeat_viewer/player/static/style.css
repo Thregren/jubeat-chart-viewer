@@ -49,7 +49,7 @@ button, input, select {
 
 #app {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
+  grid-template-columns: clamp(360px, 28vw, 400px) minmax(0, 1fr);
   height: 100vh;
   /* iOS Safari：100vh 是「工具栏收起后」的高度，比看得见的区域高，
      于是整页能上下滑动、顶部的曲库栏会被顶出屏幕。dvh 才是当前可视高度。 */
@@ -339,8 +339,9 @@ button:focus-visible,
 
 /* —— stage —— */
 .stage {
+  position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   background:
@@ -638,12 +639,8 @@ button:focus-visible,
 #timelineCanvas:active { cursor: grabbing; }
 #timelineCanvas:focus-visible { outline: 2px solid #66dcff; outline-offset: -2px; }
 @media (max-width: 600px) {
-  .timeline-wrap { position: absolute; inset: 0; height: auto; margin: 0; z-index: 1; }
-  .timeline-wrap.timeline-flattened { height: auto; }
-  .timeline-open .density-wrap { visibility: hidden; pointer-events: none; }
-  .chart-overview.timeline-roomy .timeline-wrap { position: static; inset: auto; height: 112px; margin-bottom: 8px; }
-  .chart-overview.timeline-roomy .timeline-wrap.timeline-flattened { height: 136px; }
-  .chart-overview.timeline-roomy .density-wrap { visibility: visible; pointer-events: auto; }
+  .timeline-wrap { height: 80px; margin-bottom: 6px; }
+  .timeline-wrap.timeline-flattened { height: 96px; }
 }
 .density-wrap {
   position: relative;
@@ -651,7 +648,7 @@ button:focus-visible,
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #0a0d14;
-  /* 高度不写死：由 app-density.js 按官方物量图的比例算（宽 × 39/768 + 留白 + 时间刻度） */
+  /* 高度由 app-density.js 根据物量图比例和上下留白计算。 */
   height: auto;
   overflow: hidden;
   cursor: pointer;
@@ -661,7 +658,7 @@ button:focus-visible,
 #densityCanvas {
   display: block;
   width: 100%;
-  height: 36px;   /* 兜底：脚本没跑起来时用这个高度，正常由内联样式覆盖 */
+  height: 29px;   /* 兜底：正常由脚本根据宽度计算 */
 }
 
 .density-hud {
@@ -756,6 +753,7 @@ button:focus-visible,
 /* —— transport —— */
 .transport {
   position: relative;
+  container: transport / inline-size;
   z-index: 6;              /* 面板 canvas 是 z-index:2，控件要压在它上面 */
   min-width: 0;
   /* 必须 visible：加载进度是浮在控制条上方的浮层（pop），裁掉就看不见了 */
@@ -770,7 +768,7 @@ button:focus-visible,
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 /* —— 音源加载进度（换歌 / 缓冲） —— */
@@ -877,6 +875,8 @@ button:focus-visible,
 }
 
 .icon-btn:hover { border-color: var(--muted); }
+#btnTimelineQuick[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+#btnTimelineQuick[hidden] { display: none; }
 
 /* A–B 段落循环：没打点=普通按键，只打了 A=琥珀框，A、B 都有=绿框常亮 */
 .ab-btn {
@@ -1024,32 +1024,31 @@ input[type="range"] {
 
 /* The same theme selector is available above the welcome screen and player. */
 .stage-toolbar {
-  position: sticky;
-  top: 0;
+  position: absolute;
+  top: max(6px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
   z-index: 10;
   display: flex;
   justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  min-height: 37px;
-  padding: 0 24px;
-  background: var(--cabinet);
-  border-bottom: 1px solid var(--line);
+  align-items: flex-start;
+  pointer-events: none;
 }
+.stage-toolbar > * { pointer-events: auto; }
 .stage-theme { position: relative; flex-shrink: 0; }
-.stage-theme > button {
+.stage-theme > button, .mobile-bar {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 38px;
+  height: 22px;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--cabinet);
   color: var(--ink);
   cursor: pointer;
 }
-.stage-theme > button:hover,
+.stage-theme > button:hover, .mobile-bar:hover,
 .stage-theme > button[aria-expanded="true"] { background: var(--cabinet-2); }
 .theme-icon {
   width: 14px;
@@ -1094,24 +1093,9 @@ input[type="range"] {
 
 /* —— 移动端：曲库变抽屉，面板占满，控件加大 —— */
 @media (max-width: 900px) {
-  .stage-toolbar {
-    padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 0;
-  }
-  .mobile-bar {
-    display: flex;
-    align-items: center;
-    align-self: stretch;
-    flex: 1;
-    min-height: 36px;
-    padding: 0 0 0 max(12px, env(safe-area-inset-left));
-    border: 0;
-    background: transparent;
-    color: var(--ink);
-    cursor: pointer;
-  }
-  .mobile-bar:active { background: var(--cabinet-2); }
-  .mobile-bar:focus-visible { outline-offset: -2px; }
-  .mobile-bar-icon { font-size: 18px; line-height: 1; }
+  .stage-toolbar { justify-content: space-between; }
+  .mobile-bar { display: grid; }
+  .mobile-bar-icon { font-size: 17px; line-height: 1; }
 
   #app {
     grid-template-columns: 1fr;
@@ -1259,6 +1243,10 @@ input[type="range"] {
   .np-artist { display: none; }        /* 作曲那行省掉 */
   .diff-btn { padding: 2px 9px; font-size: 10px; }
   .transport { padding: 6px 10px max(8px, env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 900px) {
+  .transport { padding-bottom: max(2px, env(safe-area-inset-bottom)); }
 }
 
 .song-list.virtual { overflow-anchor: none; }
@@ -1447,18 +1435,31 @@ input[type="range"] {
 
 .cv img[hidden] { display: none; }
 
-/* Keep all transport actions, including preview, on one mobile row. */
-@media (max-width: 560px) {
+/* Use the actual transport width: a desktop sidebar or tablet can make it
+   much narrower than the viewport. Keep the changing preview label compact. */
+@container transport (max-width: 700px) {
   .transport-top { flex-wrap: nowrap; gap: 4px; }
-  .transport-top > .icon-btn { width: 36px; min-width: 36px; height: 40px; flex: 0 0 36px; }
-  .transport-top > .play-btn { width: 42px; min-width: 42px; height: 40px; flex: 0 0 42px; }
+  .transport-top > .icon-btn { width: 36px; min-width: 36px; height: 36px; flex: 0 0 36px; }
+  .transport-top > .play-btn { width: 42px; min-width: 42px; height: 36px; flex: 0 0 42px; }
   .transport-top > .ab-btn { padding: 0; font-size: 11px; }
   .transport-top > .time-block { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; margin: 0; text-align: right; font-size: 10px; line-height: 1.2; white-space: nowrap; }
   .transport-top .time-sep, .transport-top > .spacer { display: none; }
   .transport-top > #btnPreview { padding: 0; font-size: 0; }
+  .transport-top > #btnTimelineQuick { padding: 0; font-size: 10px; }
   #btnPreview::before { content: "试听"; font-size: 11px; }
   #btnPreview[aria-pressed="true"]::before { content: "停听"; }
   #btnPreview[aria-busy="true"]::before { content: "载入"; }
+}
+@container transport (max-width: 340px) {
+  .transport-top { gap: 2px; }
+  .transport-top > .icon-btn { width: 32px; min-width: 32px; flex-basis: 32px; }
+  .transport-top > .play-btn { width: 36px; min-width: 36px; flex-basis: 36px; }
+}
+@container transport (max-width: 300px) {
+  .transport-top > .icon-btn { width: clamp(20px, 10cqw, 32px); flex-basis: clamp(20px, 10cqw, 32px); min-width: 0; }
+  .transport-top > .play-btn { width: clamp(22px, 11cqw, 36px); flex-basis: clamp(22px, 11cqw, 36px); min-width: 0; }
+  .transport-top > #btnTimelineQuick { font-size: clamp(7px, 3.3cqw, 10px); }
+  #btnPreview::before { font-size: clamp(8px, 3.6cqw, 11px); }
 }
 #btnPreview[hidden] { display: none; }
 
@@ -1640,7 +1641,7 @@ body:not(.private-play-active) .stage .pad .idx {
 
 /* 启动页直接出现在首屏；选曲后移除 is-welcome，恢复播放器原布局。 */
 .welcome { display: none; }
-.stage.is-welcome { grid-template-rows: auto minmax(0, 1fr); overflow: auto; }
+.stage.is-welcome { grid-template-rows: minmax(0, 1fr); overflow: auto; }
 .stage.is-welcome > :is(#nowPlaying, .panel-stage, #transport) { display: none; }
 .stage.is-welcome > .welcome {
   display: grid;
@@ -1736,3 +1737,31 @@ body:not(.private-play-active) .stage .pad .idx {
 .hold-marker[hidden] { display:none; }
 .hold-marker{width:1em;height:1em;position:relative;isolation:isolate;background:transparent;overflow:hidden;--pitch:0.22727273em;--gx:0.03125em;--gy:0.05397727em;--stroke:0.02272727em;--inner:calc(var(--pitch) - var(--stroke));--inset:calc(var(--stroke)/2);--span:calc(var(--pitch)*4 - var(--stroke))}.hold-grid{position:absolute;left:var(--gx);top:var(--gy);width:calc(var(--pitch)*4);height:calc(var(--pitch)*4);z-index:1}.hold-grid b{position:absolute;background:#a0a0a0;filter:blur(0.003125em)}.hold-grid .hold-vx{top:0;width:0.01136364em;height:100%;left:calc(var(--pitch)*var(--n) - 0.00568182em)}.hold-grid .hold-hy{left:0;height:0.01136364em;width:100%;top:calc(var(--pitch)*var(--n) - 0.00568182em)}.hold-frame{position:absolute;left:calc(var(--gx) - 0.00852273em);top:calc(var(--gy) - 0.00852273em);width:calc(var(--pitch)*4 + 0.01704545em);height:calc(var(--pitch)*4 + 0.01704545em);border:0.01704545em solid white;box-shadow:0 0 0.00568182em 0.00568182em white,0 0 0.01704545em 0.01136364em #fff8,inset 0 0 0.01704545em #fff7;z-index:4}.hold-cells{position:absolute;left:var(--gx);top:var(--gy);width:calc(var(--pitch)*4);height:calc(var(--pitch)*4);display:grid;grid-template-columns:repeat(4,1fr)}.hold-cells i{margin:0.03409091em;border:0.00568182em solid #ffffff07;box-shadow:0 0 0.00568182em #ffffff08}.hold-lane{position:absolute;width:var(--span);height:var(--inner);z-index:2}.hold-horizontal{left:calc(var(--gx) + var(--inset));top:calc(var(--gy) + var(--pitch) + var(--inset))}.hold-vertical{left:calc(var(--gx) + var(--pitch)*3 - var(--inset));top:calc(var(--gy) + var(--inset));transform:rotate(90deg);transform-origin:0 0}.hold-head,.hold-tail,.hold-beam{position:absolute;animation-duration:1530ms;animation-iteration-count:infinite;animation-timing-function:steps(1,end);opacity:0}.hold-head{left:0;top:0;width:var(--inner);height:var(--inner);background:white;clip-path:polygon(0 0,100% 50%,0 100%);filter:blur(0.00227273em);z-index:3}.hold-tail{right:0;top:0;width:var(--inner);height:var(--inner);background:white;clip-path:polygon(0 0,100% 0,100% 100%,0 100%,100% 50%);filter:blur(0.00227273em);z-index:1}.hold-beam{top:calc(var(--inner)/2 - 0.00568182em);height:0.01136364em;background:#d8faff;box-shadow:0 0 0.01136364em #e8fbff,0 0 0.02272727em 0.01136364em #4aaacc9c,0 0 0.05113636em 0.02272727em #3baaca3b;z-index:2}.hold-horizontal .hold-head{animation-name:cover-hold-h-head}.hold-horizontal .hold-tail{animation-name:cover-hold-h-tail}.hold-horizontal .hold-beam{animation-name:cover-hold-h-beam}.hold-vertical .hold-head{animation-name:cover-hold-v-head}.hold-vertical .hold-tail{animation-name:cover-hold-v-tail}.hold-vertical .hold-beam{animation-name:cover-hold-v-beam}@keyframes cover-hold-h-head{0.000000%{opacity:0;transform:translateX(calc(var(--pitch)*0))}10.457516%{opacity:0.25;transform:translateX(calc(var(--pitch)*0))}13.071895%{opacity:0.5;transform:translateX(calc(var(--pitch)*0))}15.032680%{opacity:0.75;transform:translateX(calc(var(--pitch)*0))}16.993464%{opacity:1;transform:translateX(calc(var(--pitch)*0))}19.607843%{opacity:1;transform:translateX(calc(var(--pitch)*0.25))}21.568627%{opacity:1;transform:translateX(calc(var(--pitch)*0.5))}23.529412%{opacity:1;transform:translateX(calc(var(--pitch)*0.75))}26.143791%{opacity:1;transform:translateX(calc(var(--pitch)*1))}28.104575%{opacity:1;transform:translateX(calc(var(--pitch)*1.25))}30.065359%{opacity:1;transform:translateX(calc(var(--pitch)*1.5))}32.679739%{opacity:1;transform:translateX(calc(var(--pitch)*1.75))}34.640523%{opacity:1;transform:translateX(calc(var(--pitch)*2))}36.601307%{opacity:1;transform:translateX(calc(var(--pitch)*2.25))}39.215686%{opacity:1;transform:translateX(calc(var(--pitch)*2.5))}41.176471%{opacity:1;transform:translateX(calc(var(--pitch)*2.75))}43.137255%{opacity:1;transform:translateX(calc(var(--pitch)*3))}45.751634%{opacity:0.75;transform:translateX(calc(var(--pitch)*3))}47.712418%{opacity:0.5;transform:translateX(calc(var(--pitch)*3))}49.673203%{opacity:0.25;transform:translateX(calc(var(--pitch)*3))}52.287582%{opacity:0;transform:translateX(calc(var(--pitch)*0))}56.209150%{opacity:0;transform:translateX(calc(var(--pitch)*0))}58.823529%{opacity:0;transform:translateX(calc(var(--pitch)*0))}60.784314%{opacity:0;transform:translateX(calc(var(--pitch)*0))}62.745098%{opacity:0;transform:translateX(calc(var(--pitch)*0))}65.359477%{opacity:0;transform:translateX(calc(var(--pitch)*0))}67.320261%{opacity:0;transform:translateX(calc(var(--pitch)*0))}69.281046%{opacity:0;transform:translateX(calc(var(--pitch)*0))}71.895425%{opacity:0;transform:translateX(calc(var(--pitch)*0))}73.856209%{opacity:0;transform:translateX(calc(var(--pitch)*0))}75.816993%{opacity:0;transform:translateX(calc(var(--pitch)*0))}78.431373%{opacity:0;transform:translateX(calc(var(--pitch)*0))}80.392157%{opacity:0;transform:translateX(calc(var(--pitch)*0))}82.352941%{opacity:0;transform:translateX(calc(var(--pitch)*0))}84.967320%{opacity:0;transform:translateX(calc(var(--pitch)*0))}86.928105%{opacity:0;transform:translateX(calc(var(--pitch)*0))}88.888889%{opacity:0;transform:translateX(calc(var(--pitch)*0))}91.503268%{opacity:0;transform:translateX(calc(var(--pitch)*0))}93.464052%{opacity:0;transform:translateX(calc(var(--pitch)*0))}95.424837%{opacity:0;transform:translateX(calc(var(--pitch)*0))}98.039216%{opacity:0;transform:translateX(calc(var(--pitch)*0))}100%{opacity:0}}@keyframes cover-hold-h-tail{0.000000%{opacity:0}10.457516%{opacity:0.25}13.071895%{opacity:0.5}15.032680%{opacity:0.75}16.993464%{opacity:1}19.607843%{opacity:1}21.568627%{opacity:1}23.529412%{opacity:1}26.143791%{opacity:1}28.104575%{opacity:1}30.065359%{opacity:1}32.679739%{opacity:1}34.640523%{opacity:1}36.601307%{opacity:1}39.215686%{opacity:1}41.176471%{opacity:1}43.137255%{opacity:1}45.751634%{opacity:0.75}47.712418%{opacity:0.5}49.673203%{opacity:0.25}52.287582%{opacity:0}56.209150%{opacity:0}58.823529%{opacity:0}60.784314%{opacity:0}62.745098%{opacity:0}65.359477%{opacity:0}67.320261%{opacity:0}69.281046%{opacity:0}71.895425%{opacity:0}73.856209%{opacity:0}75.816993%{opacity:0}78.431373%{opacity:0}80.392157%{opacity:0}82.352941%{opacity:0}84.967320%{opacity:0}86.928105%{opacity:0}88.888889%{opacity:0}91.503268%{opacity:0}93.464052%{opacity:0}95.424837%{opacity:0}98.039216%{opacity:0}100%{opacity:0}}@keyframes cover-hold-h-beam{0.000000%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}10.457516%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}13.071895%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}15.032680%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}16.993464%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}19.607843%{opacity:1;left:calc(var(--pitch)*0.25 + var(--inner)/2);width:calc(var(--pitch)*2.75 + var(--inner)/2)}21.568627%{opacity:1;left:calc(var(--pitch)*0.5 + var(--inner)/2);width:calc(var(--pitch)*2.5 + var(--inner)/2)}23.529412%{opacity:1;left:calc(var(--pitch)*0.75 + var(--inner)/2);width:calc(var(--pitch)*2.25 + var(--inner)/2)}26.143791%{opacity:1;left:calc(var(--pitch)*1 + var(--inner)/2);width:calc(var(--pitch)*2 + var(--inner)/2)}28.104575%{opacity:1;left:calc(var(--pitch)*1.25 + var(--inner)/2);width:calc(var(--pitch)*1.75 + var(--inner)/2)}30.065359%{opacity:1;left:calc(var(--pitch)*1.5 + var(--inner)/2);width:calc(var(--pitch)*1.5 + var(--inner)/2)}32.679739%{opacity:1;left:calc(var(--pitch)*1.75 + var(--inner)/2);width:calc(var(--pitch)*1.25 + var(--inner)/2)}34.640523%{opacity:1;left:calc(var(--pitch)*2 + var(--inner)/2);width:calc(var(--pitch)*1 + var(--inner)/2)}36.601307%{opacity:1;left:calc(var(--pitch)*2.25 + var(--inner)/2);width:calc(var(--pitch)*0.75 + var(--inner)/2)}39.215686%{opacity:1;left:calc(var(--pitch)*2.5 + var(--inner)/2);width:calc(var(--pitch)*0.5 + var(--inner)/2)}41.176471%{opacity:1;left:calc(var(--pitch)*2.75 + var(--inner)/2);width:calc(var(--pitch)*0.25 + var(--inner)/2)}43.137255%{opacity:1;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}45.751634%{opacity:0;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}47.712418%{opacity:0;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}49.673203%{opacity:0;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}52.287582%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}56.209150%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}58.823529%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}60.784314%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}62.745098%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}65.359477%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}67.320261%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}69.281046%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}71.895425%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}73.856209%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}75.816993%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}78.431373%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}80.392157%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}82.352941%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}84.967320%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}86.928105%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}88.888889%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}91.503268%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}93.464052%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}95.424837%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}98.039216%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}100%{opacity:0}}@keyframes cover-hold-v-head{0.000000%{opacity:0;transform:translateX(calc(var(--pitch)*0))}10.457516%{opacity:0;transform:translateX(calc(var(--pitch)*0))}13.071895%{opacity:0;transform:translateX(calc(var(--pitch)*0))}15.032680%{opacity:0;transform:translateX(calc(var(--pitch)*0))}16.993464%{opacity:0;transform:translateX(calc(var(--pitch)*0))}19.607843%{opacity:0;transform:translateX(calc(var(--pitch)*0))}21.568627%{opacity:0;transform:translateX(calc(var(--pitch)*0))}23.529412%{opacity:0;transform:translateX(calc(var(--pitch)*0))}26.143791%{opacity:0;transform:translateX(calc(var(--pitch)*0))}28.104575%{opacity:0;transform:translateX(calc(var(--pitch)*0))}30.065359%{opacity:0;transform:translateX(calc(var(--pitch)*0))}32.679739%{opacity:0;transform:translateX(calc(var(--pitch)*0))}34.640523%{opacity:0;transform:translateX(calc(var(--pitch)*0))}36.601307%{opacity:0;transform:translateX(calc(var(--pitch)*0))}39.215686%{opacity:0;transform:translateX(calc(var(--pitch)*0))}41.176471%{opacity:0;transform:translateX(calc(var(--pitch)*0))}43.137255%{opacity:0;transform:translateX(calc(var(--pitch)*0))}45.751634%{opacity:0;transform:translateX(calc(var(--pitch)*0))}47.712418%{opacity:0;transform:translateX(calc(var(--pitch)*0))}49.673203%{opacity:0;transform:translateX(calc(var(--pitch)*0))}52.287582%{opacity:0;transform:translateX(calc(var(--pitch)*0))}56.209150%{opacity:0.25;transform:translateX(calc(var(--pitch)*0))}58.823529%{opacity:0.5;transform:translateX(calc(var(--pitch)*0))}60.784314%{opacity:0.75;transform:translateX(calc(var(--pitch)*0))}62.745098%{opacity:1;transform:translateX(calc(var(--pitch)*0))}65.359477%{opacity:1;transform:translateX(calc(var(--pitch)*0.25))}67.320261%{opacity:1;transform:translateX(calc(var(--pitch)*0.5))}69.281046%{opacity:1;transform:translateX(calc(var(--pitch)*0.75))}71.895425%{opacity:1;transform:translateX(calc(var(--pitch)*1))}73.856209%{opacity:1;transform:translateX(calc(var(--pitch)*1.25))}75.816993%{opacity:1;transform:translateX(calc(var(--pitch)*1.5))}78.431373%{opacity:1;transform:translateX(calc(var(--pitch)*1.75))}80.392157%{opacity:1;transform:translateX(calc(var(--pitch)*2))}82.352941%{opacity:1;transform:translateX(calc(var(--pitch)*2.25))}84.967320%{opacity:1;transform:translateX(calc(var(--pitch)*2.5))}86.928105%{opacity:1;transform:translateX(calc(var(--pitch)*2.75))}88.888889%{opacity:1;transform:translateX(calc(var(--pitch)*3))}91.503268%{opacity:0.75;transform:translateX(calc(var(--pitch)*3))}93.464052%{opacity:0.5;transform:translateX(calc(var(--pitch)*3))}95.424837%{opacity:0.25;transform:translateX(calc(var(--pitch)*3))}98.039216%{opacity:0;transform:translateX(calc(var(--pitch)*0))}100%{opacity:0}}@keyframes cover-hold-v-tail{0.000000%{opacity:0}10.457516%{opacity:0}13.071895%{opacity:0}15.032680%{opacity:0}16.993464%{opacity:0}19.607843%{opacity:0}21.568627%{opacity:0}23.529412%{opacity:0}26.143791%{opacity:0}28.104575%{opacity:0}30.065359%{opacity:0}32.679739%{opacity:0}34.640523%{opacity:0}36.601307%{opacity:0}39.215686%{opacity:0}41.176471%{opacity:0}43.137255%{opacity:0}45.751634%{opacity:0}47.712418%{opacity:0}49.673203%{opacity:0}52.287582%{opacity:0}56.209150%{opacity:0.25}58.823529%{opacity:0.5}60.784314%{opacity:0.75}62.745098%{opacity:1}65.359477%{opacity:1}67.320261%{opacity:1}69.281046%{opacity:1}71.895425%{opacity:1}73.856209%{opacity:1}75.816993%{opacity:1}78.431373%{opacity:1}80.392157%{opacity:1}82.352941%{opacity:1}84.967320%{opacity:1}86.928105%{opacity:1}88.888889%{opacity:1}91.503268%{opacity:0.75}93.464052%{opacity:0.5}95.424837%{opacity:0.25}98.039216%{opacity:0}100%{opacity:0}}@keyframes cover-hold-v-beam{0.000000%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}10.457516%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}13.071895%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}15.032680%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}16.993464%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}19.607843%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}21.568627%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}23.529412%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}26.143791%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}28.104575%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}30.065359%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}32.679739%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}34.640523%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}36.601307%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}39.215686%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}41.176471%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}43.137255%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}45.751634%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}47.712418%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}49.673203%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}52.287582%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}56.209150%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}58.823529%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}60.784314%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}62.745098%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}65.359477%{opacity:1;left:calc(var(--pitch)*0.25 + var(--inner)/2);width:calc(var(--pitch)*2.75 + var(--inner)/2)}67.320261%{opacity:1;left:calc(var(--pitch)*0.5 + var(--inner)/2);width:calc(var(--pitch)*2.5 + var(--inner)/2)}69.281046%{opacity:1;left:calc(var(--pitch)*0.75 + var(--inner)/2);width:calc(var(--pitch)*2.25 + var(--inner)/2)}71.895425%{opacity:1;left:calc(var(--pitch)*1 + var(--inner)/2);width:calc(var(--pitch)*2 + var(--inner)/2)}73.856209%{opacity:1;left:calc(var(--pitch)*1.25 + var(--inner)/2);width:calc(var(--pitch)*1.75 + var(--inner)/2)}75.816993%{opacity:1;left:calc(var(--pitch)*1.5 + var(--inner)/2);width:calc(var(--pitch)*1.5 + var(--inner)/2)}78.431373%{opacity:1;left:calc(var(--pitch)*1.75 + var(--inner)/2);width:calc(var(--pitch)*1.25 + var(--inner)/2)}80.392157%{opacity:1;left:calc(var(--pitch)*2 + var(--inner)/2);width:calc(var(--pitch)*1 + var(--inner)/2)}82.352941%{opacity:1;left:calc(var(--pitch)*2.25 + var(--inner)/2);width:calc(var(--pitch)*0.75 + var(--inner)/2)}84.967320%{opacity:1;left:calc(var(--pitch)*2.5 + var(--inner)/2);width:calc(var(--pitch)*0.5 + var(--inner)/2)}86.928105%{opacity:1;left:calc(var(--pitch)*2.75 + var(--inner)/2);width:calc(var(--pitch)*0.25 + var(--inner)/2)}88.888889%{opacity:1;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}91.503268%{opacity:0;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}93.464052%{opacity:0;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}95.424837%{opacity:0;left:calc(var(--pitch)*3 + var(--inner)/2);width:calc(var(--pitch)*0 + var(--inner)/2)}98.039216%{opacity:0;left:calc(var(--pitch)*0 + var(--inner)/2);width:calc(var(--pitch)*3 + var(--inner)/2)}100%{opacity:0}}
 .hold-marker { position:absolute; background:rgba(0,0,0,.8); border-radius:.035em; box-shadow:0 1px 3px #0006; }
+
+/* Corner controls float over the stage without adding a toolbar row. */
+@media (max-width: 900px) {
+  body:not(.private-play-active) .stage .now-playing {
+    padding-top: max(36px, calc(30px + env(safe-area-inset-top)));
+  }
+}
+/* On tablets and desktops, the action column spans both information rows. */
+@media (min-width: 561px) {
+  body:not(.private-play-active) .stage .now-playing { position: relative; }
+  body:not(.private-play-active) .stage .np-main { position: static; padding-right: 76px; }
+  body:not(.private-play-active) .stage .np-actions {
+    top: max(36px, calc(30px + env(safe-area-inset-top)));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: 0;
+    width: 68px;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+  body:not(.private-play-active) .stage .np-actions > .song-share-btn {
+    width: 100%; height: 100%; font: 500 12px var(--font);
+  }
+}
+@media (min-width: 901px) {
+  body:not(.private-play-active) .stage .np-actions { top: 42px; right: 24px; bottom: 10px; }
+}
+.stage.is-welcome > .welcome {
+  padding-top: max(48px, calc(42px + env(safe-area-inset-top)));
+}

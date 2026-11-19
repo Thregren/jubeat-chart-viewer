@@ -711,12 +711,11 @@
     const mainInfo = header?.querySelector('.np-main');
     const sideInfo = header?.querySelector('.np-side');
     const stage = header?.closest('.stage');
-    const toolbar = stage?.querySelector('.stage-toolbar');
     const panelStage = stage?.querySelector('.panel-stage');
     const transport = stage?.querySelector('.transport');
     const overview = transport?.querySelector('.chart-overview');
     const timeline = overview?.querySelector('.timeline-wrap');
-    if (window.ResizeObserver && header && mainInfo && sideInfo && stage && toolbar && panelStage && transport && overview && timeline) {
+    if (window.ResizeObserver && header && mainInfo && sideInfo && stage && panelStage && transport && overview && timeline) {
       let frame = 0;
       const updateHeader = () => {
         frame = 0;
@@ -727,14 +726,9 @@
         if (window.matchMedia('(max-width: 900px)').matches) {
           const panelStyle = getComputedStyle(panelStage);
           const maxPanel = panelStage.clientWidth - parseFloat(panelStyle.paddingLeft) - parseFloat(panelStyle.paddingRight);
-          const timelineHeight = (timeline.classList.contains('timeline-flattened') ? 136 : 112) + 8;
-          const occupied = overview.classList.contains('timeline-roomy') && !timeline.hidden
-            ? timeline.getBoundingClientRect().height + 8 : 0;
-          const baseTransportHeight = transport.offsetHeight - occupied;
-          const extra = Math.max(0, stage.clientHeight - toolbar.offsetHeight - baseTransportHeight - contentHeight - maxPanel);
+          const extra = Math.max(0, stage.clientHeight - transport.offsetHeight - contentHeight - maxPanel);
           const headerGap = Math.min(44, Math.max(20, extra * .2));
           const boardGap = Math.min(48, Math.max(12, extra * .23));
-          overview.classList.toggle('timeline-roomy', extra - headerGap - boardGap - 8 >= timelineHeight);
           for (const [name, value] of [['--mobile-header-gap', headerGap], ['--mobile-board-gap', boardGap]]) {
             const previous = parseFloat(stage.style.getPropertyValue(name));
             if (!Number.isFinite(previous) || Math.abs(previous - value) > .25) stage.style.setProperty(name, `${value}px`);
@@ -748,7 +742,7 @@
       };
       const scheduleHeader = () => { if (!frame) frame = requestAnimationFrame(updateHeader); };
       const headerObserver = new ResizeObserver(scheduleHeader);
-      [header, mainInfo, sideInfo, stage, toolbar, panelStage, transport, overview, timeline].forEach(el => headerObserver.observe(el));
+      [header, mainInfo, sideInfo, stage, panelStage, transport, overview, timeline].forEach(el => headerObserver.observe(el));
       window.addEventListener('resize', scheduleHeader);
       document.getElementById('timelineFlatten')?.addEventListener('change', scheduleHeader);
       document.getElementById('btnTimeline')?.addEventListener('change', scheduleHeader);

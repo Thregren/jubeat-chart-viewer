@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+test('density graph has no time labels and keeps a small bottom margin', () => {
+  const labels=[], rectangles=[];
+  const ctx=new Proxy({}, {get:(_, key)=>key==='fillText' ? text=>labels.push(text)
+    : key==='fillRect' ? (...args)=>rectangles.push(args) : ()=>{}});
+  const canvas=()=>({style:{},parentElement:{getBoundingClientRect:()=>({width:640})},getContext:()=>ctx});
+  const A={renderRatio:()=>1,Core:{MAX_CHART_SECONDS:21600},els:{densityCanvas:canvas()},
+    state:{notes:[{t:15},{t:30},{t:60}],duration:120},abLoop:{},fmtTime:String,currentMediaTime:()=>0};
+  vm.runInNewContext(fs.readFileSync(new URL('../jubeat_viewer/player/static/app-density.js',import.meta.url),'utf8'),
+    {window:{JubeatApp:A},document:{createElement:canvas},getComputedStyle:()=>({})});
+  A.layoutDensity();
+  assert.equal(A.density.rect.h,37);
+  assert.deepEqual(labels,[]);
+  const blocks=rectangles.filter(([, , width, height])=>width<10 && height<10);
+  assert(blocks.length>0);
+  assert.equal(Math.max(...blocks.map(([, y, , height])=>y+height)),34);
+});
+
 test('resizing reuses density buckets; chart and duration changes rebuild them', () => {
   let width = 640, reads = 0;
   const ctx = new Proxy({}, {get:()=>()=>{}});

@@ -217,3 +217,11 @@ Rules → Cache Rules → Create rule
   所以改配置那次还得手动 purge 一次。
 
 保音调变速：安全响应头中的 `media-src` 需要允许 `blob:`，用于播放本地已下载的音频；`script-src` 与 `connect-src` 保持只允许本站。内核安全更新需要在维护窗口重启后生效。
+
+### 整站切换
+
+将完整站点构建到单独的版本目录，首页和分享页由构建共用的 HTML 模板生成。
+Nginx 的 `root` 指向固定软链接，例如 `/srv/jubeat/current`。访客统计的存储目录和 FastCGI 入口放在版本目录之外。
+生成新版本后运行 `python3 tools/activate_web_release.py --release /srv/jubeat/releases/新版本 --entry /srv/jubeat/current`。
+命令先校验构建产物，再原子替换软链接。保留上一版本目录，回滚时可以用同一个命令指回它。
+从现有实体目录切换时，先建立独立的软链接入口并调整 Nginx 的 `root`。

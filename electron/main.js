@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const { serve } = require("./site-server");
 const { Preferences, registerPreferences } = require("./preferences");
 const libraryImport = require('./library-import');
+const { stageFrontend } = require('./frontend-staging');
 let preferences;
 
 let win = null;
@@ -16,40 +17,20 @@ function frontendRoot() {
   const bundled = path.join(process.resourcesPath || __dirname, 'frontend');
   return fs.existsSync(bundled) ? bundled : path.join(__dirname, '..', 'jubeat_viewer', 'player', 'static');
 }
-function stageFrontend(dir) {
-  const src=frontendRoot(); fs.mkdirSync(path.join(dir,'static'),{recursive:true});
-  const sourceStatic=fs.existsSync(path.join(src,'static'))?path.join(src,'static'):src;
-  // 前端文件（含 6.8MB 的 background-stories-data.js）没变就别每次启动都复制：
-  // size + mtimeMs 一致且目标存在时跳过。
-  const copyIfChanged=(from,to)=>{
-    const fromStat=fs.statSync(from);
-    let toStat=null;
-    try{toStat=fs.statSync(to);}catch{}   // 目标还不存在 → 复制
-    // utimes is only microsecond-precise on some filesystems.
-    if(toStat&&toStat.isFile()&&toStat.size===fromStat.size&&Math.abs(toStat.mtimeMs-fromStat.mtimeMs)<1)return;
-    fs.copyFileSync(from,to);
-    fs.utimesSync(to,fromStat.atime,fromStat.mtime);
-  };
-  copyIfChanged(path.join(src,'index.html'),path.join(dir,'index.html'));
-  for(const name of fs.readdirSync(sourceStatic)){
-    if(name==='index.html'||name.startsWith('.')||!fs.statSync(path.join(sourceStatic,name)).isFile())continue;
-    copyIfChanged(path.join(sourceStatic,name),path.join(dir,'static',name));
-  }
-}
 async function importLibrary(file) {
   if(importing)throw Error('曲库正在导入，请稍候');
   importing=true; win?.setProgressBar(2);
   try{
     const st=fs.statSync(file);
     if(st.isDirectory()){
-      await libraryImport.validate(file);stageFrontend(file);await openSite(file);return;
+      await libraryImport.validate(file);await openSite(file);return;
     }
     if(!file.toLowerCase().endsWith('.zip'))throw Error('请拖入完整曲库 ZIP 或已解压的曲库文件夹');
     const target=managedSite();
     const result=await libraryImport.install(file,target,{beforeCommit:async()=>{
       if(server){await server.close();server=null;}
     },progress:({bytes})=>win?.setProgressBar(Math.min(0.95,bytes/(8*1024**3)))});
-    stageFrontend(target);await openSite(target);
+    await openSite(target);
     messageBox(`曲库导入完成：${result.songs} 首，${result.charts} 张谱面。`);
   } catch(error) {
     if(!server&&siteDir&&fs.existsSync(path.join(siteDir,'data','library.json')))await openSite(siteDir).catch(()=>{});
@@ -94,13 +75,14 @@ function resolveSiteDir() {
 }
 
 async function openSite(dir) {
+  const frontend = stageFrontend(frontendRoot(), path.join(app.getPath('userData'), 'frontend-cache'));
   if (server) {
     await server.close();
     server = null;
   }
   siteDir = dir;
   savePath(dir);
-  server = await serve(dir);
+  server = await serve(dir, { frontend });
   if (win) {
     await win.loadURL(server.url);
     win.setTitle("jubeat 铺面查看器 — " + path.basename(dir));
@@ -235,7 +217,6 @@ async function createWindow() {
     return;
   }
   try {
-    stageFrontend(dir);
     await openSite(dir);
   } catch (err) {
     // 站点目录读不动（权限 / 磁盘）或本地端口起不来：给一份能看懂的页面，

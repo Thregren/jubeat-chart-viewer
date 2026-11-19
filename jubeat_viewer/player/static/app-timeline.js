@@ -8,6 +8,16 @@
   const flatten=document.getElementById("timelineFlatten");
   const ctx=canvas.getContext("2d"), colors=["#66dcff","#b9a0ff","#ffd16a","#7ce3a5"];
   let shown=false, model=null, notes=null, events=null, chart=null, view=null, drag=null;
+  let ordinaryDivision=division.value, divisionChart=null;
+  function chartDivision(data) {
+    const grid=data?.meta?.rhythm_grid;
+    return grid?.version===1 && [2,3,4].includes(grid.default_division) ? String(grid.default_division) : null;
+  }
+  function syncDivision() {
+    if(divisionChart===state.chart) return;
+    divisionChart=state.chart;
+    division.value=chartDivision(divisionChart) || ordinaryDivision;
+  }
   const recording=!!window.__recActive;
   const quickButton=document.createElement("button");
   quickButton.id="btnTimelineQuick";quickButton.type="button";quickButton.className="icon-btn";
@@ -24,6 +34,7 @@
   (button.closest('label') || button).hidden=recording;
   button.disabled=recording;
   function getModel() {
+    syncDivision();
     if(notes!==state.notes || events!==state.bpmEvents || chart!==state.chart) {
       notes=state.notes;events=state.bpmEvents;chart=state.chart;
       model=window.JubeatTimeline.create(notes,events,chart?.meta?.rhythm_grid);
@@ -127,6 +138,7 @@
     if (activeBefore !== active) {
       activeBefore=active; wrap.hidden=!active;slot.classList.toggle("timeline-open",active);size.dirty=true;
     }
+    syncDivision();
     if(!active)return;
     if(drag && drag.notes!==state.notes)finish(null,true);
     if(size.dirty){size={w:canvas.clientWidth,h:canvas.clientHeight,dirty:false};}
@@ -177,7 +189,11 @@
   }
   button.addEventListener("change",()=>setShown(button.checked));
   quickButton.addEventListener("click",()=>button.click());
-  for(const select of [division,span])select.addEventListener("change",repaint);
+  division.addEventListener("change",()=>{
+    if(!chartDivision(state.chart)) ordinaryDivision=division.value;
+    repaint();
+  });
+  span.addEventListener("change",repaint);
   flatten.checked=A.store(A.STORAGE.timelineFlatten)==="1";
   wrap.classList.toggle("timeline-flattened",flatten.checked);
   flatten.addEventListener("change",()=>{

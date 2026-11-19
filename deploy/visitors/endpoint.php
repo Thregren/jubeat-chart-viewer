@@ -47,6 +47,8 @@ try {
         }
         $bucket=$event['bucket']??null;
     }
+    $ackOnly=$event!==null && ($_SERVER['HTTP_X_JUBEAT_ACK']??'')==='1'
+        && !in_array($event['event'],['page','song'],true);
     $root=getenv('VISITOR_STATS_ROOT')?:__DIR__;$db=visitor_db($root);
     if ($event!==null) {
         $now=time();$ip=$_SERVER['REMOTE_ADDR']??'';
@@ -73,7 +75,7 @@ try {
         $q=$db->prepare('SELECT 1 FROM receipts WHERE id=?');$q->execute([$eventId]);
         if ($q->fetchColumn()) {
             $db->exec('COMMIT');
-            reply(200,visitor_public_stats($db,time()));
+            reply(200,$ackOnly?['ok'=>true]:visitor_public_stats($db,time()));
         }
         if (!visitor_admit_cookie($db,$visitor,$now)) {
             $db->exec('COMMIT');header('Retry-After: 3600');
@@ -87,15 +89,15 @@ try {
             $key=hash('sha256',json_encode([$event['event'],$song,$chart,$bucket,$code]));
             $q=$db->prepare('SELECT last_key,last_at FROM visitors WHERE id=?');$q->execute([$visitor]);$previous=$q->fetch(PDO::FETCH_ASSOC);
             if ($previous['last_key']!==$key||$now-(int)$previous['last_at']>=10) {
+                $ua=substr($_SERVER['HTTP_USER_AGENT']??'',0,1024);
+                $bot=visitor_is_bot($ua);
                 $entry=['time'=>gmdate('c',$now),'event'=>$event['event'],'event_id'=>$eventId,'visitor'=>substr($visitor,0,16),
-                    'ip'=>$ip,'song'=>$song,'title'=>$title,'chart'=>$chart,'bucket'=>$bucket,'code'=>$code,
-                    'ua'=>substr($_SERVER['HTTP_USER_AGENT']??'',0,1024)];
+                    'song'=>$song,'title'=>$title,'chart'=>$chart,'bucket'=>$bucket,'code'=>$code,
+                    ...visitor_client_categories($ua),'bot'=>$bot];
                 $payload=json_encode($entry,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
                 if (strlen($payload)>32767) throw new RuntimeException('Log record too large');
                 $q=$db->prepare('INSERT INTO events(id,at,day,payload) VALUES(?,?,?,?)');$q->execute([$eventId,$now,gmdate('Y-m-d',$now),$payload]);
                 if ($event['event']==='song') {
-                    $ua=strtolower((string)($_SERVER['HTTP_USER_AGENT']??''));
-                    $bot=preg_match('/headlesschrome|bot\\b|spider|crawler|playwright|puppeteer|jubeatdeploymentcheck|jubeatstatsqa|statsqa|python-requests|python-urllib|curl\\//',$ua)?1:0;
                     $q=$db->prepare('INSERT OR IGNORE INTO song_events(event_id,at,song,title,chart,bot) VALUES(?,?,?,?,?,?)');
                     $q->execute([$eventId,$now,$song,$title,$chart,$bot]);
                     // Count only genuinely new, non-bot loads: the stable event
@@ -117,7 +119,7 @@ try {
         // JSONL export is no longer part of the request. maintenance.php --flush
         // drains the outbox from cron; events stay durable in SQLite until then.
     }
-    reply(200,visitor_public_stats($db,time()));
+    reply(200,$ackOnly?['ok'=>true]:visitor_public_stats($db,time()));
 } catch (Throwable $error) {
     if ($db instanceof PDO) {try {$db->exec('ROLLBACK');} catch (Throwable $ignored) {}}
     error_log('[visitor-stats] '.get_class($error));reply(503,['error'=>'statistics_unavailable']);

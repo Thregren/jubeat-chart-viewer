@@ -84,6 +84,8 @@ run "内容增量、封面门禁与缓存清理" "$PY" tools/test_asset_build.py
 run "预览路径隔离与 Range" "$PY" tools/test_preview_security.py
 
 run "构建失败与发布回滚" "$PY" tools/test_build.py
+run "COS 发布切换与恢复" "$PY" tools/test_cos_activation.py
+run "分卷与公共包原子发布" "$PY" tools/test_package_publication.py
 
 # ── 3. Range / 路径穿越三实现一致性 ──────────────────────────
 run "Range + 路径穿越（python3 tools/test_range.py）" "$PY" tools/test_range.py
@@ -143,6 +145,8 @@ if [ "$WANT_FULL" = 1 ]; then
       "$PY" -c "import sys; sys.path.insert(0,'tools'); from smoke_test import wait_ready; sys.exit(0 if wait_ready(18765) else 1)" \
         && node tools/browser/pwa-canvas-regression.mjs http://127.0.0.1:18765/ \
         && node tools/browser/version-picker-regression.mjs http://127.0.0.1:18765/ \
+        && node tools/browser/density-touch-regression.mjs http://127.0.0.1:18765/ \
+        && node tools/browser/library-order-regression.mjs http://127.0.0.1:18765/ \
         && JUBEAT_PREVIEW_URL=http://127.0.0.1:18765/ node tools/browser/check-audio-rate.mjs \
         && JUBEAT_PREVIEW_URL=http://127.0.0.1:18765/ node tools/browser/speed-seek-regression.mjs
       result=$?

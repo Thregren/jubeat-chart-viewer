@@ -589,6 +589,11 @@
       state.noteCursor = 0;
       state.bpmEvents = parsed.timeEvents;
       state._parsed = parsed;
+      if (payload.arcadeDensity === undefined && chart.arcadeDensity) {
+        const density = A.catalogArcadeDensity(chart.arcadeDensity, parsed);
+        if (density) payload.arcadeDensity = density;
+      }
+      state.arcadeDensity = payload.arcadeDensity || null;
       // .mc 里 type-1 note 的 offset（ms）= beat 0 相对音频起点的时间
       state.baseOffset = (parsed.type1 && Number(parsed.type1.offset)) / 1000 || 0;
       state.hitUntil.fill(-1);
@@ -639,6 +644,25 @@
       chartReady = true;
       A.visitors?.event('chart_ready',{bucketMs:A.metrics.chartMs});
       A.requestPaint();     // 换谱面后立刻重画一帧（暂停时渲染循环是停着的）
+
+      // 原始 EVE 是可选资源。兼容谱面先画，精确物量随后更新。
+      const exactPath = song.assets?.[`exact:${chart.code}`];
+      if (exactPath && payload.arcadeDensity === undefined) {
+        els.btnShare.disabled = false;
+        try {
+          const res = await fetch(A.resourcePath(A.encPath(exactPath)), { signal: request.signal });
+          if (!res.ok) return;
+          const bytes = await Runtime.readBytes(res, 8 * 1024 * 1024);
+          if (!chartRequests.current(request) || state.song !== song) return;
+          payload.arcadeDensity = A.arcadeDensity(JSON.parse(new TextDecoder().decode(bytes)), parsed);
+          if (payload.arcadeDensity) {
+            state.arcadeDensity = payload.arcadeDensity;
+            buildDensity();
+          }
+        } catch {
+          // 精确事件读取失败时继续用已加载的兼容谱面。
+        }
+      }
     } catch (err) {
       if (chartRequests.active !== request || state.song !== song || request.signal.reason?.name === "AbortError") return;
       console.error(err);
@@ -698,6 +722,7 @@
     state.noteCursor = 0;
     state.activeNotes = [];
     state._parsed = null;
+    state.arcadeDensity = null;
     state.duration = 0;
     clearPads();
     els.timeNow.textContent = fmtTime(0);

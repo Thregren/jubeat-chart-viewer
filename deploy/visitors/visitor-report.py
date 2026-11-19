@@ -103,7 +103,7 @@ def load_events(db_path, cutoff):
             try:
                 event = json.loads(payload)
                 event_id = event.get("event_id")
-                if not event_id or event_id in seen or BOT.search(str(event.get("ua") or "")):
+                if not event_id or event_id in seen or event.get("bot") or BOT.search(str(event.get("ua") or "")):
                     continue
                 if event.get("event") not in {
                     "page", "song", "app_ready", "library_ready", "library_error", "chart_ready", "chart_error",
@@ -155,8 +155,8 @@ def aggregate(events, now, geo_reader=None):
     for identity, items in visitors.items():
         first = next(iter(items))
         ua = str(first.get("ua") or "")
-        devices[device(ua)] += 1
-        browsers[browser(ua)] += 1
+        devices[first.get("device") or device(ua)] += 1
+        browsers[first.get("browser") or browser(ua)] += 1
         if geo_reader is not None:
             public = next((ipaddress.ip_address(item["ip"]) for item in items if item.get("ip") and ipaddress.ip_address(item["ip"]).is_global), None)
             if public and public.version == 4:

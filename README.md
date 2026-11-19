@@ -4,7 +4,7 @@
 
 **[在线使用](https://ub.thregren.world/)** · **[下载轻量客户端](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.1)** · **[完整曲库与客户端网盘下载](https://pan.quark.cn/s/e9c12157e039)**
 
-当前源码版本：**[v0.7.9](docs/release-v0.7.9.md)**（仅源码发布）。
+当前源码版本：**[v0.7.10](docs/release-v0.7.10.md)**（仅源码发布）。
 
 ## 主要功能
 
@@ -37,7 +37,7 @@
 
 **[v0.7.1 Release](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.1)** 提供不含曲库的轻量客户端和校验文件；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供客户端和独立完整曲库。
 
-[v0.7.4](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.4) 是**源码发布**，只附源码包（`Source code (zip／tar.gz)`），不含客户端安装包；轻量客户端与曲库包仍以下载表中 v0.7.1 的产物为准。
+[v0.7.10](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.10) 是**源码发布**，只附源码包（`Source code (zip／tar.gz)`），不含客户端安装包；轻量客户端与曲库包仍以下载表中 v0.7.1 的产物为准。
 
 | 平台 | 下载 |
 |---|---|
@@ -60,6 +60,12 @@ macOS 程序未做商业签名，首次打开可在 Finder 中右键「打开」
 更多安装方法见 [客户端与压缩曲库](docs/压缩曲库与客户端.md)，曲库范围和按版本安装见 [目录曲库说明](docs/目录曲库.md)。
 
 ## 最近更新
+
+**v0.7.10 · 发布恢复与网页版物量图优化**
+
+- 分卷及公共包采用代次切换，完善发布中断恢复与并发保护；Electron 前端更新和云部署增加恢复机制。
+- 保留物量统计口径，减少物量图同尺寸画布的重复重设；补充曲库排序和手机触屏拖动回归。
+- 本版为源码发布，不包含新的客户端安装包或曲库。打包工具的代次发布需要文件系统支持符号链接。
 
 **v0.7.9 · 网页布局与节奏轴优化**
 

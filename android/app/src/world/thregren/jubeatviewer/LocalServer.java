@@ -12,6 +12,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -23,6 +25,7 @@ import java.util.Set;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 只服务 127.0.0.1 的极小静态服务。
@@ -40,6 +43,24 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 自然都落在带 token 的前缀下，不用页面配合。
  */
 public final class LocalServer {
+    private static final AtomicLong LAST_CONNECTION_ERROR = new AtomicLong();
+    private static final long ERROR_LOG_INTERVAL_NANOS = 60_000_000_000L;
+
+    static void reportConnectionError(Throwable error) {
+        if (error instanceof SocketTimeoutException) return;
+        if (error instanceof SocketException) {
+            String message = String.valueOf(error.getMessage()).toLowerCase(Locale.ROOT);
+            if (message.contains("reset") || message.contains("broken pipe")
+                    || message.contains("closed") || message.contains("abort")) return;
+        }
+        long now = System.nanoTime();
+        long previous = LAST_CONNECTION_ERROR.get();
+        if ((previous == 0 || now - previous >= ERROR_LOG_INTERVAL_NANOS)
+                && LAST_CONNECTION_ERROR.compareAndSet(previous, now)) {
+            System.err.println("jubeat local server connection failed: " + error);
+            error.printStackTrace(System.err);
+        }
+    }
     /** 路径里的 token 段：{@code /t/<token>/} */
     private static final String TOKEN_PREFIX = "/t/";
 
@@ -170,8 +191,8 @@ public final class LocalServer {
                 public void run() {
                     try {
                         handle(conn);
-                    } catch (Throwable ignored) {
-                        // 单个连接出错只影响这一个请求，不能掀掉服务
+                    } catch (Throwable error) {
+                        reportConnectionError(error);
                     } finally {
                         connections.remove(conn);
                         closeQuietly(conn);

@@ -108,6 +108,9 @@ jobs:
           node tools/browser_regression.cjs http://127.0.0.1:18764/ "$RUNNER_TEMP/browser-evidence"
           node tools/browser_themes.cjs http://127.0.0.1:18764/ "$RUNNER_TEMP/browser-evidence/themes"
           node tools/browser/pwa-canvas-regression.mjs http://127.0.0.1:18764/
+          node tools/browser/version-picker-regression.mjs http://127.0.0.1:18764/
+          node tools/browser/density-touch-regression.mjs http://127.0.0.1:18764/
+          node tools/browser/library-order-regression.mjs http://127.0.0.1:18764/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -172,16 +175,25 @@ jobs:
                   sys.exit("java 失败: " + " ".join(args))
               return p.stdout.splitlines()
 
-          rng = run(["HttpRangeTest"], [f"{s}\t{h}" for s, h, _ in tr.RANGE_CASES])
+          def compare(label, inputs, actual, expected):
+              if actual == expected:
+                  return
+              for i in range(max(len(actual), len(expected))):
+                  got = actual[i] if i < len(actual) else "<missing>"
+                  wanted = expected[i] if i < len(expected) else "<extra>"
+                  if got != wanted:
+                      case = inputs[i] if i < len(inputs) else "<extra output>"
+                      sys.exit(f"{label} 与共享用例表不一致: 行 {i+1}, 输入 {case!r}, "
+                               f"实际 {got!r}, 预期 {wanted!r}, "
+                               f"实际行数 {len(actual)}, 预期行数 {len(expected)}")
+
+          range_inputs = [f"{s}\t{h}" for s, h, _ in tr.RANGE_CASES]
+          rng = run(["HttpRangeTest"], range_inputs)
           want = ["-" if w is None else f"{w[0]}\t{w[1]}" for _, _, w in tr.RANGE_CASES]
-          if rng != want:
-              bad = [(a, b) for a, b in zip(rng, want) if a != b]
-              sys.exit("Range 与共享用例表不一致: " + repr(bad))
+          compare("Range", range_inputs, rng, want)
 
           safe = run(["HttpRangeTest", "safe", tr.SAFE_ROOT], [p for p, _ in tr.SAFE_CASES])
           want2 = ["-" if w is None else w for _, w in tr.SAFE_CASES]
-          if safe != want2:
-              bad2 = [(a, b) for a, b in zip(safe, want2) if a != b]
-              sys.exit("resolveSafe 与共享用例表不一致: " + repr(bad2))
+          compare("resolveSafe", [p for p, _ in tr.SAFE_CASES], safe, want2)
           print(f"HttpRangeTest: Range {len(tr.RANGE_CASES)} 例 + resolveSafe {len(tr.SAFE_CASES)} 例 与共享用例表一致")
           PY

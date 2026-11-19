@@ -88,6 +88,7 @@ def _pack(src, out, prefix, excludes, extra):
         for src_file, arcname in extra:
             _write(zf, src_file, arcname)
             files += 1
+            total += src_file.stat().st_size
       os.replace(temporary, out)
     finally:
       Path(temporary).unlink(missing_ok=True)
@@ -101,6 +102,8 @@ def main() -> int:
     ap.add_argument("--prefix", default="", help="包内前缀目录（结尾带 /），默认无")
     ap.add_argument("--exclude", action="append", default=[], help="排除的相对路径/目录（可多次）")
     ap.add_argument("--extra", action="append", default=[], help="额外塞进去的文件：源路径:包内路径")
+    ap.add_argument("--extra-file", nargs=2, action="append", default=[], metavar=("SOURCE", "ARCHIVE_NAME"),
+                    help="额外文件的源路径和包内路径，支持含冒号的源路径")
     args = ap.parse_args()
 
     src = Path(args.src).resolve()
@@ -110,6 +113,7 @@ def main() -> int:
     for spec in args.extra:
         src_file, _, arcname = spec.partition(":")
         extra.append((Path(src_file), arcname or Path(src_file).name))
+    extra.extend((Path(src_file), arcname) for src_file, arcname in args.extra_file)
 
     t0 = time.time()
     files, total = pack(src, Path(args.out), args.prefix, tuple(args.exclude), tuple(extra))

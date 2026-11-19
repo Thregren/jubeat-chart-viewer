@@ -3,12 +3,15 @@
 from __future__ import annotations
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 import shutil
 import zipfile
 from build_directory import build_directory, REPO
 from asset_hash import sha256_file
+from package_backgrounds import background_files
+from package_publication import PackagePublication, publication_lock
 
 GUIDE = '''本地统一曲库网页版（jubeat-directory-v1）
 
@@ -25,7 +28,7 @@ GUIDE = '''本地统一曲库网页版（jubeat-directory-v1）
 精确事件另存 *.events.json，保留源tick_hz；原游戏一般300Hz，音乐魔方视频抄谱另有时间分辨率；兼容JSON的拍点使用既有换算，
 不宣称已消除该换算的时间量化。原EVE/SEQ和provenance.json随歌曲保留。
 PCM24 WAV保留统一库采样率和声道；封面PNG沿用已修正颜色的统一库。
-本批已移除209个特殊资源条目，版本包不再包含这些文件。等级/曲名未知时显示未知或原ID。
+等级/曲名未知时显示未知或原ID。
 
 去重延续统一库：最早街机版本优先，移动版补充；有可玩音符/时序变化才另存。
 版本名表示本次源文件的归档归属，不据此推断实际初次上线日期。
@@ -53,7 +56,29 @@ if __name__ == '__main__':
 
 
 def package_common(root: Path, output: Path, rebuild=True):
-    root, output = root.resolve(), output.resolve()
+    root, output = root.resolve(), Path(os.path.abspath(output))
+    with publication_lock(output.parent, output.name):
+        publication = PackagePublication(output.parent, output.name)
+        report_path=output.with_suffix('.zip.json')
+        legacy=[]
+        if output.exists() or report_path.exists():
+            if not output.is_file() or not report_path.is_file():
+                raise RuntimeError('旧公共包或校验报告缺失')
+            old_report=json.loads(report_path.read_text(encoding='utf-8'))
+            if output.stat().st_size != old_report['bytes'] or sha256_file(output) != old_report['sha256']:
+                raise RuntimeError('旧公共包与校验报告不一致')
+            legacy=[output.name, report_path.name]
+        generation=publication.new_generation()
+        try:
+            report=_package_common(root,generation / output.name,rebuild)
+            publication.publish(generation,[output.name,report_path.name],legacy)
+            return report
+        except BaseException:
+            if not publication.current.is_symlink() or publication.current.resolve() != generation:
+                shutil.rmtree(generation,ignore_errors=True)
+            raise
+
+def _package_common(root: Path, output: Path, rebuild=True):
     if rebuild: build_directory(root, root)
     if not (root/'data/build.json').is_file(): raise ValueError('请先构建目录站点')
     for name in ('tools/serve.py','jubeat_viewer/player/media.py','jubeat_viewer/player/source_revision.py'):
@@ -63,6 +88,7 @@ def package_common(root: Path, output: Path, rebuild=True):
     names={'index.html','data/library.json','data/markers.json','data/build.json','data/export.json',
            'tools/serve.py','jubeat_viewer/player/media.py','jubeat_viewer/player/source_revision.py',
            '启动查看器.py','使用说明.txt'}
+    names.update(background_files(root))
     for top in ('static','markers','share'):
         names.update(p.relative_to(root).as_posix() for p in (root/top).rglob('*') if p.is_file() and not any(x.startswith('.') for x in p.relative_to(root).parts))
     output.parent.mkdir(parents=True,exist_ok=True);temp=output.with_name(output.name+'.partial')

@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 """通过既有 tccli 凭证，将精简站点独立分卷经 COS/TAT 发布。显式指定所有目标。"""
 from __future__ import annotations
-import argparse,base64,hashlib,json,os,shlex,subprocess,time
+import argparse,base64,hashlib,json,os,shlex,subprocess,tempfile,time
 from pathlib import Path
+from asset_hash import sha256_file
+
+def write_state(path, state):
+    fd, name = tempfile.mkstemp(prefix=path.name+'.', suffix='.tmp', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(state, stream, ensure_ascii=False, indent=2)
+            stream.write('\n')
+        os.replace(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
 
 def cli(args):
     p=subprocess.run(['tccli']+args,capture_output=True,text=True)
@@ -41,7 +52,10 @@ def tat(instance,region,script,timeout=600,hidden=None):
 def python_script(text):return "set -e\npython3 - <<'PY'\n"+text+"\nPY\n"
 
 def deploy(a):
-    root=Path(a.packages).resolve();manifest=json.loads((root/'packages.json').read_text());version=manifest['version']
+    root=Path(a.packages).resolve()
+    current=root/'.web-packages.current'
+    if current.is_symlink():root=current.resolve(strict=True)
+    manifest=json.loads((root/'packages.json').read_text());version=manifest['version']
     volumes=[x for x in manifest['assets'] if x['kind']=='web-volume']
     fingerprint=hashlib.sha256((root/'packages.json').read_bytes()).hexdigest()
     report=Path(a.report).resolve();report.mkdir(parents=True,exist_ok=True);state_file=report/'COS部署状态.json'
@@ -50,27 +64,32 @@ def deploy(a):
     if state['signature']!=signature:raise ValueError('发布状态与目标或包清单不一致')
     if state.get('status')=='complete':
         print('同一批曲库已完成发布；保留现有站点，不重复切换',flush=True);return state
-    def save():state_file.write_text(json.dumps(state,ensure_ascii=False,indent=2)+'\n')
+    def save():write_state(state_file,state)
     target=Path(a.target)
     if not target.is_absolute() or len(target.parts)<4 or target.name in ('wwwroot','www','root'):raise ValueError('目标必须是明确的站点根目录')
     stage=str(target.parent/('.'+target.name+'-unified-'+version));remote_state=stage+'.state.json'
+    remote_code=Path(__file__).with_name('cos_activation.py').read_text(encoding='utf-8')
+    phase='staged'
     if a.mode in ('all','stage','activate'):
-        print(tat(a.instance,a.instance_region,python_script(f'''
-import json,pathlib
-stage=pathlib.Path({stage!r});state=pathlib.Path({remote_state!r})
-if state.exists():
- assert json.loads(state.read_text())['fingerprint']=={fingerprint!r},'remote stage belongs to another package'
-elif stage.exists():raise RuntimeError('refusing unowned staging directory')
-else:
- stage.mkdir();state.write_text(json.dumps(dict(fingerprint={fingerprint!r})))
-print('staging ready')
-''')).strip(),flush=True)
+        phase=tat(a.instance,a.instance_region,python_script(
+            remote_code + f"\nprint(prepare({stage!r}, {remote_state!r}, {fingerprint!r}))\n")).strip()
+        print('远程发布状态',phase,flush=True)
+    if phase != 'staged':
+        if not a.activate:
+            print('远程切换已有进度，请使用 --activate 继续恢复',flush=True)
+            return state
+        activation=remote_code+f"\nprint(activate({str(target)!r}, {stage!r}, {remote_state!r}, {fingerprint!r}, {version!r}, '/www/server/panel/vhost/nginx/' + {target.name!r} + '.conf'))\n"
+        result=tat(a.instance,a.instance_region,python_script(activation),timeout=900).strip()
+        if result != 'complete':raise RuntimeError('远程发布尚未完成：'+result)
+        state['activation']=result;state['status']='complete';save();print(result,flush=True)
+        return state
     for row in volumes:
         name=row['name'];file=root/name
         if file.stat().st_size!=row['bytes']:raise ValueError('本地分卷大小变更：'+name)
         key=a.prefix.rstrip('/')+'/'+name
         if a.mode in ('all','upload'):
             if state['uploaded'].get(name)!=row['sha256']:
+                if sha256_file(file)!=row['sha256']:raise ValueError('本地分卷 SHA-256 不符：'+name)
                 cli(['cos','upload','--region',a.region,'--bucket',a.bucket,'--local_path',str(file),'--cos_key',key,'--meta','sha256='+row['sha256'],'--thread_num','4','--part_size','8','--retry','3'])
             head=cos(a.region).head_object(Bucket=a.bucket,Key=key)
             if int(head['Content-Length'])!=row['bytes'] or head.get('x-cos-meta-sha256')!=row['sha256']:raise RuntimeError('COS分卷校验不符：'+name)
@@ -123,41 +142,10 @@ print('validated',{manifest['songs']},{manifest['charts']})
 '''
     state['validation']=tat(a.instance,a.instance_region,python_script(validation)).strip();save();print(state['validation'],flush=True)
     if not a.activate:print('暂存验证完成；显式加 --activate 才切换并删除旧站点',flush=True);return state
-    # All content work is done before the explicitly requested replacement.
-    activation=f'''
-import pathlib,os,shutil,subprocess,json
-target=pathlib.Path({str(target)!r});stage=pathlib.Path({stage!r});old=target.with_name('.'+target.name+'-retired-'+{version!r})
-conf=pathlib.Path('/www/server/panel/vhost/nginx/'+target.name+'.conf');backup=conf.with_name(conf.name+'.before-unified-'+{version!r})
-assert not old.exists() and not target.is_symlink()
-original=conf.read_text();backup.write_text(original)
-if 'location /songs/' not in original:
- pos=original.find('    location /media/ {{');end=original.find(chr(10)+'    }}',pos)
- assert pos>=0 and end>pos
- block=original[pos:end+6].replace('location /media/','location /songs/',1)+chr(10)*2
- conf.write_text(original[:pos]+block+original[pos:])
-try:
- subprocess.run(['/www/server/nginx/sbin/nginx','-t'],check=True,capture_output=True)
- if (target/'.well-known').exists():shutil.copytree(target/'.well-known',stage/'.well-known',dirs_exist_ok=True)
- subprocess.run(['chown','-R','www:www',str(stage)],check=True)
- target.rename(old);stage.rename(target)
- subprocess.run(['/www/server/nginx/sbin/nginx','-s','reload'],check=True,capture_output=True)
- data=subprocess.check_output(['curl','-fsS','--resolve',target.name+':443:127.0.0.1','https://'+target.name+'/data/library.json'])
- assert json.loads(data)['format']=='jubeat-directory-v1'
-except BaseException:
- conf.write_text(original)
- if old.exists():
-  if target.exists():target.rename(stage)
-  old.rename(target)
- subprocess.run(['/www/server/nginx/sbin/nginx','-s','reload'],capture_output=True)
- raise
-# aaPanel may mark this retired control file immutable. Only clear the
-# attribute on the retired copy after the new site has passed its checks.
-user_ini=old/'.user.ini'
-if user_ini.is_file():subprocess.run(['chattr','-i',str(user_ini)],check=True,capture_output=True)
-shutil.rmtree(old)
-print('activated; old website resources removed')
-'''
-    state['activation']=tat(a.instance,a.instance_region,python_script(activation),timeout=900).strip();state['status']='complete';save();print(state['activation'],flush=True)
+    activation=remote_code+f"\nprint(activate({str(target)!r}, {stage!r}, {remote_state!r}, {fingerprint!r}, {version!r}, '/www/server/panel/vhost/nginx/' + {target.name!r} + '.conf'))\n"
+    result=tat(a.instance,a.instance_region,python_script(activation),timeout=900).strip()
+    if result != 'complete':raise RuntimeError('远程发布尚未完成：'+result)
+    state['activation']=result;state['status']='complete';save();print(result,flush=True)
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)

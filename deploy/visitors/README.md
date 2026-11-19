@@ -46,3 +46,8 @@ php maintenance.php --root /srv/jubeat/.visitor-private --retention-days 90 --ap
 `maintenance.sh flush` 等价于 `php maintenance.php --root <dir> --flush`，不触发保留策略、备份和报表。`--flush` 单次最多导出 100 批 × 50 行（5000 条）；积压更多时连跑几次。
 
 测试：`python3 tools/test_visitors_http.py --php /path/to/php`；`node --test tools/test_visitors.mjs`。HTTP 测试使用临时站点与合成数据，不写真实访客记录。注意接口现在不再同步导出日志、聚合结果有 45 秒缓存，所以行程测试必须设 `VISITOR_STATS_CACHE_TTL=0`（否则断言热门榜/今日访客立刻变化会失败），并在检查 `visits-*.log` 之前显式跑一次 `php maintenance.php --root <tmp> --flush`。
+
+新事件保存设备、浏览器和机器人分类。IP 仅用于请求限流，新事件没有地理信息。
+报表仍可读取旧事件上的 IP 和 UA，旧数据随现有保留机制到期。每日维护默认保留
+90 天事件和 7 份备份，可通过 `VISITOR_STATS_RETENTION_DAYS` 和
+`VISITOR_STATS_BACKUP_KEEP` 调整。另行归档的备份需要单独核对保留期限。

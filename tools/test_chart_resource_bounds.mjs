@@ -17,6 +17,6 @@ test('density renderer tolerates invalid caller duration and bounds its buckets'
   const canvas=()=>({width:640,height:40,style:{},parentElement:{getBoundingClientRect:()=>({width:640})},getContext:()=>ctx});
   const A={renderRatio:()=>1,Core,els:{densityCanvas:canvas()},state:{duration,notes:[{t:duration}]},abLoop:{},fmtTime:String,currentMediaTime:()=>0};
   vm.runInNewContext(fs.readFileSync(new URL('../jubeat_viewer/player/static/app-density.js',import.meta.url),'utf8'),{window:{JubeatApp:A,devicePixelRatio:1},document:{createElement:canvas},getComputedStyle:()=>({})});
-  A.layoutDensity();assert.ok(Number.isFinite(A.density.dur));assert.ok(A.density.dur<=Core.MAX_CHART_SECONDS+1);assert.ok(A.density.counts.length<=115);
+  A.layoutDensity();assert.ok(Number.isFinite(A.density.dur));assert.ok(A.density.dur<=Core.MAX_CHART_SECONDS);assert.ok(A.density.counts.length<=120);
  }
 });

@@ -24,10 +24,12 @@ def inspect(base):
     check('HSTS',bool(headers.get('strict-transport-security')))
     check('nosniff',headers.get('x-content-type-options')=='nosniff')
     check('HTML revalidation',any(x in headers.get('cache-control','') for x in ['no-cache','no-store','must-revalidate']))
-    match=re.search(rb'src="(static/[^"?]+\.[a-f0-9]{20}\.js)(?:\?[^\"]*)?"',html)
-    check('hashed frontend',match is not None)
-    if match:
-        status,asset,_=request(match[1].decode(),'HEAD');check('immutable frontend',status==200 and 'immutable' in asset.get('cache-control',''))
+    assets=set(re.findall(rb'(?:src|href)="(static/[^"?]+\.(?:[a-f0-9]{20}|[a-f0-9]{64})\.(?:js|css))(?:\?[^"]*)?"',html))
+    check('hashed frontend',bool(assets))
+    for relative in sorted(assets):
+        path=relative.decode()
+        status,asset,_=request(path,'HEAD')
+        check('immutable frontend '+path,status==200 and 'immutable' in asset.get('cache-control',''))
     status,_,body=request('static/release.json')
     check('small release metadata',status==200 and len(body)<4096 and isinstance(json.loads(body).get('version'),str))
     # .asset-history.json / .build-sources.json leak every published file hash and the

@@ -43,14 +43,19 @@ def valid_webm(path: Path) -> bool:
         return False
 
 
+def is_cached(source: Path) -> bool:
+    destination = source.with_suffix(".webm")
+    return (
+        destination.is_file()
+        and destination.stat().st_mtime_ns >= source.stat().st_mtime_ns
+        and valid_webm(destination)
+    )
+
+
 def build_one(source: Path) -> tuple[Path, str]:
     destination = source.with_suffix(".webm")
     stat = source.stat()
-    if (
-        destination.is_file()
-        and destination.stat().st_mtime_ns >= stat.st_mtime_ns
-        and valid_webm(destination)
-    ):
+    if is_cached(source):
         return destination, "cached"
 
     fd, temporary_name = tempfile.mkstemp(
@@ -99,17 +104,21 @@ def main() -> int:
     if not sources:
         parser.error(f"no .ogg files under {root}")
 
-    required = sum(path.stat().st_size for path in sources)
+    pending = [path for path in sources if not is_cached(path)]
+    required = sum(path.stat().st_size for path in pending)
     free = shutil.disk_usage(root).free
     if args.dry_run:
         print(json.dumps({
             "sources": len(sources),
+            "cached": len(sources) - len(pending),
+            "pending": len(pending),
             "source_bytes": required,
+            "required_bytes": required + MIN_FREE_BYTES if pending else 0,
             "free_bytes": free,
             "workers": max(1, args.jobs),
         }, ensure_ascii=False, indent=2))
         return 0
-    if free < required + MIN_FREE_BYTES:
+    if pending and free < required + MIN_FREE_BYTES:
         parser.error("not enough free space for compatibility copies plus 1 GiB reserve")
 
     failures: list[tuple[str, str]] = []

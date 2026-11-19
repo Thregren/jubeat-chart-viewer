@@ -39,14 +39,19 @@ def valid_caf(path: Path) -> bool:
         return False
 
 
+def is_cached(source: Path) -> bool:
+    destination = source.with_suffix(".caf")
+    return (
+        destination.is_file()
+        and destination.stat().st_mtime_ns >= source.stat().st_mtime_ns
+        and valid_caf(destination)
+    )
+
+
 def build_one(source: Path) -> tuple[Path, str]:
     destination = source.with_suffix(".caf")
     stat = source.stat()
-    if (
-        destination.is_file()
-        and destination.stat().st_mtime_ns >= stat.st_mtime_ns
-        and valid_caf(destination)
-    ):
+    if is_cached(source):
         return destination, "cached"
 
     fd, temporary_name = tempfile.mkstemp(
@@ -97,18 +102,22 @@ def main() -> int:
     if not sources:
         parser.error(f"no .ogg files under {root}")
 
-    required = sum(path.stat().st_size for path in sources)
+    pending = [path for path in sources if not is_cached(path)]
+    required = sum(path.stat().st_size for path in pending)
     free = shutil.disk_usage(root).free
     if args.dry_run:
         print(json.dumps({
             "sources": len(sources),
+            "cached": len(sources) - len(pending),
+            "pending": len(pending),
             "source_bytes": required,
+            "required_bytes": required + MIN_FREE_BYTES if pending else 0,
             "free_bytes": free,
             "workers": max(1, args.jobs),
             "profile": "caf/opus/80k/cbr/60ms",
         }, ensure_ascii=False, indent=2))
         return 0
-    if free < required + MIN_FREE_BYTES:
+    if pending and free < required + MIN_FREE_BYTES:
         parser.error("not enough free space for CAF copies plus 1 GiB reserve")
 
     failures: list[tuple[str, str]] = []

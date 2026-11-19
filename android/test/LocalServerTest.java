@@ -21,6 +21,18 @@ public final class LocalServerTest {
   return response(url,base,headers).split("\r\n",2)[0];
  }
  public static void main(String[] args) throws Exception {
+  ByteArrayOutputStream errors=new ByteArrayOutputStream();
+  PrintStream oldErr=System.err;
+  try {
+   System.setErr(new PrintStream(errors,true,"UTF-8"));
+   LocalServer.reportConnectionError(new SocketException("Connection reset"));
+   if(errors.size()!=0)throw new AssertionError("expected disconnect was logged");
+   LocalServer.reportConnectionError(new IllegalStateException("unexpected fixture error"));
+   int firstSize=errors.size();
+   if(firstSize==0)throw new AssertionError("unexpected exception was not logged");
+   LocalServer.reportConnectionError(new IllegalStateException("repeated fixture error"));
+   if(errors.size()!=firstSize)throw new AssertionError("exception logging was not rate limited");
+  } finally {System.setErr(oldErr);}
   Path root=Files.createTempDirectory("jubeat-local-server-");Files.write(root.resolve("index.html"),"ok".getBytes("UTF-8"));
   Path markdown=root.resolve("data/background/story.md");Files.createDirectories(markdown.getParent());Files.write(markdown,"# story".getBytes("UTF-8"));
   Path outside=Files.createTempFile("jubeat-external-", ".txt");Files.write(outside,"private".getBytes("UTF-8"));

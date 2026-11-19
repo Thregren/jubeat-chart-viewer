@@ -67,8 +67,7 @@ function visitor_db(string $root): PDO {
                         if (!is_array($entry)||($entry['event']??null)!=='song'
                             ||!is_string($entry['song']??null)||!is_string($entry['title']??null)
                             ||!is_string($entry['chart']??null)) continue;
-                        $ua=strtolower((string)($entry['ua']??''));
-                        $bot=preg_match('/headlesschrome|bot\\b|spider|crawler|playwright|puppeteer|jubeatdeploymentcheck|jubeatstatsqa|statsqa|python-requests|python-urllib|curl\\//', $ua) ? 1 : 0;
+                        $bot=isset($entry['bot'])?(int)$entry['bot']:visitor_is_bot((string)($entry['ua']??''));
                         $insert->execute([$row['id'],$row['at'],$entry['song'],$entry['title'],$entry['chart'],$bot]);
                     }
                 }
@@ -150,6 +149,28 @@ function visitor_secret(string $root): string {
     if (!is_string($secret)||!preg_match('/^[a-f0-9]{64}$/D',$secret)) throw new RuntimeException('Invalid secret');
     return $secret;
 }
+function visitor_is_bot(string $ua): int {
+    return (int)preg_match('/headlesschrome|bot\b|spider|crawler|playwright|puppeteer|jubeatdeploymentcheck|jubeatstatsqa|statsqa|python-requests|python-urllib|curl\//i',$ua);
+}
+
+function visitor_client_categories(string $ua): array {
+    $device=match(true) {
+        (bool)preg_match('/iPad|Tablet/i',$ua), str_contains($ua,'Android')&&!str_contains($ua,'Mobile') => '平板',
+        (bool)preg_match('/iPhone|iPod|Android|Mobile/i',$ua) => '手机',
+        (bool)preg_match('/Windows|Macintosh|X11|Linux/i',$ua) => '电脑',
+        default => '未知',
+    };
+    $browser=match(true) {
+        str_contains($ua,'MicroMessenger') => '微信内置',
+        (bool)preg_match('~Edg/|EdgA/|EdgiOS/~',$ua) => 'Edge',
+        (bool)preg_match('~Chrome/|CriOS/~',$ua) => 'Chrome/Chromium',
+        (bool)preg_match('~Firefox/|FxiOS/~',$ua) => 'Firefox',
+        str_contains($ua,'Safari/') => 'Safari',
+        default => '其他/未知',
+    };
+    return ['device'=>$device,'browser'=>$browser];
+}
+
 function visitor_admit(PDO $db,string $ip,int $now): bool {
     $bucket=intdiv($now,60);$key=hash('sha256',$ip);
     // Reserve the quota before catalog reads; rejected song names must not bypass it.

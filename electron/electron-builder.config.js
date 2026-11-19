@@ -50,7 +50,7 @@ module.exports = {
   appId: "com.thregren.jubeat.viewer",
   productName: "jubeatViewer",
   directories: { output: "dist", buildResources: "build" },
-  files: ["main.js", "site-server.js", "preload.js", "preferences.js", "library-import.js", "package.json"],
+  files: ["main.js", "site-server.js", "preload.js", "preferences.js", "library-import.js", "frontend-staging.js", "package.json"],
   extraResources,
   beforePack: preparePortable,
   afterAllArtifactBuild: async () => { cleanPortable(); return []; },

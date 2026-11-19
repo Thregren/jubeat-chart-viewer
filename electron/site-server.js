@@ -175,8 +175,9 @@ function sendFile(req, res, target, headers, code, opts = null) {
 }
 
 /** 启动静态服务，返回 { url, close } */
-function serve(rootDir) {
+function serve(rootDir, options = {}) {
   const root = fs.realpathSync(rootDir);
+  const frontend = options.frontend ? fs.realpathSync(options.frontend) : null;
   const connections = new Set();
   const server = http.createServer((req, res) => {
     const expectedHost = `127.0.0.1:${server.address().port}`;
@@ -198,11 +199,15 @@ function serve(rootDir) {
     // its callback; reject it before any filesystem operation.
     if (rel.includes("\0")) return fail(res, 400, "bad request");
     if (rel === "/" || rel === "") rel = "/index.html";
-    const target = resolveSafe(root, rel);
+    const useFrontend = frontend && (rel === '/index.html' ||
+      (rel.startsWith('/static/') && !rel.slice(8).includes('/') &&
+       fs.existsSync(path.join(frontend, rel))));
+    const activeRoot = useFrontend ? frontend : root;
+    const target = resolveSafe(activeRoot, rel);
     if (!target) return fail(res, 403, "forbidden");
     fs.realpath(target, (pathError, resolved) => {
       if (pathError) return fail(res, 404, "404");
-      const relative = path.relative(root, resolved);
+      const relative = path.relative(activeRoot, resolved);
       if (relative.startsWith("..") || path.isAbsolute(relative)) return fail(res, 403, "forbidden");
     fs.stat(resolved, (err, stat) => {
       if (err || !stat.isFile()) return fail(res, 404, "404");

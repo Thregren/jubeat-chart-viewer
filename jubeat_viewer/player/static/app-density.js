@@ -50,6 +50,12 @@
   // 长押和普通 note 用同一个颜色（用户定的），长押靠「头尾各多一格」来认。
   const TILE = { edge: "#8f6c05", face: "#ffd94a" };
   const PENDING_TILE = { edge: "#424957", face: "#89919e" };
+  const REPLAY_TILES = {
+    PERFECT: TILE,
+    NON_PERFECT: { edge: "#145e9c", face: "#5ab7ff" },
+    MISS: { edge: "#384353", face: "#6b7789" },
+  };
+  let paintedReplayColumns = null;
   let countedNotes = null, countedCounts = null, countedDuration = NaN, countedExact = null;
 
   // 窄屏按可用宽度缩小列距，保证左右两端的柱子都能显示。
@@ -192,7 +198,7 @@
     drawDensity();
   }
 
-  function drawDensityBase() {
+  function drawDensityBase(replayColumns) {
     const base = density.base;
     if (!base || !density.rect) return false;
     const ctx2 = base.getContext("2d");
@@ -226,12 +232,12 @@
     playedCtx.clearRect(0, 0, base.width, base.height);
     playedCtx.drawImage(base, 0, 0);
     playedCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawDensityBlocks(playedCtx, TILE);
+    drawDensityBlocks(playedCtx, TILE, replayColumns);
     density.baseReady = true;
     return true;
   }
 
-  function drawDensityBlocks(ctx2, palette) {
+  function drawDensityBlocks(ctx2, palette, replayColumns = null) {
     const pitch = density.pitch;
     const block = pitch * TILE_COVERAGE;
     const bevel = block >= 4;
@@ -243,15 +249,32 @@
       const c = Math.min(density.counts[i] || 0, VISIBLE_ROWS);
       if (!c) continue;
       const x = ox + i * pitch;
+      const tile = replayColumns ? REPLAY_TILES[replayColumns[i].grade] : palette;
       for (let r = 0; r < c; r++) {
         const y = baseY - r * pitch - block;
-        ctx2.fillStyle = palette.edge;
+        ctx2.fillStyle = tile.edge;
         ctx2.fillRect(x, y, block, block);
         if (bevel) {
-          ctx2.fillStyle = palette.face;
+          ctx2.fillStyle = tile.face;
           ctx2.fillRect(x + 1, y + 1, block - 2, block - 2);
         }
       }
+    }
+  }
+
+  function drawReplayDensity(ctx2, columns, now, height) {
+    const edge = col => Math.round((density.graphX + col * density.pitch) * density.dpr);
+    // Copy whole contiguous groups of judged columns from the cached grade layer.
+    for (let col = 0; col < columns.length;) {
+      if (now < columns[col].revealAt) {
+        col++;
+        continue;
+      }
+      const start = col++;
+      while (col < columns.length && now >= columns[col].revealAt) col++;
+      const x = edge(start);
+      const width = edge(col) - x;
+      if (width > 0) ctx2.drawImage(density.played, x, 0, width, height, x, 0, width, height);
     }
   }
 
@@ -260,7 +283,12 @@
     if (!cv || !density.rect) return;
     const ctx2 = cv.getContext("2d");
     if (!ctx2) return;
-    if (!density.baseReady && !drawDensityBase()) return;
+    const replayColumns = density.placeholder
+      ? null : A.matchReplay?.forChart()?.densityColumns(density) ?? null;
+    if (!density.baseReady || paintedReplayColumns !== replayColumns) {
+      if (!drawDensityBase(replayColumns)) return;
+      paintedReplayColumns = replayColumns;
+    }
 
     const { w, h } = density.rect;
     const dpr = density.dpr;
@@ -278,7 +306,11 @@
     const xOf = (sec) => x0 + (Math.max(0, Math.min(dur, sec)) / dur) * graphW;
     const px = xOf(now);
     const playedWidth = Math.max(0, Math.min(cv.width, px * dpr));
-    if (playedWidth > 0 && density.played) {
+    if (replayColumns && density.played) {
+      ctx2.setTransform(1, 0, 0, 1, 0, 0);
+      drawReplayDensity(ctx2, replayColumns, now, cv.height);
+      ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    } else if (playedWidth > 0 && density.played) {
       ctx2.setTransform(1, 0, 0, 1, 0, 0);
       ctx2.drawImage(density.played, 0, 0, playedWidth, cv.height, 0, 0, playedWidth, cv.height);
       ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);

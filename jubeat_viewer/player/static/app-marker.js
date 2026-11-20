@@ -1640,7 +1640,9 @@
     if(A.mode?.ownsFrame&&A.mode.draw?.(chartT))return;
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
-    drawComboOverlay();     // 连击在 marker 下面：marker 会压住它（和游戏一致）
+    const replay = A.matchReplay?.forChart();
+    const replayCombo = replay?.updateProgress(chartT);
+    drawComboOverlay(replayCombo ?? state.combo);     // 连击在 marker 下面：marker 会压住它（和游戏一致）
     // 长押（官方「会移动的箭头」）画在 marker 下面：它不属于任何一张 marker 素材，
     // 就算设成「无（仅面板灯）」也要画，所以放在 design 的早退之前。
     drawHoldArrows(chartT);
@@ -1648,11 +1650,13 @@
     const design = markerCfg.design;
     if (!design || !state.notes.length) {
       drawHoldCountdowns(chartT);
+      replay?.paint(chartT, ctx);
       return;
     }
     const tier = tierOf(design, 4);            // PERFECT 档；缺档自动回落最高可用档
     if (!tier) {
       drawHoldCountdowns(chartT);
+      replay?.paint(chartT, ctx);
       return;
     }
     const maFrames = Math.max(1, Number(design.ma) || 0);
@@ -1675,13 +1679,18 @@
     // 数字是压在按键动画之上的覆盖层。挤在同一趟循环里先画的话，后面那些 marker
     // 会把先画的数字盖掉（同押的时候尤其明显）。
 
-    for (const n of markerNotesInWindow(chartT - lateSec, chartT - earlySec, holdBack)) {
+    // A recorded hit can move the start of the judgment animation off the chart beat.
+    const replayShift = replay ? replay.maxShift : 0;
+    for (const n of markerNotesInWindow(chartT - lateSec - replayShift, chartT - Math.min(earlySec, -replayShift), holdBack)) {
       const rect = state.padRects[n.index];
       if (!rect) continue;
       // 长押在松开（endT）那一瞬重播一次同一套命中动画：把 endT 当成新的 0 点
       const dur = n.kind === "hold" && n.endT != null ? n.endT - n.t : null;
       const rel = chartT - n.t;
-      const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / animationRate;
+      let u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / animationRate;
+      const hit = replay?.record(n);
+      const hasJudgment = hit && chartT >= hit.eventTime;
+      if (hasJudgment) u = ((chartT - hit.eventTime) * 1000) / animationRate;
 
       // 默认从接近动画的第一帧显示；开启开关后使用拍点前 0.10s 规则。
       // 长押期间持续显示；数字略早于尾判动画结束，高亮仍维持原来的完整周期。
@@ -1702,6 +1711,8 @@
         number[4] = showNumber;
       }
 
+      if (hasJudgment && !hit.tier) continue;
+      if (hit && !hasJudgment && u >= 0) u = -0.001;
       if (u < early || u >= late) continue;
       const count = counts.get(n.index) || 0;
       // v0.6.56: 同屏上限原本按 1× 的窗口宽度定死为 6。开「Marker 原速」后
@@ -1719,10 +1730,12 @@
         frame = Math.min(maFrames - 1, Math.floor((u - early) / maPer));
         if (frame < 0) continue;
       } else {
-        channel = `H${tier}`;
-        total = hFrames;
-        frame = Math.floor(u / hPer);
-        if (frame >= hFrames) continue;
+        const hitTier = hasJudgment ? tierOf(design, hit.tier) : tier;
+        channel = `H${hitTier}`;
+        total = hasJudgment ? Math.max(1, Number(design.h?.[hitTier]) || 0) : hFrames;
+        const frameMs = timing.burstMs ? timing.burstMs / total : hPer;
+        frame = Math.floor(u / frameMs);
+        if (frame >= total) continue;
       }
 
       counts.set(n.index, count + 1);
@@ -1741,6 +1754,7 @@
       const [n, rect, opacity, allowChord, allowNumber] = numbers[i];
       drawOrderNumber(n, rect, opacity, undefined, allowChord, allowNumber);
     }
+    replay?.paint(chartT, ctx);
   }
 
   /** 首批落点预告：与同押 frame 共用颜色、粗细、内缩和圆角。 */
@@ -1812,9 +1826,9 @@
   }
 
   /** 总连击：半透明大字，压在面板正中（对应「总连击」开关） */
-  function drawComboOverlay() {
+  function drawComboOverlay(combo) {
     if (!els.showCombo || !els.showCombo.checked) return;
-    if (!state.combo) return;
+    if (!combo) return;
     const size = Math.min(canvasW, canvasH) * 0.46;   // 只在布局变化时才会变
     if (size < 20) return;
     ctx.save();
@@ -1823,7 +1837,7 @@
     ctx.textBaseline = "middle";
     ctx.globalAlpha = 0.38;
     ctx.fillStyle = "#dbe3ef";
-    ctx.fillText(String(state.combo), canvasW / 2, canvasH / 2);
+    ctx.fillText(String(combo), canvasW / 2, canvasH / 2);
     ctx.restore();
   }
 

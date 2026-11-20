@@ -4,7 +4,7 @@
 
 **[在线使用](https://ub.thregren.world/)** · **[下载轻量客户端](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.1)** · **[完整曲库与客户端网盘下载](https://pan.quark.cn/s/e9c12157e039)**
 
-当前源码版本：**[v0.7.11](docs/release-v0.7.11.md)**（仅源码发布）。
+当前源码版本：**[v0.7.12](docs/release-v0.7.12.md)**（仅源码发布）。
 
 ## 主要功能
 
@@ -37,7 +37,7 @@
 
 **[v0.7.1 Release](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.1)** 提供不含曲库的轻量客户端和校验文件；**[夸克网盘](https://pan.quark.cn/s/e9c12157e039)** 提供客户端和独立完整曲库。
 
-[v0.7.11](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.11) 是**源码发布**，只附源码包（`Source code (zip／tar.gz)`），不含客户端安装包；轻量客户端与曲库包仍以下载表中 v0.7.1 的产物为准。
+[v0.7.12](https://github.com/Thregren/jubeat-chart-viewer/releases/tag/v0.7.12) 是**源码发布**，提供源码包（`Source code (zip／tar.gz)`）。轻量客户端与曲库包见下方下载表。
 
 | 平台 | 下载 |
 |---|---|
@@ -60,6 +60,11 @@ macOS 程序未做商业签名，首次打开可在 Finder 中右键「打开」
 更多安装方法见 [客户端与压缩曲库](docs/压缩曲库与客户端.md)，曲库范围和按版本安装见 [目录曲库说明](docs/目录曲库.md)。
 
 ## 最近更新
+
+**v0.7.12 · 网页游玩回看与精简回放**
+
+- 导入 OFT8 后自动匹配歌曲和难度，回看每个 marker 的判定与偏差，并在播放和拖动进度时显示分数和连击。
+- 导出精简回放，也可从同一入口重新导入。详见 [v0.7.12 发布说明](docs/release-v0.7.12.md)。
 
 **v0.7.11 · 能力图拟合与手机节奏轴压缩**
 

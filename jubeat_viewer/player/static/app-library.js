@@ -539,6 +539,17 @@
   const chartCacheGet = key => catalog.get(key);
   const chartCachePut = (key, payload) => catalog.put(key, payload);
 
+  async function readChartPayload(song, chart, signal) {
+    const key = `${song.id}::${chart.code}`;
+    const cached = chartCacheGet(key);
+    if (cached) return cached;
+    const res = await fetch(chartPath(song, chart), { signal });
+    if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
+    const buf = await Runtime.readBytes(res, 8 * 1024 * 1024);
+    const chartData = Runtime.validateChart(JSON.parse(new TextDecoder().decode(buf)));
+    return { chart: chartData, chartMeta: chart, bytes: buf.byteLength };
+  }
+
   async function loadChart(code) {
     A.mode?.chartChanging?.();
     if (!state.song) return;
@@ -563,18 +574,9 @@
     A.updateLoadMeter();
     let chartReady = false;
     try {
-      let payload = chartCacheGet(key);
-      const cached = !!payload;
-      if (!payload) {
-        const res = await fetch(chartPath(song, chart), { signal: request.signal });
-        if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
-        // 直接读字节以拿到真实 byteLength，挂到 payload.bytes：CatalogStore.put
-        // 据此记账，不必再 JSON.stringify(value.chart) 全量序列化一遍。
-        const buf = await Runtime.readBytes(res, 8 * 1024 * 1024);
-        const chartData = Runtime.validateChart(JSON.parse(new TextDecoder().decode(buf)));
-        payload = { chart: chartData, chartMeta: chart, bytes: buf.byteLength };
-        if (!chartRequests.current(request) || state.song !== song) return;
-      }
+      const cachedPayload = chartCacheGet(key);
+      const cached = !!cachedPayload;
+      const payload = cachedPayload || await readChartPayload(song, chart, request.signal);
       // 加载期间可能已切歌 / 又发起了一次加载：请求不再是当前请求、或 state.song
       // 已变，就丢弃这次结果，避免旧谱面覆盖新选择。
       if (!chartRequests.current(request) || state.song !== song) return;
@@ -781,6 +783,7 @@
     hasHold,
     renderList,
     selectSong,
+    readChartPayload,
     loadChart,
     rebuildVisualState,
   });

@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),Runtime=require('../jubeat_viewer/player/static/runtime.js'),Core=require('../jubeat_viewer/player/static/core.js');
 const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-library.js',import.meta.url),'utf8');
-const functions=source.slice(source.indexOf('  async function loadChart'),source.indexOf('  /** Rebuild note/pad visual state'));
+const functions=source.slice(source.indexOf('  async function readChartPayload'),source.indexOf('  /** Rebuild note/pad visual state'));
 function fixture(fetch,parseNotes=Core.cachedChartParser()) {
   let paints=0,densityBuilds=0,parseCalls=0;
   const element=()=>({textContent:'old',dataset:{},classList:{remove(){},toggle(){}},setAttribute(){}});

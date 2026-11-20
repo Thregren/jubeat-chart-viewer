@@ -128,9 +128,9 @@
       applyMapping(mapReplay(sample, nativeNotes));
     }
     const active = chartReady && selected && Boolean(records);
-    const hidden = !chartReady;
     const label = active ? '游玩回看（试验）'
       : chartReady && selected && sample ? '此谱面与游玩记录无法对齐' : '';
+    const hidden = !label;
     if (status.textContent !== label) status.textContent = label;
     if (status.hidden === Boolean(label)) status.hidden = !label;
     if (open.disabled === active) {
@@ -339,7 +339,6 @@
   });
 
   document.querySelector('#welcome-import-oft').addEventListener('click', showImporter);
-  document.querySelector('#match-replay-import').addEventListener('click', showImporter);
   importDialog.querySelector('.match-replay-close').addEventListener('click', () => importDialog.close());
   importDialog.addEventListener('keydown', event => event.stopPropagation());
   importDialog.addEventListener('close', () => {

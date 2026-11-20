@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import '../jubeat_viewer/player/static/parse-oft.js';
 
 const { parseOftReplay, encodeCompactReplay } = globalThis;
@@ -49,4 +49,21 @@ test('compact replay rejects missing score snapshots or oversized data', async (
   await assert.rejects(parseOftReplay(new Blob([unmatched])), /精简回放格式无效/);
   const oversized = gzipSync('JBR1\n' + ' '.repeat(2 * 1024 * 1024));
   await assert.rejects(parseOftReplay(new Blob([oversized])), /超过 2 MiB/);
+});
+
+test('JBR2 preserves the chart hint without changing any replay data', async () => {
+  const original = await parseOftReplay(new Blob([makeOft()]));
+  const chartHint = { song: 'jubeat-copious/首次收录/arcade_40000045', code: 'EXT' };
+  const file = await encodeCompactReplay(original, chartHint);
+  const bytes = gunzipSync(Buffer.from(await file.blob.arrayBuffer()));
+  assert.equal(bytes.toString('ascii', 0, 5), 'JBR2\n');
+  for (const blob of [file.blob, new Blob([bytes])]) {
+    assert.deepEqual(await parseOftReplay(blob), { ...original, chartHint });
+  }
+
+  const rows = JSON.parse(bytes.subarray(5));
+  for (const hint of [undefined, null, ['', 'EXT'], ['x'.repeat(1025), 'EXT']]) {
+    const data = hint === undefined ? rows.slice(0, 3) : [...rows.slice(0, 3), hint];
+    assert.deepEqual(await parseOftReplay(new Blob(['JBR2\n', JSON.stringify(data)])), original);
+  }
 });

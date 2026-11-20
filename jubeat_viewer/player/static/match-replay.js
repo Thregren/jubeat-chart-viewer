@@ -290,6 +290,7 @@
   }
 
   function showImporter() {
+    search?.abort();
     if (A.state.playing) A.pause();
     importMessage.textContent = '';
     importMatches.replaceChildren();
@@ -320,7 +321,7 @@
     exportMessage.textContent = '';
     exportButton.setAttribute('aria-busy', 'true');
     try {
-      const { blob, suffix } = await window.encodeCompactReplay(data);
+      const { blob, suffix } = await window.encodeCompactReplay(data, selection);
       const name = (title + ' - ' + code).replace(/[\\/:*?"<>|]/g, '_').slice(0, 100);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -346,18 +347,37 @@
   });
 
   async function findMatches(data, signal) {
-    const library = await window.__player.ready;
-    signal.throwIfAborted();
-    if (!library) throw new Error('曲库载入失败，请刷新页面后重试。');
+    const playableSong = song => song && !song.resourceOnly && A.audioUrl(song);
+    const candidateChart = chart => chart.playable !== false && chart.notesKnown !== false &&
+      chart.notes === data.notes.length && !(chart.holds > 0);
+
+    // Treat the file's identifiers as a hint into the current catalog only.
+    const hint = data.chartHint;
+    const hintedSong = hint && A.state.songs.find(song => song.id === hint.song);
+    const hintedChart = playableSong(hintedSong) && hintedSong.charts.find(chart =>
+      chart.code === hint.code && candidateChart(chart));
+    let checkedHint = false;
+    if (hintedChart) {
+      try {
+        const payload = await A.readChartPayload(hintedSong, hintedChart, signal);
+        signal.throwIfAborted();
+        const matches = matchNotes(data, A.parseNotes(payload.chart).notes);
+        if (matches) return [{ song: hintedSong, chart: hintedChart, payload }];
+        checkedHint = true;
+      } catch {
+        signal.throwIfAborted();
+      }
+    }
+
     const candidates = [];
     for (const song of A.state.songs) {
-      if (song.resourceOnly || !A.audioUrl(song)) continue;
+      if (!playableSong(song)) continue;
       for (const chart of song.charts) {
-        if (chart.playable === false || chart.notesKnown === false ||
-            chart.notes !== data.notes.length || chart.holds > 0) continue;
+        if (!candidateChart(chart) || (checkedHint && song === hintedSong && chart === hintedChart)) continue;
         candidates.push({ song, chart });
       }
     }
+
     const matched = [];
     let next = 0;
     let complete = 0;
@@ -371,7 +391,7 @@
         const { song, chart } = candidate;
         try {
           const payload = await A.readChartPayload(song, chart, signal);
-          if (matchNotes(data, A.parseNotes(payload.chart).notes)) matched.push(candidate);
+          if (matchNotes(data, A.parseNotes(payload.chart).notes)) matched.push({ ...candidate, payload });
         } catch (error) {
           if (signal.aborted) return;
           failed++;
@@ -385,14 +405,20 @@
     return matched;
   }
 
-  async function openMatch(data, match, signal) {
+  async function openMatch(data, match, { signal, chartRequest }) {
+    signal.throwIfAborted();
+    if (!importDialog.open) return;
+    if (A.services.catalog.chartRequests.active !== chartRequest) {
+      importMatches.replaceChildren();
+      throw new Error('当前谱面已切换，请重新导入回放。');
+    }
     importMatches.replaceChildren();
     importMessage.textContent = `正在打开 ${match.song.title} · ${match.chart.code}…`;
     A.pause();
-    await A.selectSong(match.song, match.chart.code);
+    const loaded = await A.selectSong(match.song, match.chart.code, match);
     signal.throwIfAborted();
     if (!importDialog.open) return;
-    const chart = selectedChart();
+    const chart = loaded && selectedChart();
     const mapping = chart?.song === match.song.id && chart.code === match.chart.code
       ? mapReplay(data, chart.notes) : null;
     if (!mapping) throw new Error('匹配的谱面未能打开，请重试。');
@@ -401,7 +427,8 @@
     importDialog.close();
   }
 
-  function showMatches(data, matches, signal) {
+  function showMatches(data, matches, task) {
+    const { signal } = task;
     importMessage.textContent = '有多张谱面的落点完全匹配，请选择要打开的版本。';
     const sorted = [...matches].sort((left, right) =>
       left.song.title.localeCompare(right.song.title) || left.song.id.localeCompare(right.song.id)
@@ -414,7 +441,7 @@
       button.addEventListener('click', async () => {
         fileInput.disabled = true;
         try {
-          await openMatch(data, match, signal);
+          await openMatch(data, match, task);
         } catch (error) {
           if (!signal.aborted) importMessage.textContent = error.message;
         } finally {
@@ -441,11 +468,16 @@
       signal.throwIfAborted();
       if (!importDialog.open) return;
       importMessage.textContent = '正在从曲库查找谱面…';
+      const library = await window.__player.ready;
+      signal.throwIfAborted();
+      if (!importDialog.open) return;
+      if (!library) throw new Error('曲库载入失败，请刷新页面后重试。');
+      const task = { signal, chartRequest: A.services.catalog.chartRequests.active };
       const matches = await findMatches(data, signal);
       if (!importDialog.open) return;
       if (!matches.length) throw new Error('曲库中没有与这份回放的落点和时间一致的谱面。');
-      if (matches.length === 1) await openMatch(data, matches[0], signal);
-      else showMatches(data, matches, signal);
+      if (matches.length === 1) await openMatch(data, matches[0], task);
+      else showMatches(data, matches, task);
     } catch (error) {
       if (!signal.aborted && importDialog.open) {
         importMessage.textContent = error.message || '文件解析失败。';

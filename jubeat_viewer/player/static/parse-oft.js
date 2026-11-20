@@ -5,7 +5,8 @@
   const ROW_BYTES = 72;
   const MAX_BYTES = 32 * 1024 * 1024;
   const MAX_COMPACT_BYTES = 2 * 1024 * 1024;
-  const COMPACT_MAGIC = 0x4a425231; // JBR1, followed by a newline and UTF-8 JSON.
+  const JBR1_MAGIC = 0x4a425231; // Followed by a newline and UTF-8 JSON.
+  const JBR2_MAGIC = 0x4a425232;
   const MAX_NOTES = 16384;
   const GZIP_CHUNK_BYTES = 16 * 1024;
   const PERFECT_CLOCK_OFFSET = 254;
@@ -84,7 +85,8 @@
           headerRead += count;
           if (headerRead < header.length) continue;
           chunk = chunk.subarray(count);
-          compact = new DataView(header.buffer).getUint32(0) === COMPACT_MAGIC;
+          const magic = new DataView(header.buffer).getUint32(0);
+          compact = magic === JBR1_MAGIC || magic === JBR2_MAGIC;
           if (compact) {
             payload = new Uint8Array(MAX_COMPACT_BYTES);
             payload.set(header);
@@ -284,7 +286,15 @@
     };
   }
 
-  async function encodeCompact(data) {
+  function chartHint(value) {
+    if (!Array.isArray(value) || value.length !== 2) return null;
+    const [song, code] = value;
+    if (typeof song !== 'string' || !song.length || song.length > 1024 ||
+        typeof code !== 'string' || !code.length || code.length > 64) return null;
+    return { song, code };
+  }
+
+  async function encodeCompact(data, selection) {
     // Preserve the OFT clock's 10/3 ms ticks and offsets in thirds of a millisecond.
     const tick = ms => Math.round(ms * 3 / 10);
     const notes = data.notes.map(note => [
@@ -293,7 +303,10 @@
       tick(note.judgmentMs),
     ]);
     const progress = data.progress.map(([ms, score, combo]) => [tick(ms), score, combo]);
-    const plain = new Blob(['JBR1\n', JSON.stringify([notes, progress, data.summary.maxCombo])]);
+    const rows = [notes, progress, data.summary.maxCombo];
+    const hint = [selection?.song, selection?.code];
+    if (chartHint(hint)) rows.push(hint);
+    const plain = new Blob([rows.length === 4 ? 'JBR2\n' : 'JBR1\n', JSON.stringify(rows)]);
     if (typeof CompressionStream !== 'function') return { blob: plain, suffix: '.jbr' };
     const blob = await new Response(plain.stream().pipeThrough(new CompressionStream('gzip'))).blob();
     return { blob, suffix: '.jbr.gz' };
@@ -308,7 +321,8 @@
     } catch {
       throw invalid();
     }
-    if (!Array.isArray(replay) || replay.length !== 3) throw invalid();
+    const version2 = bytes[3] === 0x32;
+    if (!Array.isArray(replay) || replay.length < 3 || replay.length > (version2 ? 4 : 3)) throw invalid();
     const [noteRows, progressRows, maxCombo] = replay;
     const inRange = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
     const validTick = value => inRange(value, -PERFECT_CLOCK_OFFSET, 0x7fffffff);
@@ -346,7 +360,10 @@
       previousJudgment = tick;
       return [tickMs(tick), score, combo];
     });
-    return { notes, progress, summary: { score: progress[progress.length - 1][1], maxCombo } };
+    const data = { notes, progress, summary: { score: progress[progress.length - 1][1], maxCombo } };
+    const hint = version2 && chartHint(replay[3]);
+    if (hint) data.chartHint = hint;
+    return data;
   }
 
   globalThis.parseOftReplay = readReplay;

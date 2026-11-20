@@ -468,7 +468,7 @@
     return li;
   }
 
-  async function selectSong(song, preferredCode = null) {
+  async function selectSong(song, preferredCode = null, matchedChart = null) {
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
     state.song = song;
@@ -525,7 +525,7 @@
       els.statTime.textContent = els.timeTotal.textContent = els.timeNow.textContent = '00:00';
       els.btnPlay.disabled = true; buildDensity(); A.requestPaint(); return;
     }
-    await loadChart(pick.code);
+    return loadChart(pick.code, matchedChart);
   }
 
   /** 按难度代号找谱面（BAS/ADV/EXT…）；兼容旧深链接里直接传 file 的写法 */
@@ -550,7 +550,7 @@
     return { chart: chartData, chartMeta: chart, bytes: buf.byteLength };
   }
 
-  async function loadChart(code) {
+  async function loadChart(code, matchedChart = null) {
     A.mode?.chartChanging?.();
     if (!state.song) return;
     const song = state.song;
@@ -561,6 +561,8 @@
     const started = performance.now();
     const picked = pickChart(song.charts, code);
     const chart = picked || { code: "EXT" };
+    const matchedPayload = matchedChart?.song === song && matchedChart.chart === picked
+      ? matchedChart.payload : null;
     els.btnShare.dataset.chart = chart.code;
     const key = `${song.id}::${chart.code}`;
     const src = audioUrl(song);
@@ -570,20 +572,19 @@
     clearAB(null);   // 换歌 / 换难度：上一首的 A–B 打在旧谱面上，直接清掉
     // 换歌的第一段等待：谱面 json + 音源首包。这时候进度条先出来，别让界面看起来是死的。
     A.audioLoad.pending = true;
-    A.audioLoad.pendingLabel = state.chartCache.has(key) ? "音频加载" : "谱面读取";
+    A.audioLoad.pendingLabel = (matchedPayload || state.chartCache.has(key)) ? "音频加载" : "谱面读取";
     A.updateLoadMeter();
     let chartReady = false;
     try {
       const cachedPayload = chartCacheGet(key);
-      const cached = !!cachedPayload;
-      const payload = cachedPayload || await readChartPayload(song, chart, request.signal);
+      const payload = matchedPayload || cachedPayload || await readChartPayload(song, chart, request.signal);
       // 加载期间可能已切歌 / 又发起了一次加载：请求不再是当前请求、或 state.song
       // 已变，就丢弃这次结果，避免旧谱面覆盖新选择。
       if (!chartRequests.current(request) || state.song !== song) return;
       A.metrics = A.metrics || {}; A.metrics.chartMs = performance.now() - started;
       const chartJson = payload.chart;
       const parsed = parseNotes(chartJson);
-      if (!cached) chartCachePut(key, payload);
+      if (payload !== cachedPayload) chartCachePut(key, payload);
       state.chartMeta = payload.chartMeta;
       state.chart = chartJson;
       state.notes = parsed.notes;
@@ -653,7 +654,7 @@
         els.btnShare.disabled = false;
         try {
           const res = await fetch(A.resourcePath(A.encPath(exactPath)), { signal: request.signal });
-          if (!res.ok) return;
+          if (!res.ok) return chartRequests.current(request) && state.song === song;
           const bytes = await Runtime.readBytes(res, 8 * 1024 * 1024);
           if (!chartRequests.current(request) || state.song !== song) return;
           payload.arcadeDensity = A.arcadeDensity(JSON.parse(new TextDecoder().decode(bytes)), parsed);
@@ -665,6 +666,7 @@
           // 精确事件读取失败时继续用已加载的兼容谱面。
         }
       }
+      return chartRequests.current(request) && state.song === song;
     } catch (err) {
       if (chartRequests.active !== request || state.song !== song || request.signal.reason?.name === "AbortError") return;
       console.error(err);

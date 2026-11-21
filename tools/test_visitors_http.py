@@ -78,7 +78,10 @@ def main():
                 assert flush('--flush').returncode==0
                 logs=list(private.glob('visits-*.log'));assert len(logs)==1
                 records=[json.loads(line) for line in logs[0].read_text().splitlines()];assert len(records)==7,records
-                song=next(x for x in records if x['event']=='song');assert song['ip']=='127.0.0.1' and song['song']=='version/song.mcz' and song['title']=='Test Song' and song['chart']=='EXT' and song['ua']=='Fixture UA\t1'
+                song=next(x for x in records if x['event']=='song')
+                assert song['song']=='version/song.mcz' and song['title']=='Test Song' and song['chart']=='EXT'
+                assert song['device']=='未知' and song['browser']=='其他/未知'
+                assert all('ip' not in record and 'ua' not in record for record in records)
                 ready=next(x for x in records if x['event']=='library_ready');assert ready['bucket']=='lt500'
                 assert all('jv_visitor' not in json.dumps(x) for x in records)
                 status,_,popular=request();assert status==200 and popular['popular_songs']==[

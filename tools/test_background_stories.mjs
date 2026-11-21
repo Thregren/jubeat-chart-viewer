@@ -316,10 +316,87 @@ serialTest("invalid external catalogs keep the built-in catalog", async t => {
 });
 
 
-test("the first-paint story index covers the complete built-in catalog", () => {
+function storyFiles() {
   const context = {window: {}};
   runInNewContext(readFileSync(new URL(
     "../jubeat_viewer/player/static/background-stories-index.js", import.meta.url), "utf8"), context);
-  assert.deepEqual(Array.from(context.window.JUBEAT_BACKGROUND_STORY_IDS).sort(),
+  return context.window.JUBEAT_BACKGROUND_STORY_FILES;
+}
+
+test("the first-paint story index covers the complete built-in catalog", () => {
+  assert.deepEqual(Object.keys(storyFiles()).sort(),
     Object.keys(builtInCatalog.records).sort());
+});
+
+serialTest("shows story loading immediately and supports retry after failure", async t => {
+  const song = {id: "arcade_11000068", title: "fallen leaves"};
+  const previousIndex = globalThis.JUBEAT_BACKGROUND_STORY_FILES;
+  t.after(() => {
+    if (previousIndex === undefined) delete globalThis.JUBEAT_BACKGROUND_STORY_FILES;
+    else globalThis.JUBEAT_BACKGROUND_STORY_FILES = previousIndex;
+  });
+  globalThis.JUBEAT_BACKGROUND_STORY_FILES = storyFiles();
+  let resolveLoad;
+  let rejectLoad;
+  const requests = [];
+  const {Stories, app, button} = installHarness(t, {
+    song,
+    withDocument: true,
+    fetchImpl: url => {
+      requests.push(url);
+      return new Promise((resolve, reject) => {
+        resolveLoad = resolve;
+        rejectLoad = reject;
+      });
+    },
+  });
+  delete globalThis.JUBEAT_BACKGROUND_STORIES;
+
+  Stories.install(app, {loadExternal: false});
+  const [open] = button.listeners.get("click");
+  const firstOpen = open();
+  const dialog = document.body.querySelector("dialog");
+  assert.equal(dialog.open, true);
+  assert.match(dialog.querySelector(".story-loading").textContent, /正在加载/);
+  rejectLoad(new Error("offline"));
+  await firstOpen;
+  assert.match(dialog.querySelector(".story-loading").textContent, /加载失败/);
+
+  dialog.close();
+  const retry = open();
+  resolveLoad({ok: true, json: async () => builtInCatalog.records[song.id]});
+  await retry;
+  assert.equal(dialog.open, true);
+  assert.equal(dialog.querySelector(".story-loading"), null);
+  assert.ok(dialog.querySelector(".story-document"));
+  dialog.close();
+  await open();
+  assert.ok(dialog.querySelector(".story-document"));
+  assert.deepEqual(requests, Array(2).fill(`static/background-story-${storyFiles()[song.id]}.json`));
+});
+
+test("each indexed story has a complete standalone payload", () => {
+  const files = storyFiles();
+  for (const [id, record] of Object.entries(builtInCatalog.records)) {
+    const file = new URL(`../jubeat_viewer/player/static/background-story-${files[id]}.json`, import.meta.url);
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), record);
+  }
+});
+
+serialTest("a complete story index skips downloading the legacy catalog", t => {
+  const previous = globalThis.JUBEAT_BACKGROUND_STORY_INDEX_COMPLETE;
+  t.after(() => {
+    if (previous === undefined) delete globalThis.JUBEAT_BACKGROUND_STORY_INDEX_COMPLETE;
+    else globalThis.JUBEAT_BACKGROUND_STORY_INDEX_COMPLETE = previous;
+  });
+  globalThis.JUBEAT_BACKGROUND_STORY_INDEX_COMPLETE = true;
+  const requests = [];
+  const {Stories, app} = installHarness(t, {
+    fetchImpl: url => {
+      requests.push(url);
+      return Promise.resolve({ok: false});
+    },
+  });
+  Stories.install(app);
+  assert.deepEqual(requests, []);
 });

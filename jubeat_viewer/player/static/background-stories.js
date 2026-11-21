@@ -13,11 +13,12 @@
   let restoreFocusOnClose=false;
   let catalogRequest=null;
   let externalCatalog=null;
-  let builtinLoaded=false;
+  const builtinRecords=new Map();
+  const builtinRequests=new Map();
   let catalogFailed=false;
 
-  const index = {records: Object.fromEntries((root.JUBEAT_BACKGROUND_STORY_IDS || [])
-    .map(id => [id, {documents: [true]}]))};
+  const index = {records: Object.fromEntries(Object.entries(root.JUBEAT_BACKGROUND_STORY_FILES||{})
+    .map(([id,file])=>[id,{id,file,documents:[true]}]))};
 
   function recordFor(song,catalog=root.JUBEAT_BACKGROUND_STORIES){
     catalog=catalog||root.JUBEAT_BACKGROUND_STORIES;
@@ -111,9 +112,7 @@
 
   function render(record,song){
     ensureDialog();
-    const title=dialog.querySelector('#storyTitle');
     const subtitle=dialog.querySelector('.story-dialog-title p');
-    title.textContent='背景故事';
     subtitle.textContent=[song?.title||record.documents[0].title,song?.artist].filter(Boolean).join(' · ');
     dialogBody.replaceChildren();
     record.documents.forEach((item,index)=>{
@@ -121,8 +120,12 @@
     });
   }
 
+  function dialogIsOpen(){
+    return !!(dialog?.open||dialog?.hasAttribute('open'));
+  }
+
   function showDialog(){
-    if(!dialog)return;
+    if(!dialog||dialogIsOpen())return;
     restoreFocusOnClose=true;
     button?.setAttribute('aria-expanded','true');
     if(typeof dialog.showModal==='function')dialog.showModal();
@@ -135,7 +138,7 @@
   function closeDialog(restoreFocus=false){
     if(!dialog)return;
     restoreFocusOnClose=restoreFocus;
-    if(!dialog.open&&!dialog.hasAttribute('open'))return;
+    if(!dialogIsOpen())return;
     if(typeof dialog.close==='function')dialog.close();
     else{
       dialog.removeAttribute('open');
@@ -149,7 +152,7 @@
     const available=!!(recordFor(activeSong)||recordFor(activeSong,index))&&!root.__recActive;
     button.hidden=!available;
     button.disabled=!available;
-    button.setAttribute('aria-expanded','false');
+    button.setAttribute('aria-expanded',String(available&&dialogIsOpen()));
     if(!available)closeDialog(false);
   }
 
@@ -158,21 +161,49 @@
     sync(song);
   }
 
+  function loadBuiltinStory({id,file}){
+    if(!builtinRequests.has(id)){
+      const url=app.resourcePath('static/background-story-'+file+'.json');
+      const request=root.fetch(url).then(response=>{
+        if(!response.ok)throw new Error('background story unavailable');
+        return response.json();
+      }).then(record=>{
+        if(!validRecord(id,record))throw new Error('background story invalid');
+        builtinRecords.set(id,record);
+      }).finally(()=>builtinRequests.delete(id));
+      builtinRequests.set(id,request);
+    }
+    return builtinRequests.get(id);
+  }
+
   async function open(){
     const song=app?.state?.song||activeSong;
-    try {
-      if (!builtinLoaded && root.JubeatLoadScript && recordFor(song,index)) {
-        await root.JubeatLoadScript('story-data');
-        builtinLoaded=true;
-        mergeExternal();
+    if(root.__recActive||dialogIsOpen())return;
+    const entry=recordFor(song,index);
+    const id=entry?.id;
+    if(!recordFor(song)&&id&&!builtinRecords.has(id)){
+      ensureDialog();
+      dialog.querySelector('.story-dialog-title p').textContent=[song?.title,song?.artist].filter(Boolean).join(' · ');
+      const status=element('p','story-copy story-loading','正在加载背景故事…');
+      status.setAttribute('role','status');
+      dialogBody.replaceChildren(status);
+      showDialog();
+
+      let loadFailed=false;
+      try{
+        await loadBuiltinStory(entry);
+      }catch(_){
+        loadFailed=true;
       }
-    } catch (_) {
-      app?.toast?.('背景故事加载失败，请重试');
-      return;
+      if(!dialogIsOpen()||dialogBody.querySelector('.story-loading')!==status||
+        song!==(app?.state?.song||activeSong)||root.__recActive)return;
+      if(loadFailed){
+        status.textContent='背景故事加载失败，请关闭弹窗后重试。';
+        return;
+      }
     }
-    if (song !== (app?.state?.song||activeSong)) return;
-    const record=recordFor(song);
-    if(!record||root.__recActive)return;
+    const record=recordFor(song)||builtinRecords.get(id);
+    if(!record)return;
     render(record,song);
     showDialog();
     app?.visitors?.event?.('background_story_open');
@@ -185,22 +216,19 @@
     if(!button)return;
     button.addEventListener('click',open);
     sync(app.state?.song||null);
-    if(options.loadExternal!==false)loadExternalCatalog();
+    if(options.loadExternal??!root.JUBEAT_BACKGROUND_STORY_INDEX_COMPLETE)loadExternalCatalog();
+  }
+
+  function validRecord(id,record){
+    return !!(id&&record&&record.id===id&&Array.isArray(record.documents)&&record.documents.length&&
+      record.documents.every(item=>Array.isArray(item?.sections)&&
+        item.sections.every(section=>typeof section?.title==='string'&&typeof section.text==='string')));
   }
 
   function validCatalog(catalog){
     if(!catalog||typeof catalog!=='object'||catalog.schemaVersion!==2)return false;
     if(!catalog.records||typeof catalog.records!=='object'||Array.isArray(catalog.records))return false;
-    for(const [id,record] of Object.entries(catalog.records)){
-      if(!id||!record||typeof record!=='object'||record.id!==id||!Array.isArray(record.documents)||!record.documents.length)return false;
-      for(const item of record.documents){
-        if(!item||typeof item!=='object'||!Array.isArray(item.sections))return false;
-        for(const section of item.sections){
-          if(!section||typeof section.title!=='string'||typeof section.text!=='string')return false;
-        }
-      }
-    }
-    return true;
+    return Object.entries(catalog.records).every(([id,record])=>validRecord(id,record));
   }
 
   function mergeExternal(){

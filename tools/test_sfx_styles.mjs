@@ -54,7 +54,7 @@ const code = Object.fromEntries(
 const html = read('index.html');   // HTML 不走 JS 词法器，只做属性级精确匹配
 
 /** 合法音色组（v5：「拍手」组已删除）。 */
-const LEGAL_KINDS = ['abc', 'click', 'taiko'];
+const LEGAL_KINDS = ['abc', 'ub-v2', 'ub-ora', 'star-platinum', 'dio', 'click', 'taiko'];
 
 /** 只匹配「代码分支」：字符串字面量、函数定义 / 调用、档位比较，不做整词通杀。 */
 const RULES = [
@@ -124,19 +124,25 @@ for (const {file, forbidden} of RULES) {
   });
 }
 
-test('合法音色组只有 abc / click / taiko：#metroSound 的 option 集合恰为 关 / abc / click / taiko', () => {
+test('合法音色组只有 abc / ub-v2 / ub-ora / star-platinum / dio / click / taiko：#metroSound 的 option 集合恰为 关 / abc / ub-v2 / ub-ora / star-platinum / dio / click / taiko', () => {
   const select = html.match(/<select[^>]*id=["']metroSound["'][\s\S]*?<\/select>/);
   assert.ok(select, 'index.html 必须有 #metroSound');
   const values = [...select[0].matchAll(/<option[^>]*value=["']([^"']*)["']/g)].map(m => m[1]);
-  assert.deepEqual(values.sort(), ['', ...LEGAL_KINDS].sort(), '#metroSound 只允许关 / abc / click / taiko');
+  assert.deepEqual(values.sort(), ['', ...LEGAL_KINDS].sort(), '#metroSound 只允许关 / abc / ub-v2 / ub-ora / star-platinum / dio / click / taiko');
 });
 
-test('normalizedKind 只认 abc / click / taiko（clap 已被静音兜底）', () => {
+test('normalizedKind 只认 abc / ub-v2 / ub-ora / star-platinum / dio / click / taiko（clap 已被静音兜底）', () => {
   const src = code['app-audio.js'];
   const fn = src.match(/function\s+normalizedKind\s*\([^)]*\)\s*\{([\s\S]*?)\n\s{2}\}/);
   assert.ok(fn, 'app-audio.js 必须定义 normalizedKind');
   for (const kind of LEGAL_KINDS) {
-    assert.match(fn[1], new RegExp(`["']${kind}["']`), `normalizedKind 必须接受 ${kind}`);
+    const literal = new RegExp(`["']${kind}["']`);
+    if (['ub-v2', 'ub-ora', 'star-platinum', 'dio'].includes(kind)) {
+      assert.match(fn[1], /SAMPLE_PRESETS\.has\(value\)/);
+      assert.match(src, new RegExp(`\\["${kind}", \\{`));
+    } else {
+      assert.match(fn[1], literal, `normalizedKind 必须接受 ${kind}`);
+    }
   }
   assert.doesNotMatch(fn[1], /["']clap["']/, 'normalizedKind 不得再把 clap 当合法分组');
 });

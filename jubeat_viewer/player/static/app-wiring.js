@@ -308,13 +308,13 @@
       // 统一迁移为 "click"（点击）并写回，避免升级后下拉框落到「关」、音效突然静音。
       // 必须先迁移再 restoreSelectValue —— 后者只在 option 存在时才赋值，传脏值会什么都不做。
       let metroSound = saved.metroSound == null ? null : textOf(saved.metroSound);
-      if (metroSound != null && !["", "abc", "click", "taiko"].includes(metroSound)) {
+      if (metroSound != null && !["", "abc", "ub-v2", "ub-ora", "star-platinum", "dio", "click", "taiko"].includes(metroSound)) {
         metroSound = "click";
         store(STORAGE.metroSound, "click");
       }
       // One-time ABC rollout; preserve an explicitly muted selection.
       if (store("jubeat.abcRollout") !== "1") {
-        if (metroSound !== "") {
+        if (metroSound !== "" && metroSound !== "ub-v2" && metroSound !== "ub-ora" && metroSound !== "star-platinum" && metroSound !== "dio") {
           metroSound = "abc";
           store(STORAGE.metroSound, "abc");
         }

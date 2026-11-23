@@ -59,9 +59,10 @@ class BuildAssets(unittest.TestCase):
                 for rel in song['assets'].values(): self.assertTrue((unpack/rel).is_file(), rel)
             result = subprocess.run([sys.executable, str(REPO/'tools/verify_site.py'), '--out', str(unpack), '--quiet', '--min-markers', '1'], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            payloads = [p for p in unpack.rglob('*.wav') if p.is_file()]
+            payloads = {p.relative_to(unpack).as_posix() for p in unpack.rglob('*.wav') if p.is_file()}
+            samples = {'static/' + p.name for p in (REPO/'jubeat_viewer/player/static').glob('*.wav')}
             audios = [rel for song in catalog['songs'] for rel in (song.get('assets') or {}).values() if rel.endswith('.wav')]
-            self.assertEqual(len(payloads), len(audios))
+            self.assertEqual(payloads, set(audios) | samples)
 
     def test_archive_failure_preserves_previous_output(self):
         with tempfile.TemporaryDirectory() as tmp:

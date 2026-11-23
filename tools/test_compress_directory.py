@@ -29,6 +29,6 @@ class CompressTests(unittest.TestCase):
             self.assertEqual(probe(out/exported['assets']['audio'])['streams'][0]['codec_name'],'opus')
             self.assertEqual(read(out/exported['assets']['chart:EXT'])['note'],chart['note'])
             with Image.open(out/exported['assets']['thumb']) as thumb:self.assertEqual(thumb.size,(96,96))
-            self.assertEqual(list(out.rglob('*.wav')),[]);self.assertTrue((native/'bgm.wav').exists())
+            self.assertEqual(list((out/'songs').rglob('*.wav')),[]);self.assertTrue((native/'bgm.wav').exists())
 
 if __name__=='__main__':unittest.main()

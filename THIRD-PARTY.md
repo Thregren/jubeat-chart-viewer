@@ -33,6 +33,12 @@ HTML/CSS/JS）、`tools/`、`deploy/`、`electron/` 里的脚本、配置与应�
   （见 `.gitignore` 的 `music/`）。
 - `se/` 下的音效（太鼓「咚 / 咔」、比利·海灵顿等）同为第三方素材，**不入库**，只保留
   `se/README.txt` 说明格式。
+- `jubeat_viewer/player/static/ub-v2-*.wav` 取自提供的 UB 啪系 v2 试听包，其中 Clap 的上游见
+  [jubeat analyser 素材页](https://yuisin.com/jubeat/analyser/material.html)。
+- `jubeat_viewer/player/static/jojo-*.wav` 使用社区上传的 [拳击](https://www.myinstants.com/en/instant/jojo-punch-92476/)、
+  [オラ](https://www.myinstants.com/en/instant/star-platinum-single-ora-14465/) 和
+  [無駄](https://www.myinstants.com/en/instant/dio-muda-muda-8321/) 采样。同押由拳击采样处理而成。
+  原动画集数和再分发授权尚未核实。
 - 构建产物（`site/`、`dist-php/`、`electron/dist/`）不入库。
 - 公网部署请自行加 Basic Auth 或 IP 白名单，见 [deploy/README.md](deploy/README.md)。
 

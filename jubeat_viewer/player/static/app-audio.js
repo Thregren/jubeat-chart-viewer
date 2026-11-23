@@ -29,6 +29,32 @@
   // 1.409 是配合 preGain 实测求解的值（旧值 1.53 会让素材比合成音略响）。
   const SAMPLE_AMP = 1.409;
 
+  // 在 60% 音量经下方总线校准，三段采样的 150ms RMS 约为 -17.3 dBFS。
+  const UB_CLAP = { name: "ub-v2-clap", amp: 1.06 };
+  const SAMPLE_PRESETS = new Map([
+    ["ub-v2", {
+      A: UB_CLAP,
+      B: { name: "ub-v2-cha", amp: 0.80 },
+      C: { name: "ub-v2-kak", amp: 0.92 },
+    }],
+    ["ub-ora", {
+      A: UB_CLAP,
+      B: { name: "ub-ora-o", amp: 1 },
+      C: { name: "ub-ora-ra", amp: 1 },
+    }],
+  ]);
+  const JOJO_PUNCH = { name: "jojo-punch", amp: 1 };
+  const JOJO_CHORD = { name: "jojo-chord", amp: 1 };
+  const JOJO_PRESETS = new Map([
+    ["star-platinum", { A: JOJO_PUNCH, sixteenth: { name: "jojo-ora", amp: 1.133774 }, chord: JOJO_CHORD }],
+    ["dio", { A: JOJO_PUNCH, sixteenth: { name: "jojo-muda", amp: 1 }, chord: JOJO_CHORD }],
+  ]);
+  for (const [kind, voices] of JOJO_PRESETS) SAMPLE_PRESETS.set(kind, voices);
+
+  const BUNDLED_SAMPLES = new Set(
+    [...SAMPLE_PRESETS.values()].flatMap(voices => Object.values(voices).map(({ name }) => name)),
+  );
+
   // —— 音效总线：整体响度提升 ——
   // 用户反馈「整体比之前小一个档次、要开到 200% 才勉强能用」。
   // 打点音的峰均比有 20dB 以上，直接乘增益必然削波；所以做法是：先整体放大（preGain），
@@ -65,6 +91,19 @@
     }
     limiterCurveCache = curve;
     return curve;
+  }
+
+  let jojoLimiterCache = null;
+  function jojoLimiterCurve() {
+    if (jojoLimiterCache) return jojoLimiterCache;
+    // Same soft knee as the approved audition, with headroom for overlapping shouts.
+    const knee = 0.49, ceiling = 0.66;
+    jojoLimiterCache = limiterCurve().map(value => {
+      const magnitude = Math.abs(value);
+      if (magnitude <= knee) return value;
+      return Math.sign(value) * (knee + (ceiling - knee) * Math.tanh((magnitude - knee) / (ceiling - knee)));
+    });
+    return jojoLimiterCache;
   }
 
   function metroGain(gain) {
@@ -104,10 +143,12 @@
     load.promise = (async () => {
       const timer = setTimeout(() => { failed(5000); load.controller.abort(); }, 15000);
       let missing = true;
+      const bundled = BUNDLED_SAMPLES.has(name);
+      const folder = bundled ? "static" : "media/se";
       try {
-        for (const ext of SE_EXT) {
+        for (const ext of bundled ? ["wav"] : SE_EXT) {
           try {
-            const res = await fetch(A.resourcePath(`media/se/${name}.${ext}?v=${frontVersion()}`), {
+            const res = await fetch(A.resourcePath(`${folder}/${name}.${ext}?v=${frontVersion()}`), {
               cache: previous ? "reload" : "force-cache", signal: load.controller.signal,
             });
             if (!current()) return;
@@ -137,6 +178,21 @@
     return undefined;
   }
 
+  const samplePreloads = new Map();
+  function prepareSamples(kind, retry = false) {
+    if (samplePreloads.has(kind)) return samplePreloads.get(kind);
+    const voices = SAMPLE_PRESETS.get(kind);
+    const load = (async () => {
+      // 共用既有的解码上限，按顺序载入，优先让主音可试听。
+      for (const { name } of Object.values(voices)) {
+        seProbe(name, { retry });
+        await seLoads.get(name)?.promise;
+      }
+    })().finally(() => { samplePreloads.delete(kind); });
+    samplePreloads.set(kind, load);
+    return load;
+  }
+
   /** Preload each group's base sample(s) and unlock the effects clock independently of music. */
   function prepareSfx({ unlock = false, retry = false } = {}) {
     // Settings changes also own the scheduler: muting must discard already
@@ -154,14 +210,15 @@
           if (audioCtx === ctx && ctx.state === "running" && state.playing) sfxReset();
         }).catch(() => {});
       }
-      // 每组只预载自己的基础素材；三档共用，不再预载额外素材或已删分组的样本。
-      // click 是纯合成音，不查素材，names 为空即跳过。
-      const names = kind === "taiko" ? ["don", "ka"] : [];
-      for (const name of names) seProbe(name, { retry });
+      // 只预载所选音色的素材，纯合成音不发起请求。
+      if (SAMPLE_PRESETS.has(kind)) prepareSamples(kind, retry);
+      if (kind === "taiko") {
+        for (const name of ["don", "ka"]) seProbe(name, { retry });
+      }
     } catch (_) { /* Unsupported or denied audio must not stop music playback. */ }
   }
 
-  function playSe(name, t, gain, dest = null, { rate = 1, highpass = 0, duration = 0, level = 1 } = {}) {
+  function playSe(name, t, gain, dest = null, { rate = 1, highpass = 0, duration = 0, level = 1, sampleAmp = SAMPLE_AMP } = {}) {
     const buf = seCache.get(name);
     if (buf && buf !== "loading") {
       const src = audioCtx.createBufferSource();
@@ -172,7 +229,7 @@
       // （双击 / 齐拍每声 0.72）。SAMPLE_AMP 把素材电平拉到与合成音同一条起跑线，
       // 两条路径再由 sfxBus() 的 preGain + 软限幅统一提升到目标响度。
       // 最终幅度钳制在 [0.05, 1.2]。
-      const amp = Math.min(1.2, Math.max(0.05, gain * SAMPLE_AMP * level));
+      const amp = Math.min(1.2, Math.max(0.05, gain * sampleAmp * level));
       g.gain.value = amp;
       let input = src;
       if (highpass > 0 && audioCtx.createBiquadFilter) {
@@ -194,18 +251,17 @@
       }
       return true;
     }
-    seProbe(name);                   // 首拍先预热，下一拍就能用真素材
     return false;
   }
 
   /**
-   * 音色组归一化：只认 click / taiko（v5 已删除「拍手」组）。
+   * 音色组归一化：接受当前菜单支持的音色。
    * 空值（关）与旧 localStorage / 旧缓存里的 clap、billy、nyan 等已删除分组、
    * 其它非法值统一返回 "" 静音兜底，避免非法分组走到发声分支报错。
    * 真正的设置迁移在 app-wiring.js 完成。
    */
   function normalizedKind(value) {
-    if (value === "abc" || value === "click" || value === "taiko") return value;
+    if (value === "abc" || SAMPLE_PRESETS.has(value) || value === "click" || value === "taiko") return value;
     return "";
   }
 
@@ -229,6 +285,23 @@
       const t = when != null ? when : audioCtx.currentTime + 0.005;
       const gain = metroGain(SFX_GAIN);   // 三档、两组统一响度，无任何档位增益差
       if (gain <= 0) return;
+      const samplesForKind = SAMPLE_PRESETS.get(kind);
+      if (samplesForKind) {
+        const voice = variant === "B" || variant === "C" ? variant : "A";
+        const sample = samplesForKind[v] || samplesForKind[voice] || samplesForKind.A;
+        const { name, amp } = sample;
+        const out = dest || sfxBus() || audioCtx.destination;
+        const jojo = JOJO_PRESETS.has(kind);
+        const buffer = seCache.get(name);
+        const vocal = jojo && variant === "sixteenth" && buffer && buffer !== "loading";
+        const output = vocal && out === sfxSched.bus ? jojoVocalBus(t, buffer.duration) : out;
+        if (!playSe(name, t, gain, output, { sampleAmp: amp })) {
+          prepareSamples(kind);
+          if (jojo) playSe(JOJO_PUNCH.name, t, gain, out, { sampleAmp: JOJO_PUNCH.amp });
+          else SFX.soundABC?.(audioCtx, t, voice, out, gain * 1.8);
+        }
+        return;
+      }
       if (kind === "abc") {
         // ABC input gain measured through the shared limiter: about +8 dB
         // at 60% versus the first audition, with peaks capped at -1.06 dBFS.
@@ -290,8 +363,15 @@
     playSoundVariant("normal", when, dest);
   }
 
-  /** 直接试听某一档（默认 normal）；不再有等待已删除分组解码的特判。 */
-  function previewSfx(variant = "normal") {
+  /** 切换到 UB 音色时先等主音载入，再播放试听。 */
+  async function previewSfx(variant = "normal") {
+    const kind = els.metroSound.value;
+    const voices = SAMPLE_PRESETS.get(kind);
+    if (voices) {
+      const sample = variant === "chord" && voices.chord ? voices.chord : voices.A;
+      await (seLoads.get(sample.name)?.promise || samplePreloads.get(kind));
+      if (els.metroSound.value !== kind) return;
+    }
     playSoundVariant(variant);
   }
 
@@ -301,9 +381,17 @@
    */
   function playHitSound(note, when = null, dest = null, chord = false) {
     if (!els.metroSound.value || !note) return;
-    if (normalizedKind(els.metroSound.value) === "abc") {
+    const kind = normalizedKind(els.metroSound.value);
+    if (JOJO_PRESETS.has(kind)) {
+      const holdHead = note.kind === "hold" || Number.isFinite(note.endT);
+      const dense = note.hitSoundVoice === "B" || note.hitSoundVoice === "C"
+        || (note.hitSoundVoice == null && Core.hitSoundKind?.(note.beat) === "sixteenth");
+      playSoundVariant(holdHead ? "normal" : chord ? "chord" : dense ? "sixteenth" : "normal", when, dest);
+      return;
+    }
+    if (kind === "abc" || SAMPLE_PRESETS.has(kind)) {
       playSoundVariant(note.hitSoundVoice || "A", when, dest);
-      return; // Chords never override ABC or advance the precomputed ordinal.
+      return; // 同押沿用预先分配的音色。
     }
     const parsed = state._parsed;
     const beat = Number.isFinite(note.beat) ? note.beat
@@ -320,7 +408,41 @@
   // v0.6.56: 排程器只保留「下一颗待发音的游标」。切速 / 跳转时一律按音乐时钟
   // rawMediaTime() 重新二分定位，不做「已发声上界 + 140ms 后重锚」这类状态补偿：
   // 那套补偿把可听音绑在了会漂移的视觉时钟上，反而是变速后打点音错拍的来源。
-  const sfxSched = { idx: 0, timer: 0, bus: null, chain: [], horizon: 0.12, lastRaw: null };
+  const sfxSched = { idx: 0, timer: 0, bus: null, chain: [], vocals: null, horizon: 0.12, lastRaw: null };
+
+  function jojoVocalBus(t, duration) {
+    if (!sfxSched.vocals) {
+      const gain = audioCtx.createGain();
+      gain.connect(sfxSched.bus);
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 3700;
+      const wet = audioCtx.createGain();
+      wet.gain.value = 0;
+      filter.connect(wet).connect(gain);
+      const dry = audioCtx.createGain();
+      dry.connect(gain);
+      const input = audioCtx.createGain();
+      input.connect(filter);
+      input.connect(dry);
+      sfxSched.chain.push(input, filter, dry, wet, gain);
+      sfxSched.vocals = { input, dry, wet, gain, ends: [] };
+    }
+    const { input, dry, wet, gain, ends } = sfxSched.vocals;
+    while (ends.length && ends[0] <= t) ends.shift();
+    ends.push(t + duration);
+    ends.sort((a, b) => a - b);
+    for (const node of [gain, dry, wet]) node.gain.cancelScheduledValues(t);
+    const setLevel = (count, time) => {
+      const amount = Math.min(0.30, Math.max(0, count - 1) * 0.13);
+      gain.gain.setTargetAtTime(Math.max(1, count) ** -0.40, time, 0.008);
+      dry.gain.setTargetAtTime(1 - amount, time, 0.008);
+      wet.gain.setTargetAtTime(amount, time, 0.008);
+    };
+    setLevel(ends.length, t);
+    ends.forEach((end, i) => setLevel(ends.length - i - 1, end));
+    return input;
+  }
 
   /**
    * 音效专用输出总线（单例）：bus(preGain) → 软限幅 → 音乐总线。
@@ -336,7 +458,7 @@
       let tail = bus;
       if (audioCtx.createWaveShaper) {
         const limiter = audioCtx.createWaveShaper();
-        limiter.curve = limiterCurve();
+        limiter.curve = JOJO_PRESETS.has(els.metroSound.value) ? jojoLimiterCurve() : limiterCurve();
         // 必须 none：2x/4x 的插值过冲会让峰值反超 0dBFS，天花板保证失效。
         limiter.oversample = "none";
         bus.connect(limiter);
@@ -364,6 +486,7 @@
       }
       sfxSched.bus = null;
       sfxSched.chain = [];
+      sfxSched.vocals = null;
     }
     // 音乐时钟（<audio>.currentTime 换算的谱面时间）是唯一权威。任何视觉插值、
     // 单调下界、外推都不能参与定位，否则跳转之后打点音会整体偏移。
@@ -460,7 +583,17 @@
       const next = state.notes[sfxSched.idx];
       const chord = note.groupSize > 1 || !!(next && Math.abs(next.t - note.t) < 1e-4);
       const when = Math.max(audioCtx.currentTime, audioCtx.currentTime + (note.t - now) / rate);
-      playHitSound(note, when, bus, chord);
+      let soundingNote = note;
+      if (chord && JOJO_PRESETS.has(els.metroSound.value)) {
+        // A chord containing a hold head uses the ordinary punch once for the whole group.
+        for (let i = sfxSched.idx; i < state.notes.length && state.notes[i].t - note.t < 1e-4; i++) {
+          if (state.notes[i].kind === "hold" || Number.isFinite(state.notes[i].endT)) {
+            soundingNote = state.notes[i];
+            break;
+          }
+        }
+      }
+      playHitSound(soundingNote, when, bus, chord);
     }
   }
 

@@ -38,7 +38,7 @@ function boot(missing, opts = {}) {
     // ABC 上线后的完整音色选项；初始值与页面一致。
     metroSound: {
       value: 'abc',
-      options: [{value: ''}, {value: 'abc'}, {value: 'click'}, {value: 'taiko'}],
+      options: [{value: ''}, {value: 'abc'}, {value: 'ub-v2'}, {value: 'ub-ora'}, {value: 'star-platinum'}, {value: 'dio'}, {value: 'click'}, {value: 'taiko'}],
       addEventListener() {},
     },
   };
@@ -153,7 +153,7 @@ test('旧 clap / billy / nyan 等非法 metroSound 设置恢复时迁移为 clic
 });
 
 test('合法的 metroSound 值（含「关」）不需要迁移、不被改写', () => {
-  for (const good of ['', 'abc', 'click', 'taiko']) {
+  for (const good of ['', 'abc', 'ub-v2', 'ub-ora', 'star-platinum', 'dio', 'click', 'taiko']) {
     const h = boot([], {saved: {metroSound: good}});
     assert.doesNotThrow(() => h.A.bindEvents(), `${good}: 恢复设置不得抛错`);
     assert.ok(!h.writes.some(w => w.key === 'metroSound'),
@@ -205,8 +205,8 @@ test('同押开关的默认状态与 index.html 的 checked 属性一致', () =>
   const input = html.match(/<input[^>]*id=["']chordSound["'][^>]*>/);
   assert.ok(input, 'index.html 必须有 #chordSound');
   assert.match(input[0], /\bchecked\b/, '默认打开就必须在 HTML 上写 checked，避免首帧闪一下未勾选');
-  assert.match(html, /title="仅对原版音色有效；ABC 交替始终保留 A\/B\/C"/,
-    '同押开关必须说明 ABC 不受原版同押音色开关影响');
+  assert.match(html, /title="仅对点击和太鼓音色有效"/,
+    '同押开关必须说明适用的音色');
 });
 
 /** app-base.js 启动自检：模拟分享页缺 #chordSound 的情形。 */

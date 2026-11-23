@@ -173,14 +173,21 @@ try {
     const audio = document.querySelector("#audio");
     const canvas = document.querySelector("#densityCanvas");
     const player = window.__player;
+    const density = window.JubeatApp.density;
     const rect = canvas.getBoundingClientRect();
+    const playableFraction = Math.min(1, player.state.duration / density.dur);
+    // The two gestures must overlap an in-flight seek. Synthetic pointer IDs
+    // have no browser capture, and all their events already target the canvas.
+    const capture = canvas.setPointerCapture;
+    canvas.setPointerCapture = () => {};
     let playedDuringScrub = false;
     const onPlaying = () => {
       if (player.state.scrubbing) playedDuringScrub = true;
     };
     audio.addEventListener("playing", onPlaying);
     const dispatch = (type, ratio, pointerId = 1) => {
-      const clientX = rect.left + Math.max(8, Math.min(rect.width - 8, rect.width * ratio));
+      const x = density.graphX + density.graphW * playableFraction * ratio;
+      const clientX = rect.left + x * rect.width / density.rect.w;
       const clientY = rect.top + rect.height * 0.5;
       canvas.dispatchEvent(new PointerEvent(type, {
         bubbles: true,
@@ -233,9 +240,11 @@ try {
         loads: window.__audioRateProbe.loads(),
       };
     } finally {
+      canvas.setPointerCapture = capture;
       audio.removeEventListener("playing", onPlaying);
     }
   });
+  if (errors.length) throw new Error(`page errors during scrub: ${errors.join(" | ")}`);
   if (scrubCheck.playedDuringScrub || !scrubCheck.midScrubPaused) {
     throw new Error(`audio leaked during density scrub: ${JSON.stringify(scrubCheck)}`);
   }

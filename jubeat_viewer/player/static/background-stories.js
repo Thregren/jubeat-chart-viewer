@@ -12,30 +12,32 @@
   let activeSong=null;
   let restoreFocusOnClose=false;
   let catalogRequest=null;
-  let externalCatalog=null;
+  const BUILTIN_CACHE_LIMIT=32;
   const builtinRecords=new Map();
   const builtinRequests=new Map();
   let catalogFailed=false;
 
-  const index = {records: Object.fromEntries(Object.entries(root.JUBEAT_BACKGROUND_STORY_FILES||{})
-    .map(([id,file])=>[id,{id,file,documents:[true]}]))};
+  const builtinIndex=root.JUBEAT_BACKGROUND_STORY_FILES;
+
+  function indexedId(song,records){
+    const id=typeof song==='string'?song:song?.id;
+    if(typeof id!=='string'||!id||!records)return null;
+    if(Object.hasOwn(records,id))return id;
+    const segment=id.slice(id.lastIndexOf('/')+1);
+    if(Object.hasOwn(records,segment))return segment;
+    const arcade=id.match(/arcade[:_]([A-Za-z0-9_-]+)/);
+    const plus=id.match(/16_jubeat_plus[:_]([A-Za-z0-9_-]+)/);
+    const china=id.match(/jubeatchina[:_]([A-Za-z0-9_-]+)/);
+    const video=id.match(/(?:^|\/)C(\d+)(?:\s|$)/);
+    const stableId=arcade?`arcade_${arcade[1]}`:plus?`16_jubeat_plus_${plus[1]}`:
+      china?`jubeatchina_${china[1]}`:video?`C${video[1]}`:segment;
+    return Object.hasOwn(records,stableId)?stableId:null;
+  }
 
   function recordFor(song,catalog=root.JUBEAT_BACKGROUND_STORIES){
-    catalog=catalog||root.JUBEAT_BACKGROUND_STORIES;
-    const id=typeof song==='string'?song:song?.id;
-    if(typeof id!=='string'||!id)return null;
-    const direct=catalog?.records?.[id];
-    const segment=id.slice(id.lastIndexOf('/')+1);
-    let stableId=direct?id:catalog?.records?.[segment]?segment:null;
-    if(!stableId){
-      const arcade=id.match(/arcade[:_]([A-Za-z0-9_-]+)/);
-      const plus=id.match(/16_jubeat_plus[:_]([A-Za-z0-9_-]+)/);
-      const china=id.match(/jubeatchina[:_]([A-Za-z0-9_-]+)/);
-      const video=id.match(/(?:^|\/)C(\d+)(?:\s|$)/);
-      stableId=arcade?`arcade_${arcade[1]}`:plus?`16_jubeat_plus_${plus[1]}`:
-        china?`jubeatchina_${china[1]}`:video?`C${video[1]}`:segment;
-    }
-    const record=catalog?.records?.[stableId];
+    const records=(catalog||root.JUBEAT_BACKGROUND_STORIES)?.records;
+    const id=indexedId(song,records);
+    const record=id!==null?records[id]:null;
     return record&&Array.isArray(record.documents)&&record.documents.length?record:null;
   }
 
@@ -149,7 +151,7 @@
   function sync(song=activeSong){
     activeSong=song||null;
     if(!button)return;
-    const available=!!(recordFor(activeSong)||recordFor(activeSong,index))&&!root.__recActive;
+    const available=!!(recordFor(activeSong)||indexedId(activeSong,builtinIndex))&&!root.__recActive;
     button.hidden=!available;
     button.disabled=!available;
     button.setAttribute('aria-expanded',String(available&&dialogIsOpen()));
@@ -161,15 +163,26 @@
     sync(song);
   }
 
-  function loadBuiltinStory({id,file}){
+  function cachedStory(id){
+    const record=builtinRecords.get(id);
+    if(record){
+      builtinRecords.delete(id);
+      builtinRecords.set(id,record);
+    }
+    return record;
+  }
+
+  function loadBuiltinStory(id){
     if(!builtinRequests.has(id)){
-      const url=app.resourcePath('static/background-story-'+file+'.json');
+      const url=app.resourcePath('static/background-story-'+builtinIndex[id]+'.json');
       const request=root.fetch(url).then(response=>{
         if(!response.ok)throw new Error('background story unavailable');
         return response.json();
       }).then(record=>{
         if(!validRecord(id,record))throw new Error('background story invalid');
         builtinRecords.set(id,record);
+        if(builtinRecords.size>BUILTIN_CACHE_LIMIT)builtinRecords.delete(builtinRecords.keys().next().value);
+        return record;
       }).finally(()=>builtinRequests.delete(id));
       builtinRequests.set(id,request);
     }
@@ -179,9 +192,9 @@
   async function open(){
     const song=app?.state?.song||activeSong;
     if(root.__recActive||dialogIsOpen())return;
-    const entry=recordFor(song,index);
-    const id=entry?.id;
-    if(!recordFor(song)&&id&&!builtinRecords.has(id)){
+    const id=indexedId(song,builtinIndex);
+    let record=recordFor(song)||cachedStory(id);
+    if(!record&&id){
       ensureDialog();
       dialog.querySelector('.story-dialog-title p').textContent=[song?.title,song?.artist].filter(Boolean).join(' · ');
       const status=element('p','story-copy story-loading','正在加载背景故事…');
@@ -189,20 +202,17 @@
       dialogBody.replaceChildren(status);
       showDialog();
 
-      let loadFailed=false;
       try{
-        await loadBuiltinStory(entry);
-      }catch(_){
-        loadFailed=true;
-      }
+        record=await loadBuiltinStory(id);
+      }catch(_){}
       if(!dialogIsOpen()||dialogBody.querySelector('.story-loading')!==status||
         song!==(app?.state?.song||activeSong)||root.__recActive)return;
-      if(loadFailed){
+      record=recordFor(song)||record;
+      if(!record){
         status.textContent='背景故事加载失败，请关闭弹窗后重试。';
         return;
       }
     }
-    const record=recordFor(song)||builtinRecords.get(id);
     if(!record)return;
     render(record,song);
     showDialog();
@@ -231,8 +241,7 @@
     return Object.entries(catalog.records).every(([id,record])=>validRecord(id,record));
   }
 
-  function mergeExternal(){
-    if(!externalCatalog)return;
+  function mergeExternal(externalCatalog){
     const builtin=root.JUBEAT_BACKGROUND_STORIES||{};
     root.JUBEAT_BACKGROUND_STORIES=Object.freeze({
       ...builtin,
@@ -255,8 +264,7 @@
       })
       .then(catalog=>{
         if(!validCatalog(catalog))throw new Error('background catalog invalid');
-        externalCatalog=catalog;
-        mergeExternal();
+        mergeExternal(catalog);
         sync(activeSong);
       })
       .catch(()=>{

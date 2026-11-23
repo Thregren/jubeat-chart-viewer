@@ -52,10 +52,10 @@ def is_cached(source: Path) -> bool:
     )
 
 
-def build_one(source: Path) -> tuple[Path, str]:
+def build_one(source: Path, *, check_cache: bool = True) -> tuple[Path, str]:
     destination = source.with_suffix(".webm")
     stat = source.stat()
-    if is_cached(source):
+    if check_cache and is_cached(source):
         return destination, "cached"
 
     fd, temporary_name = tempfile.mkstemp(
@@ -122,10 +122,10 @@ def main() -> int:
         parser.error("not enough free space for compatibility copies plus 1 GiB reserve")
 
     failures: list[tuple[str, str]] = []
-    counts = {"cached": 0, "built": 0}
+    counts = {"cached": len(sources) - len(pending), "built": 0}
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        futures = {pool.submit(build_one, source): source for source in sources}
-        for done, future in enumerate(as_completed(futures), 1):
+        futures = {pool.submit(build_one, source, check_cache=False): source for source in pending}
+        for done, future in enumerate(as_completed(futures), counts["cached"] + 1):
             source = futures[future]
             try:
                 _, status = future.result()

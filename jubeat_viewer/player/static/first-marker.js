@@ -5,11 +5,20 @@
   else root.JubeatFirstMarker = api;
 })(typeof window === "object" ? window : globalThis, function () {
   "use strict";
-  function firstBatch(notes) {
+  function firstBatch(notes, sorted = false) {
     if (!notes.length) return [];
     const firstT = notes[0].t;
     const seen = new Set();
-    return notes.filter(n => Math.abs(n.t - firstT) < 1e-4 && !seen.has(n.index) && seen.add(n.index));
+    const batch = [];
+    for (const note of notes) {
+      const delta = note.t - firstT;
+      if (sorted && delta >= 1e-4) break;
+      if (Math.abs(delta) < 1e-4 && !seen.has(note.index)) {
+        seen.add(note.index);
+        batch.push(note);
+      }
+    }
+    return batch;
   }
   function cueState(firstT, time, lead, baseOffset = 0, from = null) {
     if (![firstT, time, lead, baseOffset].every(Number.isFinite)) return { alpha: 0 };

@@ -6,8 +6,8 @@
   'use strict';
   class EventQueue {
     constructor(send,{id=()=>globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),
-      wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),capacity=8}={}) {
-      this.send=send;this.id=id;this.wait=wait;this.capacity=capacity;
+      wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),capacity=8,onSpace}={}) {
+      this.send=send;this.id=id;this.wait=wait;this.capacity=capacity;this.onSpace=onSpace;
       this.items=[];this.running=false;this.lastAck='';this.closed=false;
     }
     push(key,event) {
@@ -30,7 +30,10 @@
             if(attempt<2)await this.wait(500*2**attempt);
           }
           if(this.lastAck!==item.key)this.lastAck='';
+          const wasFull=this.items.length===this.capacity;
           this.items.shift();
+          // A producer can fill the freed slot while this drain owns the queue.
+          if(wasFull&&!this.closed)this.onSpace?.();
         }
       } finally {this.running=false;}
     }

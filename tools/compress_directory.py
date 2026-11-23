@@ -17,12 +17,17 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / 'jubeat_viewer/player'))
 from directory_library import load_directory, asset_path
 import audio_opus
+from asset_hash import sha256_file
+from package_publication import snapshot_file
+from split_background_stories import copy_story_assets, is_story_asset
 
 # 编码参数只有 audio_opus.encode_options() 一份；这里只是把参数组合成「构建状态」
 # 的指纹。保持与历史字符串一致（默认 80k 时完全相同），免得已有输出的状态文件
 # 因为格式变化而失效、被迫重转整库。
 PROFILE = 'opus/%s/vbr/audio/20ms/cl10' % audio_opus.bitrate()
 FIELDS = ('id','title','titleKnown','artist','version','category','cover','resourceOnly','missing','charts')
+THUMBNAIL_SIZE = (96, 96)
+THUMBNAIL_QUALITY = 82
 
 def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
@@ -37,8 +42,60 @@ def probe(path):
     p=subprocess.run(['ffprobe','-v','error','-show_entries','stream=codec_name,sample_rate,channels:format=duration','-of','json',str(path)],capture_output=True,check=True)
     return json.loads(p.stdout)
 
-def convert(source, out, master, report, jobs=4):
+def cover_fingerprint(path):
+    st = path.stat()
+    # Linking a cover changes ctime even when the pixels have not changed.
+    return [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns]
+
+
+def update_cover(source, native, cover, thumb, prior):
     from PIL import Image, ImageOps
+
+    inputs = [cover_fingerprint(source), cover_fingerprint(native)]
+    recipe = [list(THUMBNAIL_SIZE), THUMBNAIL_QUALITY, 'exif/rgb/lanczos/jpeg/optimized-v1']
+    if prior.get('inputs') == inputs and prior.get('recipe') == recipe:
+        try:
+            if [cover_fingerprint(cover), cover_fingerprint(thumb)] == prior.get('outputs'):
+                return prior
+        except FileNotFoundError:
+            pass
+
+    if not source.samefile(native) and sha256_file(source) != sha256_file(native):
+        raise ValueError('封面不是本地母库文件')
+
+    cover.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.cover-', dir=cover.parent) as name:
+        stage = Path(name)
+        staged_cover = stage / cover.name
+        staged_thumb = stage / thumb.name
+        try:
+            os.link(source, staged_cover)
+        except OSError:
+            shutil.copyfile(source, staged_cover)
+        with Image.open(staged_cover) as original:
+            image = ImageOps.exif_transpose(original).convert('RGB')
+            image.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+            image.save(staged_thumb, 'JPEG', quality=THUMBNAIL_QUALITY, optimize=True)
+        if [cover_fingerprint(source), cover_fingerprint(native)] != inputs:
+            raise OSError('生成缩略图时源封面发生变化')
+        previous_cover = stage / 'previous-cover'
+        if cover.is_file():
+            snapshot_file(cover, previous_cover)
+        os.replace(staged_cover, cover)
+        try:
+            os.replace(staged_thumb, thumb)
+        except OSError:
+            if previous_cover.exists():
+                os.replace(previous_cover, cover)
+            else:
+                cover.unlink()
+            raise
+
+    return dict(inputs=inputs, recipe=recipe,
+                outputs=[cover_fingerprint(cover), cover_fingerprint(thumb)])
+
+
+def convert(source, out, master, report, jobs=4):
     source,out,master,report=map(lambda x:Path(x).resolve(),(source,out,master,report))
     if out==source or source in out.parents or out in source.parents or out==master or master in out.parents or out in master.parents:
         raise ValueError('输出必须独立于输入和母库')
@@ -54,6 +111,7 @@ def convert(source, out, master, report, jobs=4):
     def song(s):
         nonlocal finished,original_bytes,compressed_bytes
         assets={};base='songs/'+s['id'];before_bytes=after_bytes=0;record={}
+        prior_song = state['done'].get(s['id'], {})
         for key,leaf in (('audio','bgm'),('preview','preview')):
             if key not in s['assets']:continue
             src=asset_path(source,s['assets'][key]);native=asset_path(master,s['id']+'/'+leaf+'.wav')
@@ -62,7 +120,7 @@ def convert(source, out, master, report, jobs=4):
                     if hashlib.file_digest(a,'sha256').digest()!=hashlib.file_digest(b,'sha256').digest():raise ValueError('源音频不是母库文件：'+s['id'])
             dest=out/base/(leaf+'.ogg');dest.parent.mkdir(parents=True,exist_ok=True)
             st=src.stat();fingerprint=[st.st_size,st.st_mtime_ns,st.st_ino]
-            prior=state['done'].get(s['id'],{}).get(key,{})
+            prior=prior_song.get(key,{})
             if prior.get('source')!=fingerprint or not dest.is_file() or dest.stat().st_size!=prior.get('bytes'):
                 audio_opus.encode_file(src,dest)
             info=probe(dest);stream=info['streams'][0]
@@ -71,17 +129,8 @@ def convert(source, out, master, report, jobs=4):
             assets[key]=base+'/'+dest.name;before_bytes+=st.st_size;after_bytes+=dest.stat().st_size
         if 'cover' in s['assets']:
             src=asset_path(source,s['assets']['cover']);native=asset_path(master,s['id']+'/cover.png')
-            if not src.samefile(native):
-                if hashlib.sha256(src.read_bytes()).digest()!=hashlib.sha256(native.read_bytes()).digest():raise ValueError('封面不是本地母库文件')
-            dest=out/base/'cover.png';dest.parent.mkdir(parents=True,exist_ok=True)
-            # 保留本地封面的原始像素；缩略图与原网页相同，为96px JPEG quality82。
-            if not dest.exists():
-                try:os.link(src,dest)
-                except OSError:shutil.copyfile(src,dest)
-            thumb=out/base/'thumb.jpg'
-            with Image.open(src) as image:
-                image=ImageOps.exif_transpose(image).convert('RGB');image.thumbnail((96,96),Image.Resampling.LANCZOS)
-                image.save(thumb,'JPEG',quality=82,optimize=True)
+            record['cover'] = update_cover(src, native, out/base/'cover.png',
+                                           out/base/'thumb.jpg', prior_song.get('cover', {}))
             assets.update(cover=base+'/cover.png',thumb=base+'/thumb.jpg')
         for chart in s['charts']:
             code=chart['code'];src=asset_path(source,s['assets']['chart:'+code]);native=asset_path(master,s['id']+'/charts/'+code+'.mc')
@@ -109,8 +158,9 @@ def convert(source, out, master, report, jobs=4):
     write(out/'data/library.json',dict(format='jubeat-directory-v1',version=1,versions=[],songs=[],versionIndexes=indexes))
     static=REPO/'jubeat_viewer/player/static'
     for p in static.iterdir():
-        if p.is_file() and not p.name.startswith('.'):
+        if p.is_file() and not p.name.startswith('.') and not is_story_asset(p.name):
             dest=out/('index.html' if p.name=='index.html' else 'static/'+p.name);dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)
+    copy_story_assets(static, out/'static')
     for top in ('markers',):
         for p in (source/top).rglob('*'):
             if p.is_file() and not p.name.startswith('.'):

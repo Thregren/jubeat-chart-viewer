@@ -15,7 +15,7 @@
      selectMarker, layoutCanvas, refreshCanvas, drawMarkers, layoutDensity, tapAB,
      clearAB, lockZoom, isNarrow, setSidebarOpen, loadLibrary, selectSong, loadChart,
      rebuildVisualState, backend, audioLoad, loadRatio, seekTo, play, pause, paintFrame,
-     requestPaint, updateFrame, urlState, buildGlowPairOptions, bindEvents, checkFrontVersion } = A;
+     requestPaint, urlState, buildGlowPairOptions, bindEvents, checkFrontVersion } = A;
 
   /**
    * 是不是 iOS / iPadOS。
@@ -30,7 +30,13 @@
 
   // —— boot ——
 
-  async function main() {
+  let startup;
+  function main() {
+    // Publish the promise before boot can synchronously call another layer.
+    return startup ??= Promise.resolve().then(boot);
+  }
+
+  async function boot() {
     assertEls();           // 先自检页面元素：缺了就直接报清楚，别等某个事件炸出白屏
     buildGlowPairOptions();
     buildPanel();
@@ -55,7 +61,7 @@
     setSidebarOpen(!isNarrow());   // 窄屏默认收起曲库抽屉
     const libraryReady = loadLibrary();
     loadMarkers();
-    state.raf = requestAnimationFrame(updateFrame);
+    requestPaint();
     // 打点音排程器（25ms 一次，和渲染帧率解耦）不再常驻：setPlaying() 会在
     // 起播时开、暂停时关，见 sfxTimerSync()。
     sfxTimerSync();
@@ -135,6 +141,7 @@
 
   }
 
+  A.main = main;
   main().catch((err) => {
     // 启动就失败（最常见的是 assertEls：index.html 和 js 版本对不上）：
     // 直接把原因写进页面，而不是留一个什么都没解释的白屏。
@@ -146,8 +153,4 @@
     document.body.replaceChildren(box);
   });
 
-  // —— 对外接口 ——
-  Object.assign(A, {
-    main,
-  });
 })();

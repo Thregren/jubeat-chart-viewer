@@ -25,20 +25,102 @@ test('default browser recovery timers preserve the global receiver',()=>{
  `,context);
 });
 function timers(){const pending=new Map();let id=0;return{pending,setTimeout(fn){pending.set(++id,fn);return id},clearTimeout(id){pending.delete(id)},run(){const jobs=[...pending.values()];pending.clear();jobs.forEach(fn=>fn())}};}
-function player({nativeFallback=false,query="",userAgent=""}={}){
+function player({nativeFallback=false,query="",userAgent="",fetchAudio}={}){
  const time=timers(),plays=[],sessions=[],toasts=[],rebuilt=[];let fetches=0,now=1000;
  const perf={now:()=>now};
- const element=()=>({classList:{toggle(){}},style:{},setAttribute(){}});
+ const element=()=>({classList:{toggle(){}},style:{},attributes:new Map(),setAttribute(name,value){this.attributes.set(name,value)}});
  const events=new Map();
  const audio={readyState:0,duration:NaN,paused:true,seeking:false,dataset:{},currentTime:0,preservesPitch:true,buffered:{length:0},load(){},removeAttribute(){},pause(){this.paused=true},play(){this.paused=false;return Promise.resolve()},addEventListener(name,fn){if(!events.has(name))events.set(name,new Set());events.get(name).add(fn)},removeEventListener(name,fn){events.get(name)?.delete(fn)},emit(name,ev={type:name}){for(const fn of [...(events.get(name)||[])])fn(ev)}};
  const els={audio,rate:{value:'1'},offset:{value:'0'}};for(const k of ['loadRow','btnPlay','loadLabel','loadPct','loadFill','loadBar','statTime','timeTotal','playIcon','timeNow'])els[k]=element();
  const ctx={state:'running',currentTime:0,resume(){return Promise.resolve()},decodeAudioData(){return Promise.resolve({length:4096,numberOfChannels:2,duration:60})},createGain(){return{connect(){}}},createAnalyser(){return{connect(){}}},createBufferSource(){return{playbackRate:{value:1},connect(){},stop(){},disconnect(){},start(_,off){plays.push({url:A.backend.url,off})}}}};
- const A={services:new Services.Services(),QUERY:new URLSearchParams(query),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:String,toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(t){rebuilt.push(t)},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
+ const A={services:new Services.Services(),QUERY:new URLSearchParams(query),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:n=>n?String(n):'',toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(t){rebuilt.push(t)},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
  const Runtime={...R,AudioSession:class extends R.AudioSession{constructor(){super(time);sessions.push(this)}}};
  const window={JubeatApp:A,JubeatServices:{...Services,audioHeader:()=>({duration:60,sampleRate:48000,channels:2})},JubeatRuntime:Runtime,addEventListener(){}};
- vm.runInNewContext(source,{window,navigator:{userAgent},URL,Blob,URLSearchParams,location:{search:''},performance:perf,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{fetches++;return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}})}});
+ vm.runInNewContext(source,{window,navigator:{userAgent},URL,Blob,URLSearchParams,location:{search:''},performance:perf,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{
+  fetches++;
+  return fetchAudio ? fetchAudio() : new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}});
+ }});
  return{A,audio,ctx,time,plays,sessions,toasts,rebuilt,services:window.JubeatServices,fetches:()=>fetches,advanceClock(ms){now+=ms}};
 }
+
+test('stream progress batches chunk updates with and without Content-Length, then switches to decoding immediately',async t=>{
+ for(const knownLength of [false,true]){
+  let stream,finishDecode;
+  const body=new ReadableStream({start(controller){stream=controller}});
+  const headers=knownLength?{'Content-Length':'8192'}:{};
+  const h=player({fetchAudio:()=>new Response(body,{headers})});
+  t.after(()=>{h.A.releaseDecodedAudio();h.A.cancelAudioLoad()});
+  const {loadLabel,loadPct,loadBar}=h.A.els;
+  h.ctx.decodeAudioData=()=>new Promise(resolve=>finishDecode=resolve);
+  const preparing=h.A.prepareBuffer('stream.ogg');
+  await turn();
+  assert.equal(loadPct.textContent,'…');
+  const pendingTimers=h.time.pending.size;
+  for(let i=0;i<4;i++)stream.enqueue(new Uint8Array(512));
+  await turn();
+  assert.equal(h.A.audioLoad.fetchDone,2048);
+  assert.equal(h.time.pending.size,pendingTimers+1);
+  assert.equal(loadPct.textContent,'…');
+  h.time.run();
+  assert.equal(loadPct.textContent,knownLength?'25%':'2048');
+  assert.equal(loadBar.attributes.get('aria-valuetext'),loadPct.textContent);
+  stream.enqueue(new Uint8Array(2048));
+  await turn();h.time.run();
+  assert.equal(loadPct.textContent,knownLength?'50%':'4096');
+  stream.enqueue(new Uint8Array(4096));
+  stream.close();
+  await turn();
+  assert.equal(loadLabel.textContent,'音源解码');
+  assert.equal(loadPct.textContent,'100%');
+  assert.equal(h.time.pending.size,0);
+  finishDecode({length:4096,numberOfChannels:2,duration:60});
+  assert.equal(await preparing,true);
+  assert.equal(loadPct.textContent,'100%');
+ }
+});
+
+test('a failed stream clears queued progress before native fallback',async t=>{
+ let stream;
+ const body=new ReadableStream({start(controller){stream=controller}});
+ const h=player({fetchAudio:()=>new Response(body)});
+ t.after(()=>h.A.cancelAudioLoad());
+ const preparing=h.A.prepareBuffer('broken.ogg');
+ await turn();
+ stream.enqueue(new Uint8Array(1024));
+ await turn();h.time.run();
+ assert.equal(h.A.els.loadPct.textContent,'1024');
+ stream.enqueue(new Uint8Array(1024));
+ await turn();
+ assert.equal(h.time.pending.size,1);
+ stream.error(Error('network interrupted'));
+ assert.equal(await preparing,false);
+ assert.equal(h.A.els.loadPct.textContent,'…');
+ assert.equal(h.A.audioLoad.pending,true);
+ assert.equal(h.audio.dataset.src,'broken.ogg');
+ assert.equal(h.time.pending.size,0);
+});
+
+test('switching audio sources cancels queued progress and ignores stale chunks',async t=>{
+ let stream;
+ const body=new ReadableStream({start(controller){stream=controller}});
+ const h=player({fetchAudio:()=>new Response(body)});
+ t.after(()=>h.A.cancelAudioLoad());
+ const preparing=h.A.prepareBuffer('old.ogg');
+ await turn();
+ stream.enqueue(new Uint8Array(1024));
+ await turn();
+ const pendingTimers=h.time.pending.size;
+ await h.A.prepareBuffer('new.ogg',{decode:false});
+ assert.equal(h.time.pending.size,pendingTimers-1);
+
+ stream.enqueue(new Uint8Array(2048));
+ stream.close();
+ await preparing;
+ h.time.run();
+ assert.equal(h.A.els.loadPct.textContent,'…');
+ assert.equal(h.A.audioLoad.fetchDone,0);
+ assert.equal(h.audio.dataset.src,'new.ogg');
+});
 test('decode queue serializes work, survives errors, and retains only completion',async()=>{
  const session=new R.AudioSession();let unblock;const events=[];
  const first=session.decode(()=>{events.push(1);return new Promise(resolve=>unblock=resolve)});

@@ -57,9 +57,12 @@
   }
   function sync() {
     if (!stage.classList.contains('is-welcome')) { dispose(); return; }
-    if (!notes.length && !attempted) void load();
-    if (!notes.length || !visible()) {
+    if (!visible()) {
       pause();
+      return;
+    }
+    if (!notes.length) {
+      if (!attempted) void load();
       return;
     }
     mark.classList.add('is-playing');
@@ -86,7 +89,7 @@
 
   async function load() {
     await window.__player?.ready;
-    if (attempted || disposed || !stage.classList.contains('is-welcome')) return;
+    if (attempted || disposed || !visible()) return;
     attempted = true;
     const candidates = A.state.songs.filter(song => song.title.toUpperCase() === 'FLOWER'
       && song.charts.some(chart => chart.code === 'EXT'));

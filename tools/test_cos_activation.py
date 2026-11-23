@@ -1,5 +1,7 @@
+import hashlib
 import json
 import argparse
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -87,6 +89,55 @@ class ActivationTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.activate()
         self.assertTrue((old / 'keep').exists())
+
+    def test_stage_validation_checks_sample_digest_and_share_references(self):
+        root = self.target.parent
+        target = root / 'www' / 'wwwroot' / 'example'
+        packages = root / 'packages'
+        packages.mkdir()
+        stage = target.parent / '.example-unified-1'
+        for directory in ('data', 'static', 'share/images'):
+            (stage / directory).mkdir(parents=True)
+        (stage / 'index.html').write_text('<title>test</title>')
+        (stage / 'data/library.json').write_text(json.dumps({
+            'format': 'jubeat-directory-v1', 'songs': [], 'versionIndexes': [],
+        }))
+        sample = 'static/test.wav'
+        (stage / sample).write_bytes(b'bundled bytes')
+        (stage / 'share/a.html').write_text('song')
+        (stage / 'share/images/a.jpg').write_bytes(b'image')
+        (stage / 'share/manifest.json').write_text(json.dumps({
+            'songs': 1, 'pages': [{'page': 'share/a.html', 'image': 'share/images/a.jpg'}],
+        }))
+        (packages / 'packages.json').write_text(json.dumps({
+            'version': '1', 'assets': [], 'songs': 0, 'charts': 0, 'shareManifest': True,
+            'bundledSamples': {sample: hashlib.sha256(b'bundled bytes').hexdigest()},
+        }))
+        args = argparse.Namespace(packages=str(packages), report=str(root / 'report'),
+                                  bucket='bucket', region='region', instance='instance',
+                                  instance_region='region', target=str(target),
+                                  prefix='prefix', mode='activate', activate=False)
+
+        def run_locally(_instance, _region, script):
+            if "print(prepare(" in script:
+                return "staged"
+            return subprocess.check_output(['sh'], input=script, text=True, stderr=subprocess.PIPE)
+
+        with patch.object(deploy_cos, 'tat', side_effect=run_locally):
+            self.assertEqual(deploy_cos.deploy(args)['validation'], 'validated 0 0')
+            for path in ('songs/extra.WAV', 'share/images/a.jpg', sample):
+                with self.subTest(path=path):
+                    file = stage / path
+                    file.parent.mkdir(exist_ok=True)
+                    if path == 'share/images/a.jpg':
+                        file.unlink()
+                    else:
+                        file.write_bytes(b'unexpected')
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        deploy_cos.deploy(args)
+                    file.unlink(missing_ok=True)
+                    (stage / sample).write_bytes(b'bundled bytes')
+                    (stage / 'share/images/a.jpg').write_bytes(b'image')
 
     def test_deployer_resumes_remote_cutover_without_staged_volumes(self):
         root = self.target.parent

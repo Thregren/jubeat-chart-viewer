@@ -49,3 +49,15 @@ A.state.notes=[{t:1,index:0,groupSize:2,kind:'hold',endT:2}];A.state._parsed={ma
 assert.deepEqual(frameAt(2.533327),{channel:'H4',frame:99});
 assert.equal(frameAt(2.533329),null);
 console.log('Dessert timing: visual approach point, all 100 judgement frames, boundary, rate and hold-release passed');
+
+let tierEnumerations=0;
+A.state.notes=[{t:1,index:0,groupSize:2}];A.state._parsed={};
+A.markerCfg.design={ma:24,h:new Proxy({1:16,3:16},{ownKeys(target){tierEnumerations++;return Reflect.ownKeys(target)}})};
+assert.deepEqual(frameAt(1),{channel:'H3',frame:0});
+assert.deepEqual(frameAt(1.01),{channel:'H3',frame:1});
+const hit={eventTime:1,tier:2};
+A.matchReplay={forChart:()=>({maxShift:0,updateProgress(){},record:()=>hit,paint(){}})};
+assert.deepEqual(frameAt(1),{channel:'H3',frame:0});
+hit.tier=1;
+assert.deepEqual(frameAt(1),{channel:'H1',frame:0});
+assert.equal(tierEnumerations,1);

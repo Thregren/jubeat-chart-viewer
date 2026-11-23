@@ -378,6 +378,7 @@
     }
 
     const matched = [];
+    let firstPayload = null;
     let next = 0;
     let complete = 0;
     let failed = 0;
@@ -390,7 +391,10 @@
         const { song, chart } = candidate;
         try {
           const payload = await A.readChartPayload(song, chart, signal);
-          if (matchNotes(data, A.parseNotes(payload.chart).notes)) matched.push({ ...candidate, payload });
+          if (matchNotes(data, A.parseNotes(payload.chart).notes)) {
+            firstPayload = matched.length ? null : payload;
+            matched.push(candidate);
+          }
         } catch (error) {
           if (signal.aborted) return;
           failed++;
@@ -401,6 +405,7 @@
     await Promise.all(Array.from({ length: Math.min(3, count) }, checkCandidate));
     signal.throwIfAborted();
     if (failed) throw new Error(`${failed} 张候选谱面读取失败，暂时无法确认匹配，请重试。`);
+    if (firstPayload) matched[0].payload = firstPayload;
     return matched;
   }
 

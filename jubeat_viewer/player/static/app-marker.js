@@ -115,6 +115,40 @@
     }
   }
 
+  function loadNativeImage(src, signal) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const finish = (callback, value) => {
+        image.onload = image.onerror = null;
+        signal.removeEventListener('abort', cancel);
+        callback(value);
+      };
+      const cancel = () => {
+        finish(reject, Error('Marker 加载已取消'));
+        image.removeAttribute('src');
+      };
+      image.onload = () => finish(resolve, image);
+      image.onerror = () => finish(reject, Error('Marker 解码失败'));
+      signal.addEventListener('abort', cancel, {once:true});
+      if (signal.aborted) cancel();
+      else image.src = src;
+    });
+  }
+
+  async function decodeNativePng(blob, src, signal) {
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      return await loadNativeImage(objectUrl, signal);
+    } catch (error) {
+      if (signal.aborted) throw error;
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+    // Deployments with img-src 'self' can block the Blob URL. Preserve the
+    // native-image route after the downloaded PNG has passed the size checks.
+    return loadNativeImage(src, signal);
+  }
+
   function downloadFrame(img, url, src = url) {
     img._settled = false;
     img._promise = frameDownloads.run(async () => {
@@ -129,9 +163,13 @@
       const abort = new AbortController(); img._abort = abort;
       const timer=setTimeout(()=>abort.abort(),20000);
       let reserved=0,source=null;const crops=new Map();
+      const assertCurrent = () => {
+        if (abort.signal.aborted || markerCfg.images.get(url) !== img) throw Error('Marker 加载已取消');
+      };
       try {
         const response=await fetch(src,{signal:abort.signal,cache:/\.[a-f0-9]{20}\./.test(src)?'force-cache':'default'});
         const bytes=await window.JubeatRuntime.readBytes(response,4*1024*1024);
+        assertCurrent();
         const dimensions=window.JubeatRuntime.pngSize(bytes);
         const entries=[...atlasFrames].filter(([,metadata])=>metadata.file===url);
         reserved=dimensions.width*dimensions.height*4+entries.reduce((sum,[,entry])=>sum+entry.rect[2]*entry.rect[3]*4,0);
@@ -139,16 +177,11 @@
         const used=[...markerCfg.images.values()].reduce((sum,image)=>sum+(image._ownedBytes || image.naturalWidth*image.naturalHeight*4),0);
         if(used+reservedFrameBytes+reserved>FRAME_CACHE_BYTES){reserved=0;throw Error('Marker 解码预算不足');}
         reservedFrameBytes+=reserved;
-        if(window.createImageBitmap) source=await window.createImageBitmap(new Blob([bytes],{type:'image/png'}));
-        else source=await new Promise((resolve,reject)=>{
-          const native=new Image();
-          const cancel=()=>{native.src='';reject(Error('Marker 加载已取消'));};
-          const clear=()=>abort.signal.removeEventListener('abort',cancel);
-          native.onload=()=>{clear();resolve(native);};native.onerror=()=>{clear();reject(Error('Marker 解码失败'));};
-          abort.signal.addEventListener('abort',cancel,{once:true});
-          if(abort.signal.aborted)cancel();else native.src=src;
-        });
+        const blob = new Blob([bytes], {type:'image/png'});
+        source = window.createImageBitmap
+          ? await window.createImageBitmap(blob) : await decodeNativePng(blob, src, abort.signal);
         for(const [key,metadata] of entries) {
+          assertCurrent();
           const [x,y,w,h]=metadata.rect;
           if(window.createImageBitmap)crops.set(key,await window.createImageBitmap(source,x,y,w,h));
           else {
@@ -156,7 +189,7 @@
             frame.getContext('2d').drawImage(source,x,y,w,h,0,0,w,h);crops.set(key,frame);
           }
         }
-        if(abort.signal.aborted || markerCfg.images.get(url)!==img)throw Error('Marker 加载已取消');
+        assertCurrent();
         img._frames=crops;img._ownedBytes=reserved;img._source=source;img.naturalWidth=source.width;img.naturalHeight=source.height;img.complete=true;
         img.dispatchEvent(new Event('load'));
       } catch (_) {
@@ -211,7 +244,7 @@
 
   /** 失败了退避重试；`markerRetry=N` 同时绕开可能被缓存下来的错误响应。 */
   function retryFrame(img, url) {
-    if (img._tries >= FRAME_RETRIES) return;      // 放弃，绘制那边会退到别的帧
+    if (markerCfg.images.get(url) !== img || img._tries >= FRAME_RETRIES) return;
     const delay = FRAME_RETRY_MS[img._tries] || 3000;
     img._tries += 1;
     window.setTimeout(() => {
@@ -308,6 +341,7 @@
       const data = window.JubeatRuntime.validateMarkers(await window.JubeatRuntime.readJSON(res));
       atlasFrames.clear();atlasViews.clear();
       for(const design of data.designs) {
+        highestTier(design.h);
         for(const [channel,atlas] of Object.entries(design.atlases || {})) {
           atlas.rects.forEach((rect,i)=>atlasFrames.set(frameUrl(design,channel,i),{file:markerUrl(atlas.file),rect}));
         }
@@ -441,6 +475,15 @@
     if (els.markerHint) els.markerHint.hidden = !on;
   }
 
+  const highestTiers = new WeakMap();
+  function highestTier(h) {
+    if (!highestTiers.has(h)) {
+      const available = Object.keys(h).sort((a, b) => Number(b) - Number(a));
+      highestTiers.set(h, available[0] ?? null);
+    }
+    return highestTiers.get(h);
+  }
+
   /**
    * 命中爆发的档次。查看器是「全 PERFECT」播放，固定要第 4 档（PERFECT）；
    * 素材包里没这一档就回落到最高可用档 —— 永远画得出来，不会因为缺贴图整格开天窗。
@@ -449,8 +492,7 @@
     const h = design && design.h;
     if (!h) return null;
     if (h[want]) return String(want);
-    const avail = Object.keys(h).sort((a, b) => Number(b) - Number(a));
-    return avail.length ? avail[0] : null;
+    return highestTier(h);
   }
 
   function layoutCanvas() {
@@ -1764,7 +1806,7 @@
     if (!ctx || !els.firstMarker?.checked || !state.notes.length) return;
     if (firstCueNotes !== state.notes) {
       firstCueNotes = state.notes;
-      firstCueBatch = window.JubeatFirstMarker.firstBatch(state.notes);
+      firstCueBatch = window.JubeatFirstMarker.firstBatch(state.notes, true);
     }
     if (!firstCueBatch.length) return;
     const rate = (window.JubeatRuntime?.markerRate?.((A.effectivePlaybackRate?.() ?? Number(els.rate?.value)), !!els.markerNormalSpeed?.checked) || 1);

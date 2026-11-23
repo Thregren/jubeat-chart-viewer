@@ -14,9 +14,11 @@
     return grid?.version===1 && [2,3,4].includes(grid.default_division) ? String(grid.default_division) : null;
   }
   function syncDivision() {
-    if(divisionChart===state.chart) return;
-    divisionChart=state.chart;
-    division.value=chartDivision(divisionChart) || ordinaryDivision;
+    const data=state.chart;
+    if(data ? divisionChart?.has(data) : divisionChart===null) return;
+    // Remember the chart's division selection without retaining its payload.
+    divisionChart=data ? new WeakSet([data]) : null;
+    division.value=chartDivision(data) || ordinaryDivision;
   }
   const recording=!!window.__recActive;
   const quickButton=document.createElement("button");
@@ -33,6 +35,11 @@
   button.hidden=recording;
   (button.closest('label') || button).hidden=recording;
   button.disabled=recording;
+  function clearModel() {
+    model=notes=events=chart=view=null;
+    ariaAt=null;
+    stats.merged=0;
+  }
   function getModel() {
     syncDivision();
     if(notes!==state.notes || events!==state.bpmEvents || chart!==state.chart) {
@@ -139,7 +146,11 @@
       activeBefore=active; wrap.hidden=!active;slot.classList.toggle("timeline-open",active);size.dirty=true;
     }
     syncDivision();
-    if(!active)return;
+    if(!active) {
+      if(drag)finish(null,true);
+      if(model)clearModel();
+      return;
+    }
     if(drag && drag.notes!==state.notes)finish(null,true);
     if(size.dirty){size={w:canvas.clientWidth,h:canvas.clientHeight,dirty:false};}
     const {w,h}=size;
@@ -157,6 +168,7 @@
     }
     ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(background,0,0);
     if(!state.notes.length) {
+      if(model)clearModel();
       ctx.setTransform(dpr,0,0,dpr,0,0);
       ctx.fillStyle="#98a3b9";ctx.font="11px sans-serif";ctx.fillText("选择谱面后显示横向节奏轴",8,h/2+4);return;
     }
@@ -181,6 +193,7 @@
   function setShown(value) {
     if(drag)finish(null,true);
     shown=!!value&&!recording;
+    if(!shown)clearModel();
     activeBefore=null;size.dirty=true;
     button.checked=shown;
     button.setAttribute("aria-expanded",String(shown));
@@ -210,7 +223,7 @@
     return clamp(drag.model.beatToSec(beat));
   }
   canvas.addEventListener("pointerdown",e=>{
-    if(e.button!==0 || state.scrubbing || !state.notes.length || A.density.placeholder || !view)return;
+    if(!shown || A.mode?.ownsFrame || e.button!==0 || state.scrubbing || !state.notes.length || A.density.placeholder || !view)return;
     e.preventDefault();
     const sec=A.currentMediaTime(), m=getModel();
     const resume=A.playbackActive ? A.playbackActive() : state.playing;
@@ -243,7 +256,7 @@
   canvas.addEventListener("pointercancel",e=>finish(e,true));
   canvas.addEventListener("lostpointercapture",e=>finish(e,true));
   canvas.addEventListener("keydown",e=>{
-    if(!state.notes.length || A.density.placeholder)return;
+    if(!shown || A.mode?.ownsFrame || !state.notes.length || A.density.placeholder)return;
     let sec;
     if(e.key==="ArrowLeft" || e.key==="ArrowRight") {
       const m=getModel();sec=m.beatToSec(m.secToBeat(A.currentMediaTime())+(e.key==="ArrowLeft"?-1:1)/Number(division.value));
@@ -256,7 +269,10 @@
   const observer=window.ResizeObserver ? new ResizeObserver(resized) : null;
   observer?.observe(slot);
   window.addEventListener("resize",resized);
-  A.services.register('timeline', {dispose(){observer?.disconnect();window.removeEventListener('resize',resized);}});
+  A.services.register('timeline', {dispose(){
+    observer?.disconnect();window.removeEventListener('resize',resized);
+    drag=null;clearModel();
+  }});
   Object.assign(A,{drawTimeline,timelineStats:()=>({...stats})});
   setShown(false);
 })();

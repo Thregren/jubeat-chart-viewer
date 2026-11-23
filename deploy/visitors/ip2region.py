@@ -15,7 +15,17 @@ INDEX_BYTES = 14
 class Reader:
     def __init__(self, path):
         with open(path, "rb") as stream:
-            self.data = stream.read()
+            self._load(stream.read())
+
+    @classmethod
+    def from_bytes(cls, data):
+        """Validate and use the supplied database buffer in place."""
+        reader = cls.__new__(cls)
+        reader._load(data)
+        return reader
+
+    def _load(self, data):
+        self.data = data
         if len(self.data) < HEADER_BYTES + VECTOR_COLUMNS * VECTOR_COLUMNS * VECTOR_BYTES:
             raise ValueError("IP2region database is too small")
         version, _policy, self.created_at, self.start_index, self.end_index, ip_version, pointer_bytes = struct.unpack_from("<HHIIIHH", self.data, 0)

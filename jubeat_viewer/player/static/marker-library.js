@@ -6,7 +6,8 @@
   const list = document.getElementById('markerList');
   if (!toggle || !list) return;
   const filters = [els.versionFilter, els.sortSelect, els.holdFilter];
-  let active = false, saved = null, cards = [];
+  let active = false, saved = null, empty = null;
+  const cards = new Map();
   const name = d => `#${String(d.num).padStart(2, '0')} ${d.name || d.id}`;
   const NONE_DESIGN = {id: '', name: '无（仅面板灯）', num: 0};
   // 每款设计的归一化搜索串只算一次：markerCfg.designs 里的对象引用稳定，
@@ -29,11 +30,18 @@
   }
   function refresh() {
     if (!active) return;
-    for (const card of cards) card.dispose?.();
-    cards = []; list.replaceChildren();
+    empty?.remove();
+    empty = null;
     const query = A.normalizeSearch(els.search.value.trim());
     const designs = [NONE_DESIGN, ...markerCfg.designs];
     const found = designs.filter(d => !query || searchKey(d).includes(query));
+    const visible = new Map(markerCfg.loaded ? found.map(d => [d.id, d]) : []);
+    for (const [id, card] of cards) {
+      if (visible.get(id) === card.design) continue;
+      card.loader?.dispose();
+      card.row.remove();
+      cards.delete(id);
+    }
     els.listCount.textContent = markerCfg.loaded ? `${found.length} 款` : '加载中…';
     if (!markerCfg.loaded || !found.length) {
       const li = document.createElement('li'); li.className = 'empty-list';
@@ -43,34 +51,47 @@
         retry.type = 'button'; retry.addEventListener('click', () => A.loadMarkers()); li.append(retry);
         els.listCount.textContent = '加载失败';
       }
-      list.append(li); return;
+      empty = li;
+      list.append(li);
+      return;
     }
+    let cursor = list.firstElementChild;
     for (const d of found) {
-      const li = document.createElement('li'), button = document.createElement('button');
-      button.type = 'button'; button.className = 'marker-card'; button.dataset.markerId = d.id;
-      const picture = document.createElement('span'); picture.className = 'marker-picture';
-      const title = document.createElement('span'); title.className = 'marker-name'; title.textContent = d.id ? name(d) : d.name;
-      const caption = document.createElement('span'); caption.className = 'marker-caption'; caption.textContent = d.name_zh || (d.id ? d.name_ja || '' : '关闭按键动画');
-      const release = document.createElement('span'); release.className = 'marker-release';
-      release.textContent = d.release ? d.release.replace(/[（(](\d{4}-\d{2}-\d{2})[）)]/g, ' · $1') : '版本及推出时间暂无资料';
-      button.title = [title.textContent, caption.textContent, d.release].filter(Boolean).join(' · ');
-      let loader;
-      const sources = d.id ? A.markerPreviewSources(d) : [];
-      if (sources.length) {
-        const image = document.createElement('img'); image.alt = ''; image.width = 56; image.height = 56;
-        picture.append(image);
-        loader = window.JubeatListImages.attach(image, {source: sources[0], fallback: sources[1], lazy: true,
-          active: () => active && image.isConnected});
-      } else {
-        picture.classList.add('marker-none'); picture.setAttribute('aria-hidden', 'true');
-        for (let i = 0; i < 16; i++) picture.append(document.createElement('i'));
+      let card = cards.get(d.id);
+      if (!card) {
+        card = createCard(d);
+        cards.set(d.id, card);
       }
-      button.append(picture, title, caption);
-      if (d.id) button.append(release);
-      li.append(button); list.append(li);
-      if (loader) { cards.push(loader); loader.start(); }
+      if (card.row !== cursor) list.insertBefore(card.row, cursor);
+      cursor = card.row.nextElementSibling;
+      card.loader?.start();
     }
     sync();
+  }
+  function createCard(d) {
+    const li = document.createElement('li'), button = document.createElement('button');
+    button.type = 'button'; button.className = 'marker-card'; button.dataset.markerId = d.id;
+    const picture = document.createElement('span'); picture.className = 'marker-picture';
+    const title = document.createElement('span'); title.className = 'marker-name'; title.textContent = d.id ? name(d) : d.name;
+    const caption = document.createElement('span'); caption.className = 'marker-caption'; caption.textContent = d.name_zh || (d.id ? d.name_ja || '' : '关闭按键动画');
+    const release = document.createElement('span'); release.className = 'marker-release';
+    release.textContent = d.release ? d.release.replace(/[（(](\d{4}-\d{2}-\d{2})[）)]/g, ' · $1') : '版本及推出时间暂无资料';
+    button.title = [title.textContent, caption.textContent, d.release].filter(Boolean).join(' · ');
+    let loader;
+    const sources = d.id ? A.markerPreviewSources(d) : [];
+    if (sources.length) {
+      const image = document.createElement('img'); image.alt = ''; image.width = 56; image.height = 56;
+      picture.append(image);
+      loader = window.JubeatListImages.attach(image, {source: sources[0], fallback: sources[1], lazy: true,
+        active: () => active && image.isConnected});
+    } else {
+      picture.classList.add('marker-none'); picture.setAttribute('aria-hidden', 'true');
+      for (let i = 0; i < 16; i++) picture.append(document.createElement('i'));
+    }
+    button.append(picture, title, caption);
+    if (d.id) button.append(release);
+    li.append(button);
+    return {design: d, row: li, loader};
   }
   function setActive(on) {
     if (on === active) return;
@@ -86,7 +107,8 @@
       refresh();
     } else {
       active = false;
-      for (const card of cards) card.dispose?.(); cards = []; list.replaceChildren(); list.hidden = true;
+      for (const card of cards.values()) card.loader?.dispose();
+      cards.clear(); empty = null; list.replaceChildren(); list.hidden = true;
       els.songList.hidden = false; els.search.value = saved.query; els.search.placeholder = saved.placeholder; els.search.title = saved.title;
       filters.forEach((el, i) => { el.disabled = saved.disabled[i]; });
       toggle.textContent = '图选 Marker'; toggle.setAttribute('aria-pressed', 'false');

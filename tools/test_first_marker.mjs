@@ -13,6 +13,9 @@ for(const count of [1,2,4,16]){
  assert.equal(model.firstBatch([...notes,{t:3,index:0},{t:3.001,index:15}]).length,count);
 }
 assert.deepEqual(model.firstBatch([]),[]);
+const sortedNotes = [{t:3,index:1},{t:3.00005,index:2},{t:3.002,index:0},
+  {get t() { assert.fail('read past the first group'); }}];
+assert.deepEqual(model.firstBatch(sortedNotes, true), sortedNotes.slice(0, 2));
 assert.equal(model.cueState(0,0,.5167).alpha,0);
 assert.equal(model.cueState(3,0,.5167).alpha,1);
 assert.equal(model.cueState(30,0,.5167).alpha,1); // 长前奏从音乐零秒持续显示

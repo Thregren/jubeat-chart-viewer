@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const Core=require('../jubeat_viewer/player/static/core.js');
@@ -36,6 +38,76 @@ test('long holds remain visible when their heads precede the viewport',()=>{
  assert.equal(f.notes.length,1);assert.equal(f.notes[0].index,0);
  assert.ok(f.notes[0].x<0 && f.notes[0].endX>f.playhead);
  assert.equal(m.frame(m.beatToSec(8),400).notes.length,0);
+});
+
+test('long overlapping holds and dense taps match a brute-force viewport on forward and backward seeks', () => {
+ const taps=Array.from({length:12000},(_,i)=>({beat:i/20,index:i%16,kind:'tap'}));
+ const holds=[
+  {beat:490,endBeat:495,index:1,kind:'hold'},
+  {beat:0,endBeat:600,index:4,kind:'hold'},
+  {beat:0,endBeat:600,index:11,kind:'hold'},
+  {beat:12,endBeat:410,index:3,kind:'hold'},
+  {beat:100,endBeat:150,index:2,kind:'hold'},
+  {beat:450,endBeat:490,index:8,kind:'hold'},
+ ];
+ const notes=[...holds,...taps];
+ const m=Timeline.create(notes,chart.time);
+ for(const beat of [0,99,409,490.8,495.8,599,604,495.8,410.8,6,0]){
+  const frame=m.frameFast(m.beatToSec(beat),400);
+  const expected=notes
+   .filter(note=>note.beat<=frame.right&&(note.endBeat??note.beat)>=frame.left)
+   .sort((a,b)=>a.beat-b.beat)
+   .map(note=>[note.beat,note.endBeat??note.beat,note.index]);
+  assert.deepEqual(frame.notes.map(note=>[note.beat,note.end,note.index]),expected);
+  assert.deepEqual(frame.notes,m.frame(m.beatToSec(beat),400).notes);
+ }
+});
+
+test('hiding the timeline drops its model and rebuilds only when shown again', () => {
+ const elements=new Map(), built=[];
+ const ctx=new Proxy({}, {get:(target,key)=>target[key]??(()=>{})});
+ function element(){
+  const target=new EventTarget();
+  return Object.assign(target,{value:'2',clientWidth:400,clientHeight:160,
+   classList:{toggle(){}},closest:()=>null,setAttribute(){},append(){},getContext:()=>ctx});
+ }
+ const document={
+  getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},
+  querySelector:element,createElement:element,
+ };
+ const p=Core.parseNotes(chart);
+ const firstChart={meta:{rhythm_grid:{version:1,default_division:4}}};
+ const A={state:{notes:p.notes,bpmEvents:p.timeEvents,chart:firstChart,padEls:[],duration:3},
+  store(){},STORAGE:{},services:{register(){}},renderRatio:()=>1,fmtTime:String,density:{}};
+ const window={JubeatApp:A,addEventListener(){},JubeatTimeline:{create(notes,...args){
+  built.push(notes);return Timeline.create(notes,...args);
+ }}};
+ const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-timeline.js',import.meta.url),'utf8');
+ vm.runInNewContext(source,{window,document});
+ const button=elements.get('btnTimeline'),division=elements.get('timelineDivision');
+ const open=checked=>{button.checked=checked;button.dispatchEvent(new Event('change'));};
+ open(true);
+ A.drawTimeline(1);
+ assert.deepEqual(built,[p.notes]);
+ assert.equal(division.value,'4');
+ division.value='3';
+ division.dispatchEvent(new Event('change'));
+ open(false);
+ A.drawTimeline(1);
+ open(true);
+ A.drawTimeline(1);
+ assert.deepEqual(built,[p.notes,p.notes]);
+ assert.equal(division.value,'3');
+
+ open(false);
+ const replacementNotes=[{beat:0,index:0,kind:'tap'}];
+ A.state.chart={};A.state.notes=replacementNotes;
+ A.drawTimeline(1);
+ assert.equal(built.length,2);
+ open(true);
+ A.drawTimeline(1);
+ assert.equal(built.at(-1),replacementNotes);
+ assert.equal(division.value,'2');
 });
 test('different viewport widths and zoom preserve the same current beat',()=>{
  const p=Core.parseNotes(chart),m=Timeline.create(p.notes,p.timeEvents);

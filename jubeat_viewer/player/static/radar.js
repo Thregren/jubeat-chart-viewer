@@ -5,7 +5,7 @@
   'use strict';
   const axes=[['NOTES','物量'],['PEAK','尖峰'],['SLIDE','钢琴'],['HAND-TRIP','出张'],['HOLD','长押'],['CHORD','同时押']];
   const finite=n=>typeof n==='number'&&Number.isFinite(n);
-  function normalize(input){return (Array.isArray(input)?input:[]).filter(n=>n&&finite(n.t)&&Number.isInteger(n.index)&&n.index>=0&&n.index<16&&(n.endT==null||finite(n.endT)&&n.endT>=n.t)).slice().sort((a,b)=>a.t-b.t||a.index-b.index);}
+  function normalize(input){return (Array.isArray(input)?input:[]).filter(n=>n&&finite(n.t)&&Number.isInteger(n.index)&&n.index>=0&&n.index<16&&(n.endT==null||finite(n.endT)&&n.endT>=n.t)).sort((a,b)=>a.t-b.t||a.index-b.index);}
   // Two independent 32-bit accumulators; relative millisecond timing, head pad,
   // hold duration and tail direction all participate. Never match on title alone.
   function fingerprint(notes){if(!notes.length)return '';const origin=notes[0].t;let a=2166136261,b=0x9e3779b9;const feed=s=>{for(let i=0;i<s.length;i++){a=Math.imul(a^s.charCodeAt(i),16777619)>>>0;b=Math.imul(b^s.charCodeAt(i),0x85ebca6b)>>>0;}};

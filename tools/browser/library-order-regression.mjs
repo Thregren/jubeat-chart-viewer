@@ -17,7 +17,7 @@ const songs = [
 let catalog = {songs, versions:['jubeat', 'jubeat-plus']};
 const browser = await chromium.launch({headless:true, executablePath:process.env.BROWSER_EXECUTABLE || undefined});
 try {
-  const page = await browser.newPage({viewport:{width:1280,height:900}}), errors = [];
+  const page = await browser.newPage({viewport:{width:1280,height:900}, serviceWorkers:'block'}), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/data/library.json*', route => route.fulfill({json:catalog}));
   await page.goto(base);
@@ -66,8 +66,68 @@ try {
   assert.deepEqual(await ids(), ['b'], 'reloading must discard cached chart metadata');
   await render({holdFilter:'',search:'changed'});
   assert.deepEqual(await ids(), ['a'], 'reloading must discard cached search metadata');
+
+  catalog = {versions:['jubeat'], songs:Array.from({length:320}, (_, index) => {
+    const n = String(index).padStart(3, '0');
+    return {...song(`track-${n}`, `Track ${n}`, 'jubeat', [chart('EXT', '9', 500)], index % 2 ? 'odd' : 'even'),
+      cover:'fixture.png', assets:{thumb:'static/version-logo-jubeat.png', cover:'static/version-logo-jubeat.png'}};
+  })};
+  await page.evaluate(async () => {
+    JubeatApp.els.search.value = '';
+    await JubeatApp.loadLibrary(true);
+    window.firstSongRow = document.querySelector('#songList [data-song-id="track-000"]');
+    window.firstSongCover = window.firstSongRow.querySelector('img');
+  });
+  await page.locator('#search').fill('even');
+  await page.waitForFunction(() => JubeatApp.els.listCount.textContent === '160 首');
+  assert(await page.evaluate(() => {
+    const button = document.querySelector('#songList [data-song-id="track-000"]');
+    return button === window.firstSongRow && button.querySelector('img') === window.firstSongCover
+      && button.closest('li').getAttribute('aria-setsize') === '160'
+      && document.activeElement === JubeatApp.els.search;
+  }), 'search should retain matching rows and covers without taking focus');
+  await render({search:''});
+
+  const scrolling = await page.evaluate(async () => {
+    const list = JubeatApp.els.songList;
+    const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    window.firstSongRow.focus();
+    const offset = [1, 12, 24, 36, 48, 60].find(offset =>
+      Math.ceil((offset + list.clientHeight) / 72) === Math.ceil((offset + 5 + list.clientHeight) / 72));
+    list.scrollTop = 72 * 100 + offset;
+    await frame();
+    const before = list.querySelector('.song-spacer');
+    let changes = 0;
+    const observer = new MutationObserver(records => { changes += records.length; });
+    observer.observe(list, {childList:true});
+    list.scrollTop += 5;
+    await frame();
+    observer.disconnect();
+    return {changes, sameSpacer:before === list.querySelector('.song-spacer'),
+      retainedFocus:document.activeElement === window.firstSongRow,
+      bounded:JubeatApp.metrics.listRows <= Math.ceil(list.clientHeight / 72) + 18};
+  });
+  assert.deepEqual(scrolling, {changes:0, sameSpacer:true, retainedFocus:true, bounded:true});
+
+  const focusIndex = () => page.evaluate(() => Number(document.activeElement.dataset.listIndex));
+  await page.keyboard.press('End');
+  assert.equal(await focusIndex(), 319);
+  const pageSize = await page.locator('#songList').evaluate(el => Math.max(1, Math.floor(el.clientHeight / 72)));
+  await page.keyboard.press('PageUp');
+  assert.equal(await focusIndex(), 319 - pageSize);
+  await page.keyboard.press('Home');
+  assert.equal(await focusIndex(), 0);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await focusIndex(), 1);
+  await render({search:'odd'});
+  assert.equal(await focusIndex(), 0, 'focused song should follow its new index after filtering');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.songId), 'track-001');
+  await render({search:'even'});
+  assert(await page.locator('#search').evaluate(input => document.activeElement === input),
+    'filtering out the focused row should return focus to search');
+
   assert.deepEqual(errors, []);
-  console.log('Library ordering, equal titles/scores, missing charts, filters, cache hits and reload passed');
+  console.log('Library ordering, filters, reload, search row reuse and virtual-list focus passed');
 } finally {
   await browser.close();
 }

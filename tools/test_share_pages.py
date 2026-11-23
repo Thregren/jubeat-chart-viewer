@@ -1,11 +1,45 @@
+import hashlib
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from PIL import Image
 from build_share_pages import build_share_pages,song_key
+import patch_share_pages
 
 class SharePages(unittest.TestCase):
+    def test_incremental_patch_follows_current_manifest_and_rolls_back(self):
+        with tempfile.TemporaryDirectory() as temp:
+            top = Path(temp).resolve()
+            site = top / 'site'
+            site.mkdir()
+            (site / 'share').mkdir()
+            page = 'share/test.html'
+            for name in ['index.html', page]:
+                (site / name).write_text('before')
+            (site / 'share/manifest.json').write_text(json.dumps({
+                'songs': 1, 'pages': [{'page': page}],
+            }))
+            expected = hashlib.sha256(b'before').hexdigest()
+            original_replace = patch_share_pages.os.replace
+
+            def fail_home(source, destination):
+                if destination == site / 'index.html':
+                    raise OSError('injected')
+                return original_replace(source, destination)
+
+            with patch.object(patch_share_pages.os, 'replace', side_effect=fail_home):
+                with self.assertRaisesRegex(OSError, 'injected'):
+                    patch_share_pages.patch_pages(site, top / 'backup-failed', {'before': 'after'},
+                                                 expected, top / 'lock')
+            self.assertEqual((site / page).read_text(), 'before')
+            count = patch_share_pages.patch_pages(site, top / 'backup', {'before': 'after'},
+                                                  expected, top / 'lock')
+            self.assertEqual(count, 2)
+            self.assertEqual((site / page).read_text(), 'after')
+            self.assertEqual((top / 'backup' / page).read_text(), 'before')
+
     def test_static_metadata_is_escaped_and_images_are_small(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);(root/'data').mkdir();(root/'songs').mkdir();Image.new('RGB',(1800,1800),'red').save(root/'songs/cover.png')

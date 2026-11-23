@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import os
 import sys
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
@@ -70,15 +71,15 @@ class RangeHandler(SimpleHTTPRequestHandler):
             self.send_error(404, "File not found")
             return None
 
-        size = path.stat().st_size
-        rng = parse_range(self.headers.get("Range", ""), size)
         ctype = self.guess_type(str(path))
         try:
-            fh = open(path, "rb")
+            fh = open(resolved, "rb")
         except OSError:
             self.send_error(404, "File not found")
             return None
 
+        size = os.fstat(fh.fileno()).st_size
+        rng = parse_range(self.headers.get("Range", ""), size)
         if rng is None:
             self.send_response(200)
             self.send_header("Content-Type", ctype)

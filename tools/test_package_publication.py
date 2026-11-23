@@ -47,6 +47,47 @@ class PackagePublicationTests(unittest.TestCase):
         for row in manifest['assets']:
             self.assertEqual(hashlib.sha256((self.output / row['name']).read_bytes()).hexdigest(), row['sha256'])
 
+    def test_web_volumes_keep_share_pages_images_and_bundled_samples(self):
+        static = self.source / 'static'
+        static.mkdir()
+        (static / 'background-stories-data.js').write_text('story build input')
+        (self.source / 'index.html').write_text('<title>test</title>')
+        data = self.source / 'data'
+        data.mkdir()
+        for name in ('library', 'markers'):
+            (data / (name + '.json')).write_text('{}')
+        share = self.source / 'share'
+        (share / 'images').mkdir(parents=True)
+        (share / 'a.html').write_text('song')
+        (share / 'images/a.jpg').write_bytes(b'og image')
+        (share / 'images/old.jpg').write_bytes(b'unreferenced image')
+        (share / 'manifest.json').write_text(json.dumps({
+            'songs': 1, 'pages': [{'page': 'share/a.html', 'image': 'share/images/a.jpg'}],
+        }))
+        sample = 'ub-v2-clap.wav'
+        original = pack_web_library.REPO / 'jubeat_viewer/player/static' / sample
+        (static / sample).write_bytes(original.read_bytes())
+        with patch.object(pack_web_library, 'load_directory', return_value=({'songs': []}, set())):
+            manifest = pack_web_library.pack(self.source, self.output, 'A', verify_crc=True)
+            names = set()
+            for row in manifest['assets']:
+                with zipfile.ZipFile(self.output / row['name']) as archive:
+                    if row['kind'] == 'web-volume':
+                        names.update(archive.namelist())
+                    else:
+                        self.assertFalse(any(name.startswith('share/') for name in archive.namelist()))
+            self.assertTrue({'share/manifest.json', 'share/a.html', 'share/images/a.jpg',
+                             'static/' + sample}.issubset(names))
+            self.assertNotIn('share/images/old.jpg', names)
+            self.assertNotIn('static/background-stories-data.js', names)
+            self.assertEqual(manifest['bundledSamples'], {
+                'static/' + sample: hashlib.sha256(original.read_bytes()).hexdigest(),
+            })
+            (static / sample).write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError, '打击音与源码不符'):
+                pack_web_library.pack(self.source, self.output, 'B')
+            self.assert_publication('A')
+
     def test_old_generation_survives_failure_before_switch(self):
         self.run_pack('A')
         old = (self.output / '.web-packages.current').resolve()

@@ -55,7 +55,7 @@
     NON_PERFECT: { edge: "#145e9c", face: "#5ab7ff" },
     MISS: { edge: "#384353", face: "#6b7789" },
   };
-  let paintedReplayColumns = null;
+  let paintedCounts = null, paintedReplayColumns = null, paintedCropSides = false, paintedPlaceholder = false;
   let countedNotes = null, countedCounts = null, countedDuration = NaN, countedExact = null;
 
   // 窄屏按可用宽度缩小列距，保证左右两端的柱子都能显示。
@@ -132,7 +132,10 @@
     density.cols = 0;
     density.max = 0;
     density.dur = 0;
-    countedCounts = null;
+    countedNotes = state.notes;
+    countedCounts = density.counts;
+    countedDuration = estimatedEnd;
+    countedExact = exact;
     if (!w || !state.notes.length) return;
 
     let dur = exact?.dur;
@@ -156,10 +159,7 @@
     density.cols = OFFICIAL_COLS;
     density.counts = counts;
     density.max = Math.max(...counts);
-    countedNotes = state.notes;
     countedCounts = counts;
-    countedDuration = estimatedEnd;
-    countedExact = exact;
   }
 
   function buildDensity() {
@@ -170,7 +170,6 @@
       return;
     }
     recomputeDensity(density.rect.w);
-    density.baseReady = false;
     drawDensity();
   }
 
@@ -182,20 +181,25 @@
     // 随列距调整画布高度，保持方块为正方形。
     const h = Math.max(24, Math.round(densityHeight(w)));
     const dpr = A.renderRatio(w, h);
-    cv.style.width = "100%";
-    cv.style.height = h + "px";
+    if (cv.style.width !== "100%") cv.style.width = "100%";
+    if (cv.style.height !== h + "px") cv.style.height = h + "px";
     const pixelWidth = Math.max(1, Math.round(w * dpr));
     const pixelHeight = Math.max(1, Math.round(h * dpr));
+    const base = density.base ||= document.createElement("canvas");
+    if (density.rect?.w !== w || density.rect.h !== h || density.dpr !== dpr
+        || cv.width !== pixelWidth || cv.height !== pixelHeight
+        || base.width !== pixelWidth || base.height !== pixelHeight) {
+      density.baseReady = false;
+      density.rect = { w, h };
+      density.dpr = dpr;
+    }
     if (cv.width !== pixelWidth) cv.width = pixelWidth;
     if (cv.height !== pixelHeight) cv.height = pixelHeight;
-    density.dpr = dpr;
-    density.rect = { w, h };
-    density.base = density.base || document.createElement("canvas");
-    if (density.base.width !== pixelWidth) density.base.width = pixelWidth;
-    if (density.base.height !== pixelHeight) density.base.height = pixelHeight;
+    if (base.width !== pixelWidth) base.width = pixelWidth;
+    if (base.height !== pixelHeight) base.height = pixelHeight;
+    const previousDuration = density.dur;
     recomputeDensity(w);     // 几何随宽度更新；相同谱面的分桶统计直接复用
-    density.baseReady = false;
-    drawDensity();
+    drawDensity(null, density.dur === previousDuration);
   }
 
   function drawDensityBase(replayColumns) {
@@ -278,17 +282,21 @@
     }
   }
 
-  function drawDensity(posSec = null) {
+  function drawDensity(posSec = null, onlyIfDirty = false) {
     const cv = els.densityCanvas;
     if (!cv || !density.rect) return;
     const ctx2 = cv.getContext("2d");
     if (!ctx2) return;
     const replayColumns = density.placeholder
       ? null : A.matchReplay?.forChart()?.densityColumns(density) ?? null;
-    if (!density.baseReady || paintedReplayColumns !== replayColumns) {
+    if (!density.baseReady || paintedCounts !== density.counts || paintedReplayColumns !== replayColumns
+        || paintedCropSides !== density.cropSides || paintedPlaceholder !== density.placeholder) {
       if (!drawDensityBase(replayColumns)) return;
+      paintedCounts = density.counts;
       paintedReplayColumns = replayColumns;
-    }
+      paintedCropSides = density.cropSides;
+      paintedPlaceholder = density.placeholder;
+    } else if (onlyIfDirty) return;
 
     const { w, h } = density.rect;
     const dpr = density.dpr;

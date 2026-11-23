@@ -22,6 +22,7 @@ import markers
 import media
 import server
 import thumbs
+from serve import RangeHandler
 from source_revision import source_revision
 
 
@@ -31,6 +32,34 @@ def song():
                        "chart:EXT": "songs/v/song/charts/EXT.json"},
             "charts": [{"code": "EXT", "level": "9",
                         "notes": 1, "holds": 0, "levelNum": 9.0, "notesKnown": True}]}
+
+
+class PreviewRangeIntegrity(unittest.TestCase):
+    def test_range_size_follows_the_open_file_after_replace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            clip, replacement = root / 'sample.wav', root / 'replacement.wav'
+            clip.write_bytes(b'1234567890')
+            replacement.write_bytes(b'xyz')
+            handler = object.__new__(RangeHandler)
+            handler.directory = str(root)
+            handler.path = '/sample.wav'
+            handler.headers = {'Range': 'bytes=1-'}
+            headers = {}
+            handler.send_header = headers.__setitem__
+            handler.send_response = lambda status: headers.update(status=status)
+            handler.end_headers = lambda: None
+            real_open = open
+
+            def open_after_replace(path, mode):
+                replacement.replace(clip)
+                return real_open(path, mode)
+
+            with patch('serve.open', side_effect=open_after_replace, create=True):
+                with handler.send_head() as stream:
+                    self.assertEqual(stream.read(), b'yz')
+            self.assertEqual(headers['Content-Range'], 'bytes 1-2/3')
+            self.assertEqual(headers['Content-Length'], '2')
 
 
 class MediaIntegrity(unittest.TestCase):

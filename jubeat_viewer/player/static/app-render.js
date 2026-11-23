@@ -163,12 +163,12 @@
   let paintCount = 0;
   function requestPaint() {
     paintDirty = true;
-    if (!state.raf) state.raf = requestAnimationFrame(updateFrame);
+    if (!A.mode?.ownsFrame && !state.raf) state.raf = requestAnimationFrame(updateFrame);
   }
 
   function updateFrame(now) {
     state.raf = 0;
-    if (A.mode?.ownsFrame) { state.raf = requestAnimationFrame(updateFrame); return; }
+    if (A.mode?.ownsFrame) return;
     // 完全空闲（暂停、没在拖、没有外部指定帧时间、没开调试面板）且没有脏标记
     // → 这一帧不画，也不再排下一帧。
     if (!paintDirty && !state.playing && !state.scrubbing
@@ -269,6 +269,26 @@
     paintFrame,
     requestPaint,
     updateFrame,
+  });
+  // Assign A.mode on handoff so the base renderer can sleep while the mode owns
+  // the frame. A mode that clears ownsFrame in place can call requestPaint().
+  let mode = A.mode;
+  let modeOwnsFrame = !!mode?.ownsFrame;
+  Object.defineProperty(A, 'mode', {
+    configurable: true,
+    enumerable: true,
+    get() { return mode; },
+    set(next) {
+      const previouslyOwned = modeOwnsFrame || !!mode?.ownsFrame;
+      mode = next;
+      modeOwnsFrame = !!mode?.ownsFrame;
+      if (modeOwnsFrame && state.raf) {
+        cancelAnimationFrame(state.raf);
+        state.raf = 0;
+      } else if (!modeOwnsFrame && previouslyOwned) {
+        requestPaint();
+      }
+    },
   });
   // 活绑定（不能走 Object.assign：那是取一次值拷过去的快照，录制脚本要靠它
   // 逐帧读到最新计数，见 record.js 的 renderAt）。

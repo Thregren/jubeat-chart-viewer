@@ -14,6 +14,7 @@ sys.path.insert(0, str(REPO / 'jubeat_viewer/player'))
 from directory_library import load_directory, asset_name, asset_path
 from media import write_atomic
 from package_site import equal_files
+from split_background_stories import copy_story_assets, is_story_asset
 import markers
 import config
 
@@ -55,11 +56,14 @@ def _build_directory(source: Path, out: Path, include_markers=True):
                     copy_or_link(p, out / p.relative_to(source))
     out.mkdir(parents=True, exist_ok=True)
     static = REPO / 'jubeat_viewer/player/static'
+    story_source = 'background-stories-data.js'
+    (out / 'static' / story_source).unlink(missing_ok=True)
     for p in static.iterdir():
-        if p.is_file() and not p.name.startswith('.'):
+        if p.is_file() and not p.name.startswith('.') and p.name != story_source and not is_story_asset(p.name):
             # 前端始终复制，避免未来编辑源码影响已发布站点。
             dest = out / ('index.html' if p.name == 'index.html' else 'static/' + p.name)
             write_atomic(dest, p.read_bytes())
+    copy_story_assets(static, out / 'static', complete=not (out / 'data/background-stories.json').is_file())
     if include_markers:
         manifest = markers.manifest()
         if manifest.get('error'):

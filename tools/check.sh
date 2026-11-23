@@ -139,17 +139,20 @@ if [ "$WANT_FULL" = 1 ]; then
       fi
       fixture=$(mktemp -d)
       "$PY" tools/browser_fixture.py --out "$fixture" --sync-audio || return 1
-      "$PY" tools/serve.py "$fixture/site" --port 18765 >"$fixture/server.log" 2>&1 &
+      port=$("$PY" -c "import sys; sys.path.insert(0,'tools'); from smoke_test import free_port; print(free_port())") || return 1
+      base="http://127.0.0.1:$port/"
+      "$PY" tools/serve.py "$fixture/site" --port "$port" >"$fixture/server.log" 2>&1 &
       server_pid=$!
       trap 'kill "$server_pid" 2>/dev/null || true' EXIT HUP INT TERM
-      "$PY" -c "import sys; sys.path.insert(0,'tools'); from smoke_test import wait_ready; sys.exit(0 if wait_ready(18765) else 1)" \
-        && node tools/browser/pwa-canvas-regression.mjs http://127.0.0.1:18765/ \
-        && node tools/browser/version-picker-regression.mjs http://127.0.0.1:18765/ \
-        && node tools/browser/density-touch-regression.mjs http://127.0.0.1:18765/ \
-        && node tools/browser/library-order-regression.mjs http://127.0.0.1:18765/ \
-        && JUBEAT_PREVIEW_URL=http://127.0.0.1:18765/ node tools/browser/check-audio-rate.mjs \
-        && JUBEAT_PREVIEW_URL=http://127.0.0.1:18765/ node tools/browser/speed-seek-regression.mjs
+      "$PY" -c "import sys; sys.path.insert(0,'tools'); from smoke_test import wait_ready; sys.exit(0 if wait_ready(int(sys.argv[1])) else 1)" "$port" \
+        && node tools/browser/pwa-canvas-regression.mjs "$base" \
+        && node tools/browser/version-picker-regression.mjs "$base" \
+        && node tools/browser/density-touch-regression.mjs "$base" \
+        && node tools/browser/library-order-regression.mjs "$base" \
+        && JUBEAT_PREVIEW_URL="$base" node tools/browser/check-audio-rate.mjs \
+        && JUBEAT_PREVIEW_URL="$base" node tools/browser/speed-seek-regression.mjs
       result=$?
+      if [ "$result" != 0 ]; then cat "$fixture/server.log"; fi
       kill "$server_pid" 2>/dev/null || true
       trap - EXIT HUP INT TERM
       rm -rf "$fixture"

@@ -74,6 +74,50 @@ test('density canvases resize only when pixel dimensions change', () => {
   assert.equal(A.density.counts.reduce((sum,count)=>sum+count,0),3);
 });
 
+test('duplicate layout skips painting but logical DPR, exact counts and replay columns refresh', () => {
+  let dpr = 1, baseClears = 0, composites = 0, replayColumns = null;
+  function canvas(visible = false) {
+    const methods = visible ? { drawImage(...args) { if (args.length === 3) composites++; } }
+      : { clearRect() { baseClears++; } };
+    const context = new Proxy(methods, { get: (target, key) => target[key] ?? (() => {}) });
+    return { style: {}, width: 300, height: 150, getContext: () => context,
+      parentElement: { getBoundingClientRect: () => ({ width: 640 }) } };
+  }
+  const A = { renderRatio: () => dpr, Core: {MAX_CHART_SECONDS:21600}, els: { densityCanvas: canvas(true) },
+    state: { notes: [{t:1},{t:2}], duration: 10 }, abLoop: {}, currentMediaTime: () => 0,
+    matchReplay: { forChart: () => ({ densityColumns: () => replayColumns }) } };
+  vm.runInNewContext(fs.readFileSync(new URL('../jubeat_viewer/player/static/app-density.js', import.meta.url), 'utf8'),
+    { window: { JubeatApp: A }, document: { createElement: () => canvas() } });
+  A.layoutDensity();
+  assert.equal(baseClears, 2);
+  assert.equal(composites, 1);
+  A.layoutDensity();
+  A.layoutDensity();
+  assert.equal(baseClears, 2);
+  assert.equal(composites, 1);
+  A.buildDensity();
+  assert.equal(baseClears, 2);
+
+  const pixelWidth = A.els.densityCanvas.width;
+  dpr = 1.0001;
+  A.layoutDensity();
+  assert.equal(A.els.densityCanvas.width, pixelWidth);
+  assert.equal(baseClears, 4);
+
+  const counts = new Array(120).fill(0);
+  counts[20] = 2;
+  A.state.arcadeDensity = { counts, dur: 9 };
+  A.buildDensity();
+  assert.equal(A.density.counts, counts);
+  assert.equal(A.density.dur, 9);
+  assert.equal(baseClears, 6);
+  replayColumns = counts.map(() => ({ grade: 'NON_PERFECT', revealAt: Infinity }));
+  A.layoutDensity();
+  assert.equal(baseClears, 8);
+  A.layoutDensity();
+  assert.equal(baseClears, 8);
+});
+
 test('arcade density bins original ticks using END, with separate hold endpoints', () => {
   const A = {Core:{MAX_CHART_SECONDS:21600}};
   vm.runInNewContext(fs.readFileSync(new URL('../jubeat_viewer/player/static/app-density.js',import.meta.url),'utf8'),

@@ -113,7 +113,7 @@ with zipfile.ZipFile(tmp) as z:
   name=info.filename;p=pathlib.PurePosixPath(name)
   assert not p.is_absolute() and not any(x in ('','..','.') for x in name.split('/')) and chr(92) not in name
   assert not stat.S_ISLNK(info.external_attr>>16)
-  assert p.parts[0] in ('data','songs','markers','static','index.html')
+  assert p.parts[0] in ('data','songs','markers','static','share','index.html')
   dest=root.joinpath(*p.parts);dest.parent.mkdir(parents=True,exist_ok=True)
   with z.open(info) as src,dest.open('wb') as dst:
    while True:
@@ -126,7 +126,7 @@ tmp.unlink();print('volume staged')
             state['staged'][name]=row['sha256'];save();print('服务器已校验解压',name,flush=True)
     if a.mode not in ('all','activate'):return state
     validation=f'''
-import pathlib,json
+import hashlib,pathlib,json
 root=pathlib.Path({stage!r});main=json.loads((root/'data/library.json').read_text());assert main['format']=='jubeat-directory-v1'
 songs=list(main['songs'])
 for name in main['versionIndexes']:songs.extend(json.loads((root/name).read_text())['songs'])
@@ -136,7 +136,28 @@ for song in songs:
   p=(root/name).resolve();assert root.resolve() in p.parents and p.is_file()
   if key in ('audio','preview'):
    with p.open('rb') as f:assert b'OpusHead' in f.read(128)
-assert not list(root.rglob('*.wav')) and not list(root.rglob('*.mcz')) and not list(root.rglob('*.mc'))
+samples={manifest.get('bundledSamples', {})!r}
+seen=set()
+for path in root.rglob('*'):
+ suffix=path.suffix.lower()
+ if suffix in ('.mcz','.mc'):raise ValueError('unexpected source chart')
+ if suffix != '.wav':continue
+ name=path.relative_to(root).as_posix()
+ assert path.parent==root/'static' and name in samples
+ with path.open('rb') as stream:
+  digest=hashlib.sha256()
+  for block in iter(lambda:stream.read(65536),b''):digest.update(block)
+ assert digest.hexdigest()==samples[name],name
+ seen.add(name)
+assert seen==set(samples)
+if {manifest.get('shareManifest', False)!r}:
+ shares=json.loads((root/'share/manifest.json').read_text())
+ assert shares['songs']==len(shares['pages'])
+ for item in shares['pages']:
+  assert item['page'].startswith('share/') and item['page'].endswith('.html')
+  for name in (item['page'],item['image']):
+   path=(root/name).resolve()
+   assert root.resolve() in path.parents and path.is_file(),name
 assert 'Swan416ya' not in (root/'index.html').read_text()
 print('validated',{manifest['songs']},{manifest['charts']})
 '''

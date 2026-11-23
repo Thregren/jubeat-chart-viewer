@@ -101,6 +101,8 @@
   // 进度有两个来源，谁靠前用谁：
   //   1. prepareBuffer() 整首下载的字节数 —— WebAudio 后端要用，通常是大头
   //   2. <audio> 自己的 buffered 区间 —— element 后端（?media=1）或解码失败时的退路
+  const FETCH_PROGRESS_INTERVAL = 100;
+  let fetchProgressTimer = 0;
   const audioLoad = {
     pending: false,     // 已在加载，但音源还没开始下（比如还在读谱面 json）
     pendingLabel: "加载中",
@@ -113,6 +115,7 @@
     hideTimer: 0,
     lastLabel: "",
     lastPct: -2,
+    lastText: "",
   };
 
   /** <audio> 已经缓冲到哪了（0~1）；拿不到时长就返回 -1 */
@@ -174,17 +177,22 @@
     else if (!audioLoad.fetching) label = "音频缓冲";
 
     const pct = ratio < 0 ? -1 : Math.round(ratio * 100);
-    if (label === audioLoad.lastLabel && pct === audioLoad.lastPct) return;
-    audioLoad.lastLabel = label;
-    audioLoad.lastPct = pct;
-
     const text = pct >= 0 ? `${pct}%` : (fmtBytes(audioLoad.fetchDone) || "…");
-    els.loadLabel.textContent = label;
-    els.loadPct.textContent = text;
-    els.loadRow.classList.toggle("indeterminate", pct < 0);
-    els.loadFill.style.width = pct < 0 ? "" : `${pct}%`;
-    els.loadBar.setAttribute("aria-valuenow", String(pct < 0 ? 0 : pct));
-    els.loadBar.setAttribute("aria-valuetext", text);
+    if (label !== audioLoad.lastLabel) {
+      audioLoad.lastLabel = label;
+      els.loadLabel.textContent = label;
+    }
+    if (pct !== audioLoad.lastPct) {
+      audioLoad.lastPct = pct;
+      els.loadRow.classList.toggle("indeterminate", pct < 0);
+      els.loadFill.style.width = pct < 0 ? "" : `${pct}%`;
+      els.loadBar.setAttribute("aria-valuenow", String(pct < 0 ? 0 : pct));
+    }
+    if (text !== audioLoad.lastText) {
+      audioLoad.lastText = text;
+      els.loadPct.textContent = text;
+      els.loadBar.setAttribute("aria-valuetext", text);
+    }
   }
 
   // 音源没就绪的时候，物量条只把「里面的柱子和播放头」收起来，外框留着：
@@ -214,8 +222,15 @@
     drawDensity(currentMediaTime());
   }
 
+  function clearFetchProgressTimer() {
+    if (!fetchProgressTimer) return;
+    clearTimeout(fetchProgressTimer);
+    fetchProgressTimer = 0;
+  }
+
   /** 重新算一遍：该显示就显示，加载完了先亮个 100% 再淡出，别闪一下就没了 */
   function updateLoadMeter() {
+    clearFetchProgressTimer();
     const busy = loadBusy();
     setDensityReady(!busy);
     if (busy) {
@@ -237,11 +252,13 @@
       setLoadVisible(false);
       audioLoad.lastLabel = "";
       audioLoad.lastPct = -2;
+      audioLoad.lastText = "";
     }, 500);
   }
 
   /** 只清下载 / 解码的计数，保留「用户已经点了播放」这类交互状态 */
   function resetFetchProgress() {
+    clearFetchProgressTimer();
     audioLoad.pending = false;
     audioLoad.fetching = false;
     audioLoad.decoding = false;
@@ -249,6 +266,7 @@
     audioLoad.fetchDone = 0;
     audioLoad.lastLabel = "";
     audioLoad.lastPct = -2;
+    audioLoad.lastText = "";
   }
 
   /** 换歌 / 换难度：进度归零重来（这次点击已经不算数了） */
@@ -261,7 +279,10 @@
   function releaseMediaObject() {
     transport.releaseObject();
   }
-  function cancelAudioLoad() { transport.cancel(); }
+  function cancelAudioLoad() {
+    clearFetchProgressTimer();
+    transport.cancel();
+  }
   function releaseDecodedAudio() { stopBufferSource();backend.buf=null;backend.mode='element';A.metrics=A.metrics||{};A.metrics.audioPCMBytes=0; }
   window.addEventListener("pagehide", (event) => {
     if (!event.persisted) cancelAudioLoad();
@@ -427,6 +448,7 @@
   /** 变速、解码失败或 ?media=1 时启动 <audio>；已下载的音频通过 Blob 复用。 */
   function loadElementSource(url) {
     if (backend.url !== url) return;
+    resetFetchProgress();
     elementSourcePending = true;
     audioLoad.pendingLabel = "音频加载";
     audioLoad.pending = true;
@@ -511,7 +533,13 @@
         if (!current()) return;
         audioLoad.fetchDone = done;
         audioLoad.fetchTotal = total;
-        updateLoadMeter();
+        // Coalesce chunks into one update, including when the stream stalls.
+        if (!fetchProgressTimer) {
+          fetchProgressTimer = setTimeout(() => {
+            fetchProgressTimer = 0;
+            if (current() && audioLoad.fetching) renderLoadMeter();
+          }, FETCH_PROGRESS_INTERVAL);
+        }
       });
       if (!current()) return;
       backend.objectUrl = URL.createObjectURL(new Blob([bytes], { type: res.headers.get("Content-Type")?.split(";")[0] || "audio/ogg" }));
@@ -526,7 +554,7 @@
         channels: header.channels || info.channels || 8});
       if (estimate > budget) { loadElementSource(url); return false; }
       const wantsPCM=()=>options.decode!==false&&!A.mode?.preferNativeAudio&&selectedRate()===1;
-      if(!wantsPCM()) {audioLoad.decoding=false;loadElementSource(url);return true;}
+      if(!wantsPCM()) {loadElementSource(url);return true;}
       const decode=audioSession.decode(()=>current()&&wantsPCM()?A.audioCtx.decodeAudioData(bytes):null, {signal: request.signal});
       const buf = await decode;
       if(!buf){if(current())loadElementSource(url);return false;}

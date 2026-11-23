@@ -14,6 +14,7 @@ import re
 import sqlite3
 import tempfile
 import urllib.request
+from contextlib import closing
 
 from ip2region import Reader
 
@@ -29,18 +30,28 @@ BOT = re.compile(r"HeadlessChrome|bot\b|spider|crawler|Playwright|Puppeteer|Jube
 TZ = datetime.timezone(datetime.timedelta(hours=8))
 
 
-def digest(data):
-    return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+def read_verified_geo(stream):
+    data = bytearray(SIZE)
+    view = memoryview(data)
+    digest = hashlib.sha1(f"blob {SIZE}\0".encode())
+    offset = 0
+    while offset < SIZE:
+        chunk = view[offset:offset + 64 * 1024]
+        length = stream.readinto(chunk)
+        if not length:
+            raise ValueError("IP2region database is truncated")
+        digest.update(chunk[:length])
+        offset += length
+    if stream.read(1) or digest.hexdigest() != GIT_BLOB_SHA1:
+        raise ValueError("IP2region database failed verification")
+    return Reader.from_bytes(data)
 
 
 def ensure_geo(path, allow_download):
     path = pathlib.Path(path)
     if path.is_file():
-        data = path.read_bytes()
-        if len(data) == SIZE and digest(data) == GIT_BLOB_SHA1:
-            Reader(path)
-            return path
-        raise ValueError("cached IP2region database failed verification")
+        with path.open("rb") as stream:
+            return read_verified_geo(stream)
     if not allow_download:
         raise FileNotFoundError(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,21 +59,18 @@ def ensure_geo(path, allow_download):
         try:
             request = urllib.request.Request(url, headers={"User-Agent": "JubeatVisitorReport/1.0"})
             with urllib.request.urlopen(request, timeout=45) as response:
-                data = response.read(SIZE + 1)
-            if len(data) != SIZE or digest(data) != GIT_BLOB_SHA1:
-                continue
+                reader = read_verified_geo(response)
             fd, temporary = tempfile.mkstemp(prefix=".ip2region-", dir=path.parent)
             try:
                 with os.fdopen(fd, "wb") as stream:
-                    stream.write(data)
+                    stream.write(reader.data)
                     stream.flush()
                     os.fsync(stream.fileno())
-                Reader(temporary)
                 os.chmod(temporary, 0o600)
                 os.replace(temporary, path)
             finally:
                 pathlib.Path(temporary).unlink(missing_ok=True)
-            return path
+            return reader
         except (OSError, ValueError):
             continue
     raise RuntimeError("no verified IP2region mirror was reachable; the previous cache was preserved")
@@ -94,10 +102,10 @@ def browser(ua):
 
 def load_events(db_path, cutoff):
     connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
-    connection.execute("PRAGMA query_only=ON")
     try:
+        connection.execute("PRAGMA query_only=ON")
         rows = connection.execute("SELECT payload FROM events WHERE at>=? ORDER BY at", (cutoff,))
-        events = []
+        # Keep deduplicating by payload ID, including on older databases.
         seen = set()
         for (payload,) in rows:
             try:
@@ -116,16 +124,15 @@ def load_events(db_path, cutoff):
                     continue
                 seen.add(event_id)
                 event["_at"] = at
-                events.append(event)
             except (KeyError, TypeError, ValueError):
                 continue
-        return events
+            yield event
     finally:
         connection.close()
 
 
 def aggregate(events, now, geo_reader=None):
-    visitors = collections.defaultdict(list)
+    visitors = {}
     days = collections.defaultdict(lambda: {"page_views": 0, "song_selections": 0, "visitors": set()})
     funnel = collections.Counter()
     songs = {}
@@ -135,7 +142,16 @@ def aggregate(events, now, geo_reader=None):
         identity = str(event.get("visitor") or "")
         if not identity:
             continue
-        visitors[identity].append(event)
+        visitor = visitors.get(identity)
+        if visitor is None:
+            visitor = visitors[identity] = {"page_views": 0, "song_selections": 0, "public_ip": None}
+            ua = str(event.get("ua") or "")
+            devices[event.get("device") or device(ua)] += 1
+            browsers[event.get("browser") or browser(ua)] += 1
+        if geo_reader is not None and visitor["public_ip"] is None and event.get("ip"):
+            address = ipaddress.ip_address(event["ip"])
+            if address.is_global:
+                visitor["public_ip"] = address
         event_type = event["event"]
         funnel[event_type] += 1
         local = datetime.datetime.fromtimestamp(event["_at"], TZ)
@@ -143,31 +159,33 @@ def aggregate(events, now, geo_reader=None):
         day["visitors"].add(identity)
         if event_type == "page":
             day["page_views"] += 1
+            visitor["page_views"] += 1
         if event_type == "song":
             day["song_selections"] += 1
+            visitor["song_selections"] += 1
             song = str(event.get("song") or "")
             if song:
-                row = songs.setdefault(song, {"song": song, "title": str(event.get("title") or song), "selections": 0, "visitors": set(), "last_at": 0})
+                row = songs.get(song)
+                if row is None:
+                    row = songs[song] = {
+                        "song": song, "title": str(event.get("title") or song),
+                        "selections": 0, "visitors": set(), "last_at": 0,
+                    }
                 row["selections"] += 1
                 row["visitors"].add(identity)
                 row["last_at"] = max(row["last_at"], event["_at"])
     geography = collections.defaultdict(lambda: {"visitors": 0, "page_views": 0, "song_selections": 0})
-    for identity, items in visitors.items():
-        first = next(iter(items))
-        ua = str(first.get("ua") or "")
-        devices[first.get("device") or device(ua)] += 1
-        browsers[first.get("browser") or browser(ua)] += 1
-        if geo_reader is not None:
-            public = next((ipaddress.ip_address(item["ip"]) for item in items if item.get("ip") and ipaddress.ip_address(item["ip"]).is_global), None)
-            if public and public.version == 4:
-                fields = (geo_reader.search(str(public)).split("|") + [""] * 5)[:5]
-                clean = lambda value: "" if value in ("", "0", "-") else value
-                country, province, city = map(clean, fields[:3])
-                key = (country or "未知", province, city or province or "城市未知")
-                row = geography[key]
-                row["visitors"] += 1
-                row["page_views"] += sum(item["event"] == "page" for item in items)
-                row["song_selections"] += sum(item["event"] == "song" for item in items)
+    for visitor in visitors.values():
+        public = visitor["public_ip"]
+        if public is not None and public.version == 4:
+            fields = (geo_reader.search(str(public)).split("|") + [""] * 5)[:5]
+            clean = lambda value: "" if value in ("", "0", "-") else value
+            country, province, city = map(clean, fields[:3])
+            key = (country or "未知", province, city or province or "城市未知")
+            row = geography[key]
+            row["visitors"] += 1
+            row["page_views"] += visitor["page_views"]
+            row["song_selections"] += visitor["song_selections"]
     top = sorted(songs.values(), key=lambda row: (-row["selections"], -row["last_at"], row["song"]))[:10]
     for row in top:
         row["visitors"] = len(row["visitors"])
@@ -180,7 +198,7 @@ def aggregate(events, now, geo_reader=None):
             "visitors": len(visitors),
             "page_views": funnel["page"],
             "song_selections": funnel["song"],
-            "song_visitors": sum(any(item["event"] == "song" for item in items) for items in visitors.values()),
+            "song_visitors": sum(visitor["song_selections"] > 0 for visitor in visitors.values()),
         },
         "daily": [{"date": day, "visitors": len(row["visitors"]), "page_views": row["page_views"], "song_selections": row["song_selections"]} for day, row in sorted(days.items())],
         "funnel": dict(sorted(funnel.items())),
@@ -221,9 +239,9 @@ def main():
     reader = None
     try:
         if not args.no_geo and args.geo_db:
-            reader = Reader(ensure_geo(args.geo_db, args.allow_download))
-        events = load_events(args.db, now - 7 * 86400)
-        report = aggregate(events, now, reader)
+            reader = ensure_geo(args.geo_db, args.allow_download)
+        with closing(load_events(args.db, now - 7 * 86400)) as events:
+            report = aggregate(events, now, reader)
         write_atomic(args.out / "latest.json", report)
         write_atomic(args.out / (datetime.datetime.fromtimestamp(now, TZ).strftime("%Y-%m-%d") + ".json"), report)
         print(json.dumps({"ok": True, "visitors": report["totals"]["visitors"], "top_songs": len(report["top_songs"])}))

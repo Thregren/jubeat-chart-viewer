@@ -43,7 +43,31 @@ def _pack(root,output,version,volume_mib,verify_crc):
     main=json.loads((root/'data/library.json').read_text());common.update(main.get('versionIndexes',[]))
     marker_files={p.relative_to(root).as_posix() for p in (root/'markers').rglob('*') if p.is_file() and not p.name.startswith('.')}
     resources=assets|common|marker_files|background_files(root)
-    front={'index.html'}|{p.relative_to(root).as_posix() for p in (root/'static').iterdir() if p.is_file() and not p.name.startswith('.')}
+    front={'index.html'}|{p.relative_to(root).as_posix() for p in (root/'static').iterdir()
+                        if p.is_file() and not p.name.startswith('.') and p.name!='background-stories-data.js'}
+    share_manifest = root/'share/manifest.json'
+    if share_manifest.is_file():
+        shares = json.loads(share_manifest.read_text())
+        if shares['songs'] != len(shares['pages']):
+            raise ValueError('分享页清单数量不符')
+        front.add('share/manifest.json')
+        for item in shares['pages']:
+            page, image = item['page'], item['image']
+            if not page.startswith('share/') or not page.endswith('.html'):
+                raise ValueError('分享页路径无效：'+page)
+            front.update((page, image))
+    trusted_samples = REPO/'jubeat_viewer/player/static'
+    samples = {}
+    for name in sorted(front):
+        if not name.lower().endswith('.wav'):
+            continue
+        source = trusted_samples/Path(name).name
+        if name != 'static/'+source.name or not source.is_file():
+            raise ValueError('未声明的 WAV：'+name)
+        digest = sha256_file(source)
+        if sha256_file(asset_path(root, name)) != digest:
+            raise ValueError('打击音与源码不符：'+name)
+        samples[name] = digest
     # Runtime health metadata is small and contains no source paths or original archive data.
     if (root/'data/build.json').exists():common.add('data/build.json');resources.add('data/build.json')
     for name in resources|front:
@@ -80,7 +104,7 @@ def _pack(root,output,version,volume_mib,verify_crc):
             archive(f'web-{version}.part{number:03}.zip',batch,'web-volume');number+=1;batch=[];size=0
         batch.append(rel);size+=n
     if batch:archive(f'web-{version}.part{number:03}.zip',batch,'web-volume')
-    manifest=dict(format='jubeat-directory-package-v1',version=version,songs=len(data['songs']),charts=sum(len(s['charts']) for s in data['songs']),assets=rows)
+    manifest=dict(format='jubeat-directory-package-v1',version=version,songs=len(data['songs']),charts=sum(len(s['charts']) for s in data['songs']),assets=rows,bundledSamples=samples,shareManifest=share_manifest.is_file())
     (output/'packages.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
     (output/'SHA256SUMS').write_text(''.join(x['sha256']+'  '+x['name']+'\n' for x in rows))
     print('全部打包完成',len(rows),'份',flush=True);return manifest

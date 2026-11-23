@@ -320,17 +320,33 @@
     return { lines: lines.length ? lines : [''], overflow };
   }
 
-  /** 兜底硬拆：连单个单元都放不下时按字符切 */
-  function hardSplit(lines, weight, size, family, ls, width) {
+  function fittingPrefix(chars, start, fits) {
+    let low = 1;
+    let high = chars.length - start;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (fits(chars.slice(start, start + mid).join(''))) low = mid;
+      else high = mid - 1;
+    }
+    return low;
+  }
+
+  /** 只生成显示所需的行，再多留一行供 ellipsize 判断。 */
+  function hardSplit(lines, weight, size, family, ls, width, maxLines) {
     const out = [];
+    const fits = text => measure(text, weight, size, family, ls) <= width;
     for (const line of lines) {
-      if (measure(line, weight, size, family, ls) <= width) { out.push(line); continue; }
-      let rest = line;
-      while (rest.length) {
-        let cut = rest.length;
-        while (cut > 1 && measure(rest.slice(0, cut), weight, size, family, ls) > width) cut -= 1;
-        out.push(rest.slice(0, cut));
-        rest = rest.slice(cut);
+      if (fits(line)) {
+        out.push(line);
+        if (out.length > maxLines) return out;
+        continue;
+      }
+      const chars = Array.from(line);
+      for (let start = 0; start < chars.length;) {
+        const length = fittingPrefix(chars, start, fits);
+        out.push(chars.slice(start, start + length).join(''));
+        if (out.length > maxLines) return out;
+        start += length;
       }
     }
     return out;
@@ -340,11 +356,9 @@
   function ellipsize(lines, weight, size, family, ls, width, maxLines) {
     const out = lines.slice(0, maxLines);
     if (lines.length <= maxLines) return out;
-    let last = out[maxLines - 1];
-    while (last.length > 1 && measure(`${last}…`, weight, size, family, ls) > width) {
-      last = last.slice(0, -1);
-    }
-    out[maxLines - 1] = `${last.trimEnd()}…`;
+    const last = Array.from(out[maxLines - 1]);
+    const length = fittingPrefix(last, 0, text => measure(`${text}…`, weight, size, family, ls) <= width);
+    out[maxLines - 1] = `${last.slice(0, length).join('').trimEnd()}…`;
     return out;
   }
 
@@ -402,7 +416,7 @@
     const planTitle = (ts) => {
       const w = wrap(titleText, W_TITLE, ts, famT, LS_TITLE, COL_W);
       const lines = w.overflow
-        ? ellipsize(hardSplit(w.lines, W_TITLE, ts, famT, LS_TITLE, COL_W),
+        ? ellipsize(hardSplit(w.lines, W_TITLE, ts, famT, LS_TITLE, COL_W, MAX_TITLE_LINES),
                     W_TITLE, ts, famT, LS_TITLE, COL_W, MAX_TITLE_LINES)
         : w.lines;
       return { lines, hard: w.overflow };
@@ -411,7 +425,7 @@
       if (!artistText) return { lines: [], hard: false };
       const w = wrap(artistText, W_ARTIST, as, famA, LS_ARTIST, COL_W);
       const lines = w.overflow
-        ? ellipsize(hardSplit(w.lines, W_ARTIST, as, famA, LS_ARTIST, COL_W),
+        ? ellipsize(hardSplit(w.lines, W_ARTIST, as, famA, LS_ARTIST, COL_W, MAX_ARTIST_LINES),
                     W_ARTIST, as, famA, LS_ARTIST, COL_W, MAX_ARTIST_LINES)
         : ellipsize(w.lines, W_ARTIST, as, famA, LS_ARTIST, COL_W, MAX_ARTIST_LINES);
       return { lines, hard: w.overflow };
@@ -449,13 +463,14 @@
     // 极端兜底：最小字号 + 硬拆 + 省略号
     const tiny = ellipsize(
       hardSplit(wrap(titleText, W_TITLE, MIN_TITLE, famT, LS_TITLE, COL_W).lines,
-                W_TITLE, MIN_TITLE, famT, LS_TITLE, COL_W),
+                W_TITLE, MIN_TITLE, famT, LS_TITLE, COL_W, MAX_TITLE_LINES),
       W_TITLE, MIN_TITLE, famT, LS_TITLE, COL_W, MAX_TITLE_LINES,
     );
     return evaluate(MIN_TITLE, tiny, 20, []);
   }
 
   function render(data) {
+    widthCache.clear();
     const d = data || {};
     document.title = `封面 · ${d.title || ''}`;
     els.art.src = d.cover || '';

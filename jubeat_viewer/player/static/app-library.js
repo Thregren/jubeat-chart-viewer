@@ -333,79 +333,171 @@
 
   // Only the bounded virtual window creates cover requests; do not layer browser
   // lazy loading and IntersectionObserver over rows that are repeatedly recycled.
-  const songButtonById = new Map();
-  const coverLoads = new WeakMap();
-  function disposeCover(row) { const img = row.querySelector('img'); if (img) coverLoads.get(img)?.dispose(); }
+  const songRows = new Map();
 
   function updateActiveSongRow() {
     const activeId = state.song ? state.song.id : "";
     if (activeSongRowId === activeId) return;
     // 只动「上一次高亮的那一行」和「这一次要高亮的那一行」。
-    // 以前是遍历整个 songButtonById（上千个按钮）逐个 toggle，选一首歌就白扫一遍。
-    const prev = songButtonById.get(activeSongRowId);
+    const prev = songRows.get(activeSongRowId)?.button;
     if (prev) prev.classList.remove("active");
-    const next = songButtonById.get(activeId);
+    const next = songRows.get(activeId)?.button;
     if (next) next.classList.add("active");
     activeSongRowId = activeId;
   }
 
   let activeSongRowId = '';
-  const ROW_HEIGHT=72, OVERSCAN=8;
-  let virtualSongs=[],virtualRows=new Map(),listRaf=0,focusIndex=0;
-  const scheduleList=()=>{if(!listRaf)listRaf=requestAnimationFrame(()=>{listRaf=0;paintListWindow();});};
-  function spacer(height){const li=document.createElement('li');li.className='song-spacer';li.setAttribute('aria-hidden','true');li.style.height=height+'px';return li;}
-  function paintListWindow(){
-    const ul=els.songList;if(ul.hidden || !virtualSongs.length)return;
-    const focused=document.activeElement?.closest?.('.song-item'),focusedId=focused?.dataset.songId;
-    const focusedIndex=focusedId?virtualSongs.findIndex(s=>s.id===focusedId):-1;
-    const first=Math.max(0,Math.floor(ul.scrollTop/ROW_HEIGHT)-OVERSCAN);
-    const last=Math.min(virtualSongs.length,Math.ceil((ul.scrollTop+(ul.clientHeight||640))/ROW_HEIGHT)+OVERSCAN);
-    const indexes=new Set();for(let i=first;i<last;i++)indexes.add(i);if(focusedIndex>=0)indexes.add(focusedIndex);
-    const wanted=new Set([...indexes].map(i=>virtualSongs[i].id));
-    for(const [id,row]of virtualRows)if(!wanted.has(id)){const img=row.querySelector('img');if(img)coverLoads.get(img)?.dispose();row.remove();virtualRows.delete(id);songButtonById.delete(id);}
-    for(const old of ul.querySelectorAll('.song-spacer'))old.remove();
-    let cursor=ul.firstChild,previous=0;
-    for(const index of [...indexes].sort((a,b)=>a-b)){
-      if(index>previous)ul.insertBefore(spacer((index-previous)*ROW_HEIGHT),cursor);
-      const song=virtualSongs[index];let row=virtualRows.get(song.id);
-      if(!row){row=buildSongRow(song);row.classList.add('song-row');virtualRows.set(song.id,row);}
-      const button=songButtonById.get(song.id);button.tabIndex=index===focusIndex?0:-1;button.dataset.listIndex=String(index);
-      row.setAttribute('aria-posinset',String(index+1));row.setAttribute('aria-setsize',String(virtualSongs.length));
-      if(row!==cursor)ul.insertBefore(row,cursor);else cursor=cursor.nextSibling;
-      const img = row.querySelector('img');
+  const ROW_HEIGHT = 72, OVERSCAN = 8;
+  let virtualSongs = [], paintedWindow = null, listRaf = 0, focusIndex = 0;
+
+  function scheduleList() {
+    if (!listRaf) listRaf = requestAnimationFrame(() => {
+      listRaf = 0;
+      paintListWindow();
+    });
+  }
+
+  function spacer(rows) {
+    const li = el('li', 'song-spacer');
+    li.setAttribute('aria-hidden', 'true');
+    li.style.height = rows * ROW_HEIGHT + 'px';
+    return li;
+  }
+
+  function focusedSongButton() {
+    const button = document.activeElement?.closest?.('.song-item');
+    return button && els.songList.contains(button) ? button : null;
+  }
+
+  function songIndex(button) {
+    if (!button) return -1;
+    const index = Number(button.dataset.listIndex);
+    return Number.isInteger(index) && virtualSongs[index]?.id === button.dataset.songId ? index : -1;
+  }
+
+  function paintListWindow(scrollTop = els.songList.scrollTop, focusedIndex = songIndex(focusedSongButton())) {
+    const ul = els.songList, count = virtualSongs.length;
+    if (ul.hidden || !count) return;
+    const top = Math.max(0, scrollTop);
+    const topIndex = Math.min(count - 1, Math.floor(top / ROW_HEIGHT));
+    const first = Math.max(0, topIndex - OVERSCAN);
+    const last = Math.min(count, Math.ceil((top + (ul.clientHeight || 640)) / ROW_HEIGHT) + OVERSCAN);
+    // Keep a Tab entry point inside the window even after scrolling without focus.
+    const tabIndex = focusIndex >= first && focusIndex < last ? focusIndex
+      : focusedIndex >= 0 ? focusedIndex : topIndex;
+    if (paintedWindow?.songs === virtualSongs && paintedWindow.popular === popularMode
+        && paintedWindow.first === first && paintedWindow.last === last
+        && paintedWindow.focusedIndex === focusedIndex && paintedWindow.tabIndex === tabIndex) {
+      // A previously failed image can become eligible for retry on a later scroll.
+      for (const {cover} of songRows.values()) cover?.start();
+      return;
+    }
+
+    const indexes = [];
+    if (focusedIndex >= 0 && focusedIndex < first) indexes.push(focusedIndex);
+    for (let index = first; index < last; index++) indexes.push(index);
+    if (focusedIndex >= last) indexes.push(focusedIndex);
+    const wanted = new Map(indexes.map(index => [virtualSongs[index].id, index]));
+    for (const [id, row] of songRows) {
+      const index = wanted.get(id);
+      if (virtualSongs[index] === row.song && row.rank === (popularMode ? index + 1 : 0)) continue;
+      row.cover?.dispose();
+      row.node.remove();
+      songRows.delete(id);
+    }
+
+    for (const old of ul.querySelectorAll('.song-spacer, .empty-list')) old.remove();
+    let cursor = ul.firstChild, previous = 0;
+    for (const index of indexes) {
+      if (index > previous) ul.insertBefore(spacer(index - previous), cursor);
+      const song = virtualSongs[index];
+      let row = songRows.get(song.id);
+      if (!row) {
+        row = buildSongRow(song, popularMode ? index + 1 : 0);
+        songRows.set(song.id, row);
+      }
+      const {node, button, img, cover} = row;
+      button.tabIndex = index === tabIndex ? 0 : -1;
+      button.dataset.listIndex = String(index);
+      node.setAttribute('aria-posinset', String(index + 1));
+      node.setAttribute('aria-setsize', String(count));
+      if (node !== cursor) ul.insertBefore(node, cursor);
+      else cursor = cursor.nextSibling;
       if (img) {
         img.setAttribute('fetchpriority', index < first + OVERSCAN + 4 ? 'high' : 'low');
-        coverLoads.get(img)?.start();
+        cover.start();
       }
-      previous=index+1;
+      previous = index + 1;
     }
-    if(previous<virtualSongs.length)ul.appendChild(spacer((virtualSongs.length-previous)*ROW_HEIGHT));
-    if(focusedId&&document.activeElement!==focused&&focused?.isConnected)focused.focus({preventScroll:true});
-    A.metrics=A.metrics||{};A.metrics.listRows=virtualRows.size;
+    if (previous < count) ul.appendChild(spacer(count - previous));
+    if (focusedIndex >= 0) {
+      const button = songRows.get(virtualSongs[focusedIndex].id).button;
+      if (document.activeElement !== button) button.focus({preventScroll: true});
+    }
+    paintedWindow = {songs: virtualSongs, popular: popularMode, first, last, focusedIndex, tabIndex};
+    A.metrics ||= {};
+    A.metrics.listRows = songRows.size;
   }
-  function renderList(scrollTop = 0){
+
+  function renderList(scrollTop = 0) {
     A.libraryFilters?.sync();
     if (A.versionLibrary?.active) { A.versionLibrary.refresh(); return; }
     if (A.markerLibrary?.active) { A.markerLibrary.refresh(); return; }
-    const started=performance.now(),ul=els.songList;
-    cancelAnimationFrame(listRaf);listRaf=0;for(const row of virtualRows.values())disposeCover(row);songButtonById.clear();virtualRows.clear();
-    activeSongRowId=state.song?.id||'';virtualSongs=visibleSongs();focusIndex=0;
-    ul.classList.add('virtual');ul.replaceChildren();ul.scrollTop=0;
-    els.listCount.textContent=`${virtualSongs.length} 首`;
-    if(!virtualSongs.length){const li=document.createElement('li');li.className='empty-list';li.textContent=state.songs.length?'没有匹配的曲目，换个关键词试试。':'曲库里没有曲目：请将版本包解压到含 data/library.json 的目录。';ul.appendChild(li);}
-    else { ul.appendChild(spacer(virtualSongs.length * ROW_HEIGHT)); ul.scrollTop = Number.isFinite(scrollTop) ? scrollTop : 0; paintListWindow(); }
-    A.metrics=A.metrics||{};A.metrics.listMs=performance.now()-started;
+    const started = performance.now(), ul = els.songList;
+    cancelAnimationFrame(listRaf);
+    listRaf = 0;
+    const focused = focusedSongButton();
+    const songs = visibleSongs();
+    const focusedIndex = !focused ? -1 : songs === virtualSongs ? songIndex(focused)
+      : songs.findIndex(song => song.id === focused.dataset.songId);
+    virtualSongs = songs;
+    focusIndex = Math.max(0, focusedIndex);
+    if (focused && focusedIndex < 0) els.search.focus({preventScroll: true});
+    if (!ul.classList.contains('virtual')) ul.classList.add('virtual');
+    els.listCount.textContent = `${songs.length} 首`;
+    updateActiveSongRow();
+    A.metrics ||= {};
+    if (!songs.length) {
+      for (const {cover} of songRows.values()) cover?.dispose();
+      songRows.clear();
+      paintedWindow = null;
+      const message = state.songs.length ? '没有匹配的曲目，换个关键词试试。'
+        : '曲库里没有曲目：请将版本包解压到含 data/library.json 的目录。';
+      const empty = ul.querySelector('.empty-list');
+      if (!empty || empty.textContent !== message) ul.replaceChildren(el('li', 'empty-list', message));
+      A.metrics.listRows = 0;
+    } else {
+      const target = Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0;
+      // Mount the requested window before scrolling, in case the new list is taller.
+      const estimatedMax = Math.max(0, songs.length * ROW_HEIGHT - (ul.clientHeight || 640));
+      paintListWindow(Math.min(target, estimatedMax), focusedIndex);
+      ul.scrollTop = target;
+    }
+    A.metrics.listMs = performance.now() - started;
   }
-  els.songList.addEventListener('scroll',scheduleList,{passive:true});
-  els.songList.addEventListener('click',e=>{const button=e.target.closest?.('.song-item');if(!button)return;focusIndex=Number(button.dataset.listIndex);const song=virtualSongs[focusIndex];if(song?.id===button.dataset.songId){scheduleList();selectSong(song);}});
-  els.songList.addEventListener('keydown',e=>{
-    const button=e.target.closest?.('.song-item');if(!button)return;
-    const index=Number(button.dataset.listIndex),page=Math.max(1,Math.floor(els.songList.clientHeight/ROW_HEIGHT));
-    const target={ArrowDown:index+1,ArrowUp:index-1,PageDown:index+page,PageUp:index-page,Home:0,End:virtualSongs.length-1}[e.key];
-    if(target===undefined)return;e.preventDefault();focusIndex=Math.max(0,Math.min(virtualSongs.length-1,target));
-    const top=focusIndex*ROW_HEIGHT,bottom=top+ROW_HEIGHT;
-    if(top<els.songList.scrollTop)els.songList.scrollTop=top;else if(bottom>els.songList.scrollTop+els.songList.clientHeight)els.songList.scrollTop=bottom-els.songList.clientHeight;
-    paintListWindow();songButtonById.get(virtualSongs[focusIndex].id)?.focus({preventScroll:true});
+  els.songList.addEventListener('scroll', scheduleList, {passive: true});
+  els.songList.addEventListener('focusout', scheduleList);
+  els.songList.addEventListener('click', event => {
+    const index = songIndex(event.target.closest?.('.song-item'));
+    if (index < 0) return;
+    focusIndex = index;
+    scheduleList();
+    selectSong(virtualSongs[index]);
+  });
+  els.songList.addEventListener('keydown', event => {
+    const index = songIndex(event.target.closest?.('.song-item'));
+    if (index < 0) return;
+    const ul = els.songList, page = Math.max(1, Math.floor(ul.clientHeight / ROW_HEIGHT));
+    const targets = {ArrowDown: index + 1, ArrowUp: index - 1, PageDown: index + page,
+      PageUp: index - page, Home: 0, End: virtualSongs.length - 1};
+    if (!Object.prototype.hasOwnProperty.call(targets, event.key)) return;
+    event.preventDefault();
+    focusIndex = Math.max(0, Math.min(virtualSongs.length - 1, targets[event.key]));
+    const top = focusIndex * ROW_HEIGHT, bottom = top + ROW_HEIGHT;
+    if (top < ul.scrollTop) ul.scrollTop = top;
+    else if (bottom > ul.scrollTop + ul.clientHeight) ul.scrollTop = bottom - ul.clientHeight;
+    paintListWindow();
+    songRows.get(virtualSongs[focusIndex].id)?.button.focus({preventScroll: true});
   });
   if(window.ResizeObserver)new ResizeObserver(scheduleList).observe(els.songList);
   els.btnPopular?.addEventListener("click", togglePopularMode);
@@ -416,8 +508,8 @@
   }
 
   /** 把一首歌搭成一行（纯 DOM，不拼 HTML） */
-  function buildSongRow(s) {
-    const li = document.createElement("li");
+  function buildSongRow(s, rank) {
+    const li = el('li', 'song-row');
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "song-item" + (state.song && state.song.id === s.id ? " active" : "");
@@ -436,18 +528,15 @@
     }
     if (hasHold(s)) cv.appendChild(createHoldMarker("含长押谱面"));
     const sm = el("span", "sm");
-    const rank = popularMode ? popularSongs.findIndex(item => item.id === s.id) : -1;
-    if (rank >= 0) sm.append(el("span", "hot-rank", `#${rank + 1}`));
+    if (rank) sm.append(el("span", "hot-rank", `#${rank}`));
     sm.append(el("span", "ver"), el("span", "ar"));
     const tx = el("span", "tx");
     tx.append(el("span", "st"), sm, el("span", "lvset"));
     btn.append(cv, tx);
     const img = btn.querySelector(".cv img");
-    if (img) {
-      coverLoads.set(img, window.JubeatListImages.attach(img, {
-        source: thumbSrc, fallback: coverSrc, active: () => img.isConnected && !els.songList.hidden,
-      }));
-    }
+    const cover = img ? window.JubeatListImages.attach(img, {
+      source: thumbSrc, fallback: coverSrc, active: () => img.isConnected && !els.songList.hidden,
+    }) : null;
     btn.querySelector(".st").textContent = s.title;
     btn.querySelector(".ver").textContent = s.version;
     btn.querySelector(".ar").textContent = s.artist || "";
@@ -463,9 +552,8 @@
     btn.title = [s.title, ...window.JubeatDirectory.missingLabels(s).map(x => "缺少" + x), s.resourceOnly ? "仅资源，无可玩谱面" : ""].filter(Boolean).join(" · ");
     btn.dataset.songId = s.id;
 
-    songButtonById.set(s.id, btn);
     li.appendChild(btn);
-    return li;
+    return {song: s, rank, node: li, button: btn, img, cover};
   }
 
   async function selectSong(song, preferredCode = null, matchedChart = null) {

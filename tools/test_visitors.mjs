@@ -2,10 +2,14 @@ import test from 'node:test';import assert from 'node:assert/strict';import fs f
 const Queue=createRequire(import.meta.url)('../jubeat_viewer/player/static/visitor-queue.js');
 const code=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-visitors.js',import.meta.url),'utf8');
 function setup({recording=false,protocol='https:',host='viewer.test',fail=false,response={visitors:1234,today_visitors:25,views:5678,chart_loads:2468,today_chart_loads:42,popular_songs:[]}}={}){
- const calls=[],badge={hidden:true},value={},today={},A={services:{register(){}},setPopularSongs(rows){this.popular=rows}};let resolvePage;
+ const calls=[],pushes=[],badge={hidden:true},value={},today={},A={services:{register(){}},setPopularSongs(rows){this.popular=rows}};let resolvePage;
  const fetch=async(url,options)=>{calls.push({url,...options});if(fail)throw Error('offline');if(calls.length===1)await new Promise(r=>resolvePage=r);return{ok:true,json:async()=>response}};
- vm.runInNewContext(code,{window:{JubeatApp:A,__recActive:recording,JubeatVisitorQueue:{EventQueue:class extends Queue.EventQueue{constructor(send){super(send,{wait:async()=>{}})}}}},document:{getElementById:id=>id==='visitorCount'?badge:id==='todayChartLoadValue'?today:value},location:{protocol,hostname:host},AbortController,setTimeout,clearTimeout,fetch});
- return{A,calls,badge,value,today,ready:()=>resolvePage?.()};
+ class TestQueue extends Queue.EventQueue{
+  constructor(send,options){super(send,{...options,wait:async()=>{}})}
+  push(key,event){pushes.push(event.event);return super.push(key,event)}
+ }
+ vm.runInNewContext(code,{window:{JubeatApp:A,__recActive:recording,JubeatVisitorQueue:{EventQueue:TestQueue}},document:{getElementById:id=>id==='visitorCount'?badge:id==='todayChartLoadValue'?today:value},location:{protocol,hostname:host},AbortController,setTimeout,clearTimeout,fetch});
+ return{A,calls,pushes,badge,value,today,ready:()=>resolvePage?.()};
 }
 const tick=()=>new Promise(setImmediate);
 test('first page completes before song logging, cookies are same-origin, repeated chart selection is deduplicated',async()=>{
@@ -39,4 +43,44 @@ test('funnel events are bounded and playback milestones are emitted once',async(
  const events=h.calls.map(call=>JSON.parse(call.body));
  assert.deepEqual(events.map(event=>event.event),['page','song','chart_ready','play_start','play_25','play_75','play_complete']);
  assert.equal(events[2].bucket,'lt1500');assert.equal(events[2].song,'song.mcz');assert.equal(events[2].chart,'EXT');
+});
+
+function selectChartAndFillQueue(visitors){
+ assert.equal(visitors.song('song.mcz','EXT'),true);
+ for(let index=0;index<30;index++)assert.equal(visitors.event('chart_ready',{code:`filler_${index}`}),true);
+}
+
+test('full queues retry reached milestones on available capacity even after playback stops',async()=>{
+ const h=setup(),visitors=h.A.visitors;
+ selectChartAndFillQueue(visitors);
+ assert.equal(visitors.event('share_open'),false);
+ for(const seconds of [1,25,75,100]){
+  for(let frame=0;frame<60;frame++)visitors.playback(seconds,100,true);
+ }
+ visitors.playback(10,100,true);
+ visitors.playback(10,100,false);
+ assert.deepEqual(h.pushes.filter(type=>type.startsWith('play_')),['play_start']);
+ assert.equal(h.calls.length,1);
+
+ h.ready();await tick();
+ const milestones=h.calls.map(call=>JSON.parse(call.body)).filter(event=>event.event.startsWith('play_'));
+ assert.deepEqual(milestones.map(event=>event.event),['play_start','play_25','play_75','play_complete']);
+ assert(milestones.every(event=>event.song==='song.mcz'&&event.chart==='EXT'));
+ assert.equal(visitors.event('share_open'),true);
+ assert.equal(visitors.event('share_open'),true);
+ visitors.playback(100,100,true);
+ await tick();
+ assert.equal(h.calls.filter(call=>JSON.parse(call.body).event==='share_open').length,1);
+ assert.equal(h.calls.filter(call=>JSON.parse(call.body).event.startsWith('play_')).length,4);
+});
+
+test('a rejected play_start from the audio layer retries without a playback frame',async()=>{
+ const h=setup(),visitors=h.A.visitors;
+ selectChartAndFillQueue(visitors);
+ assert.equal(visitors.event('play_start'),false);
+ h.ready();await tick();
+ const starts=h.calls.map(call=>JSON.parse(call.body)).filter(event=>event.event==='play_start');
+ assert.equal(starts.length,1);
+ assert.equal(starts[0].song,'song.mcz');
+ assert.equal(starts[0].chart,'EXT');
 });

@@ -9,9 +9,10 @@
   // 上一次已下发的热门列表签名：页面访问及选歌的回执会附带列表，
   // 列表没变就别再触发 setPopularSongs → 重建封面预取。
   let popularSignature=null;
-  // 播放里程碑已推进到的档位（0=未开始 … 4=complete）：只在跨过阈值时调用 event()，
-  // 避免每帧都构造 event() 的 data / key 字符串；换歌换谱时随 sentOnce 一起清零。
-  let playStage=0;
+  const playEvents=['play_start','play_25','play_75','play_complete'];
+  // Keep the highest threshold reached even if playback pauses or seeks back
+  // before the queue has room. Only accepted milestones advance playStage.
+  let reachedPlayStage=0,playStage=0;
   const bucket=ms=>{
     const value=Number(ms);
     if(!Number.isFinite(value)||value<0)return undefined;
@@ -47,9 +48,9 @@
       }
       badge.hidden=false;return 'ok';
     } finally {clearTimeout(timer);}
-  },{capacity:32});
+  },{capacity:32,onSpace:flushPlayMilestones});
   A.services.register('visitors',queue);
-  function event(type,detail={},once=false){
+  function event(type,detail={}){
     if(typeof type!=='string'||!/^[a-z][a-z0-9_]{0,31}$/.test(type))return false;
     const data={event:type};
     if(currentSong)data.song=currentSong;
@@ -58,26 +59,36 @@
     if(durationBucket)data.bucket=durationBucket;
     if(detail.code!=null&&/^[a-z][a-z0-9_]{0,31}$/.test(String(detail.code)))data.code=String(detail.code);
     const key=[type,currentSong,currentChart,data.bucket||'',data.code||''].join('\0');
-    if(once&&sentOnce.has(key))return true;
-    if(once)sentOnce.add(key);
-    return queue.push(key,data);
+    if(sentOnce.has(key))return true;
+    if(!queue.push(key,data))return false;
+    sentOnce.add(key);
+    return true;
+  }
+  function flushPlayMilestones(){
+    while(playStage<reachedPlayStage&&event(playEvents[playStage]))playStage++;
+  }
+  function reachPlayStage(stage){
+    if(stage>reachedPlayStage){
+      const waitingForSpace=playStage<reachedPlayStage;
+      reachedPlayStage=stage;
+      if(!waitingForSpace)flushPlayMilestones();
+    }
+    return playStage>=stage;
   }
   A.visitors=Object.freeze({
     song(song,chart){
       if(typeof song!=='string'||typeof chart!=='string')return false;
-      currentSong=song;currentChart=chart;sentOnce.clear();playStage=0;
+      currentSong=song;currentChart=chart;sentOnce.clear();reachedPlayStage=0;playStage=0;
       return queue.push('song\0'+song+'\0'+chart,{event:'song',song,chart});
     },
-    event(type,detail={}){return event(type,detail,true);},
+    event(type,detail={}){
+      if(type==='play_start'&&currentSong&&detail.bucketMs==null&&detail.code==null)return reachPlayStage(1);
+      return event(type,detail);
+    },
     playback(seconds,duration,playing){
       if(!playing||!currentSong||!Number.isFinite(seconds)||!Number.isFinite(duration)||duration<=0)return;
       const ratio=seconds/duration;
-      // 只有首次跨过各阈值才调用 event()（event() 内仍按原 key 去重），
-      // 否则每帧都会为 play_start 及已达成的里程碑白构造 data / key 字符串。
-      if(playStage<1){playStage=1;event('play_start',{},true);}
-      if(playStage<2&&ratio>=0.25){playStage=2;event('play_25',{},true);}
-      if(playStage<3&&ratio>=0.75){playStage=3;event('play_75',{},true);}
-      if(playStage<4&&ratio>=0.995){playStage=4;event('play_complete',{},true);}
+      reachPlayStage(ratio>=0.995?4:ratio>=0.75?3:ratio>=0.25?2:1);
     },
   });
   queue.push('page',{event:'page'});

@@ -383,6 +383,58 @@ test("each indexed story has a complete standalone payload", () => {
   }
 });
 
+serialTest("reopening a pending story shares its fetch and the oldest unused story is evicted", async t => {
+  const index = storyFiles();
+  const ids = Object.keys(index).slice(0, 33);
+  const songs = ids.map(id => ({id, title: id}));
+  const previousIndex = globalThis.JUBEAT_BACKGROUND_STORY_FILES;
+  t.after(() => {
+    if (previousIndex === undefined) delete globalThis.JUBEAT_BACKGROUND_STORY_FILES;
+    else globalThis.JUBEAT_BACKGROUND_STORY_FILES = previousIndex;
+  });
+  globalThis.JUBEAT_BACKGROUND_STORY_FILES = index;
+  const urls = new Map(ids.map(id => [`static/background-story-${index[id]}.json`, id]));
+  const calls = [];
+  let releaseFirst;
+  const {Stories, app, button} = installHarness(t, {
+    song: songs[0],
+    withDocument: true,
+    fetchImpl: async url => {
+      const id = urls.get(url);
+      calls.push(id);
+      if (calls.length === 1) await new Promise(resolve => { releaseFirst = resolve; });
+      return {ok: true, json: async () => builtInCatalog.records[id]};
+    },
+  });
+  delete globalThis.JUBEAT_BACKGROUND_STORIES;
+  Stories.install(app, {loadExternal: false});
+  const [open] = button.listeners.get("click");
+  const first = open();
+  const dialog = document.body.querySelector("dialog");
+  dialog.close();
+  const second = open();
+  assert.deepEqual(calls, [ids[0]]);
+  releaseFirst();
+  await Promise.all([first, second]);
+  assert.ok(dialog.querySelector(".story-document"));
+  dialog.close();
+
+  async function view(song) {
+    app.state.song = song;
+    Stories.select(song);
+    await open();
+    assert.ok(dialog.querySelector(".story-document"));
+    dialog.close();
+  }
+  for (const song of songs.slice(1, 32)) await view(song);
+  await view(songs[0]); // refresh its position in the cache
+  await view(songs[32]);
+  await view(songs[0]);
+  assert.deepEqual(calls, ids);
+  await view(songs[1]);
+  assert.deepEqual(calls, [...ids, ids[1]]);
+});
+
 serialTest("a complete story index skips downloading the legacy catalog", t => {
   const previous = globalThis.JUBEAT_BACKGROUND_STORY_INDEX_COMPLETE;
   t.after(() => {

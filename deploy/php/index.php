@@ -46,6 +46,7 @@ function jubeat_mime(string $path): string
         'mp3'  => 'audio/mpeg',
         'wav'  => 'audio/wav',
         'm4a'  => 'audio/mp4',
+        'mp4'  => 'video/mp4',
         'flac' => 'audio/flac',
         'woff' => 'font/woff',
         'woff2'=> 'font/woff2',
@@ -163,7 +164,7 @@ function jubeat_resolve(string $uri): ?array
     if (str_ends_with(strtolower($resolvedRel), '.json') && !str_starts_with($resolvedRel, 'data/') && !$isManifest) { return null; }
     $ext = strtolower(pathinfo($real, PATHINFO_EXTENSION));
     $allowed = ['html','htm','css','js','mjs','json','txt','svg','png','jpg','jpeg','webp','gif','ico','ogg','oga','mp3','wav','m4a','flac','woff','woff2','ttf'];
-    if (!in_array($ext, $allowed, true)) { return null; }
+    if (!in_array($ext, $allowed, true) && !($ext === 'mp4' && str_starts_with($resolvedRel, 'static/'))) { return null; }
     return ['path' => $real, 'rel' => $resolvedRel];
 }
 

@@ -13,7 +13,7 @@
   const levels = new Int16Array(16).fill(-1);
   let notes = [], period = 0, cursor = 0, elapsed = 0, started = null;
   let frame = 0, wake = 0, disposed = false, timeout = 0, attempted = false;
-  const visible = () => stage.classList.contains('is-welcome') && !document.hidden;
+  const visible = () => stage.classList.contains('is-welcome') && !stage.classList.contains('is-exc') && !document.hidden;
 
   function draw(time) {
     while (cursor < notes.length && notes[cursor].t <= time) {

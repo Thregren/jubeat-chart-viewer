@@ -14,6 +14,10 @@
     ['jubeat-copious-append', 'jubeat-copious'],
   ]);
   let active = false, saved = null;
+  function logoPath(version) {
+    const logoId = logoAliases.get(version) || version;
+    return logos.has(logoId) ? A.resourcePath(`static/version-logo-${logoId}.png`) : '';
+  }
   function refresh() {
     if (!active) return;
     const query = A.normalizeSearch(els.search.value.trim());
@@ -31,11 +35,11 @@
       button.dataset.version = option.value;
       const selected = option.value === els.versionFilter.value;
       button.classList.toggle('active', selected); button.setAttribute('aria-pressed', String(selected));
-      const logoId = logoAliases.get(option.value) || option.value;
-      if (logos.has(logoId)) {
+      const logo = logoPath(option.value);
+      if (logo) {
         const picture = document.createElement('span'); picture.className = 'marker-picture';
         const image = document.createElement('img'); image.alt = ''; image.width = 56; image.height = 56;
-        image.loading = 'lazy'; image.src = A.resourcePath(`static/version-logo-${logoId}.png`);
+        image.loading = 'lazy'; image.src = logo;
         picture.append(image); button.append(picture);
       } else button.classList.add('no-picture');
       const title = document.createElement('span'); title.className = 'marker-name';
@@ -74,5 +78,5 @@
     setActive(false);
     els.versionFilter.dispatchEvent(new Event('change', {bubbles:true}));
   });
-  A.versionLibrary = {get active() { return active; }, refresh, setActive};
+  A.versionLibrary = {get active() { return active; }, logoPath, refresh, setActive};
 })();

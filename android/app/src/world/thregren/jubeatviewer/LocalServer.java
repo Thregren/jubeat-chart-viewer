@@ -97,6 +97,7 @@ public final class LocalServer {
         MIME.put("webm", "audio/webm");
         MIME.put("mp3", "audio/mpeg");
         MIME.put("m4a", "audio/mp4");
+        MIME.put("mp4", "video/mp4");
         MIME.put("wav", "audio/wav");
         MIME.put("woff", "font/woff");
         MIME.put("woff2", "font/woff2");

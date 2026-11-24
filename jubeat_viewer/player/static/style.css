@@ -131,7 +131,7 @@ button, input, select {
 }
 .brand-about > summary::-webkit-details-marker { display: none; }
 .brand-about[open] > summary, .brand-about > summary:hover { color: var(--ink); border-color: var(--muted); }
-.brand-about > summary:focus-visible, .brand-about-panel a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.brand-about > summary:focus-visible, .brand-about-panel :is(a, button):focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .brand-about-panel {
   position: absolute; z-index: 10; top: calc(100% - 8px); right: 12px;
   width: min(220px, calc(100% - 24px)); padding: 10px;
@@ -140,8 +140,9 @@ button, input, select {
 }
 .brand-about-title { padding: 3px 7px 7px; color: var(--ink); font-size: 12px; font-weight: 650; }
 .brand-about-label { padding: 9px 7px 3px; color: var(--muted); font-size: 11px; }
-.brand-about-panel a { display: flex; justify-content: space-between; gap: 12px; padding: 8px 7px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 12px; }
-.brand-about-panel a:hover { color: var(--amber); background: var(--cabinet-2); }
+.brand-about-panel :is(a, button) { display: flex; justify-content: space-between; gap: 12px; padding: 8px 7px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 12px; }
+.brand-about-panel button { width: 100%; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
+.brand-about-panel :is(a, button):hover { color: var(--amber); background: var(--cabinet-2); }
 .brand-about-panel a span { color: var(--muted); }
 @media (max-width: 380px) { .brand { gap: 8px; padding-left: 12px; padding-right: 12px; } }
 
@@ -348,6 +349,86 @@ button:focus-visible,
     radial-gradient(1200px 500px at 50% -10%, rgba(255, 176, 32, 0.06), transparent 60%),
     radial-gradient(800px 400px at 80% 100%, rgba(91, 140, 255, 0.05), transparent 50%),
     var(--void);
+}
+
+.stage.is-exc { grid-template-rows: minmax(0, 1fr); }
+.stage.is-exc > :is(.welcome, #nowPlaying, .panel-stage, #transport) { display: none; }
+.exc-view[hidden], .exc-view [hidden] { display: none; }
+.exc-view {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(min-content, 1fr);
+  gap: 16px;
+  padding: max(38px, calc(env(safe-area-inset-top) + 32px)) 24px max(16px, env(safe-area-inset-bottom));
+  overflow: auto;
+}
+.exc-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+.exc-cover {
+  width: clamp(72px, 12dvh, 132px);
+  aspect-ratio: 1;
+  object-fit: contain;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--cabinet-2);
+}
+.exc-info h2 { margin: 0; font-size: clamp(20px, 2.5vw, 28px); line-height: 1.2; }
+.exc-info p { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+#excVersionDescription { line-height: 1.45; }
+.exc-controls { display: flex; gap: 8px; }
+.exc-version-control { position: relative; }
+.exc-controls > button, .exc-version-control > button {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cabinet-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.exc-version-control > button { background: var(--cabinet); }
+.exc-version-control > button:hover,
+.exc-version-control > button[aria-expanded="true"] { background: var(--cabinet-2); }
+.exc-version-control .theme-picker {
+  z-index: 2;
+  max-height: min(460px, calc(100dvh - 220px - env(safe-area-inset-top)));
+}
+.exc-player {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+  min-width: 0;
+  gap: 10px;
+  margin: 0;
+}
+.exc-player video {
+  display: block;
+  width: min(100%, clamp(200px, calc(100dvh - 240px), 640px));
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #000;
+}
+.exc-player video.is-portrait { aspect-ratio: 432 / 450; }
+.exc-player video:not([controls]) { cursor: pointer; }
+.exc-player img { width: min(100%, 380px); }
+.exc-player figcaption { color: var(--muted); font-size: 13px; text-align: center; }
+@media (max-width: 1150px) {
+  .exc-header { grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
+  .exc-controls { grid-column: 1 / -1; }
+  .exc-version-control .theme-picker { right: auto; left: 0; }
+}
+@media (max-width: 500px) {
+  .exc-view { padding-inline: 12px; }
 }
 
 .now-playing {

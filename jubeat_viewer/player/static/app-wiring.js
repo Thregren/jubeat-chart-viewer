@@ -123,6 +123,33 @@
     if ([...select.options].some((o) => o.value === v)) select.value = v;
   }
 
+  function bindChoicePicker(toggle, picker, choose) {
+    const setOpen = open => {
+      picker.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+    };
+    toggle.addEventListener('click', () => setOpen(picker.hidden));
+    picker.addEventListener('click', event => {
+      const choice = event.target.closest('button[aria-pressed]');
+      if (!choice || !picker.contains(choice)) return;
+      choose(choice);
+      setOpen(false);
+      toggle.focus();
+    });
+    document.addEventListener('pointerdown', event => {
+      if (picker.hidden || picker.contains(event.target) || toggle.contains(event.target)) return;
+      setOpen(false);
+    }, {capture: true});
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || picker.hidden) return;
+      event.preventDefault();
+      setOpen(false);
+      toggle.focus();
+    }, {capture: true});
+    return setOpen;
+  }
+  A.bindChoicePicker = bindChoicePicker;
+
   function bindEvents() {
     window.JubeatSongLinks.install(A);
     window.JubeatBackgroundStories?.install(A);
@@ -137,30 +164,11 @@
         else document.documentElement.dataset.theme = chosen;
         for (const choice of choices) choice.setAttribute('aria-pressed', String(choice === selected));
       };
-      const setPickerOpen = open => {
-        themePicker.hidden = !open;
-        themeToggle.setAttribute('aria-expanded', String(open));
-      };
       applyTheme(window.__recActive ? 'default' : store('jubeat.viewerTheme'));
       themeToggle.disabled = !!window.__recActive;
-      themeToggle.addEventListener('click', () => setPickerOpen(themePicker.hidden));
-      themePicker.addEventListener('click', event => {
-        const choice = event.target.closest('[data-theme-value]');
-        if (!choice) return;
+      bindChoicePicker(themeToggle, themePicker, choice => {
         applyTheme(choice.dataset.themeValue);
         store('jubeat.viewerTheme', choice.dataset.themeValue);
-        setPickerOpen(false);
-        themeToggle.focus();
-      });
-      document.addEventListener('pointerdown', event => {
-        if (themePicker.hidden || themePicker.contains(event.target) || themeToggle.contains(event.target)) return;
-        setPickerOpen(false);
-      }, { capture: true });
-      document.addEventListener('keydown', event => {
-        if (event.key !== 'Escape' || themePicker.hidden) return;
-        event.preventDefault();
-        setPickerOpen(false);
-        themeToggle.focus();
       });
     }
     // 兜底重画：暂停时渲染循环是停着的（见 updateFrame / requestPaint），
@@ -460,7 +468,7 @@
       setSidebarOpen(els.sidebar.classList.contains("hidden")));
     // 手机上触摸后浏览器还会补一次 click，用时间去重；pointerup 兜底那些
     // 不派发 click 的内置浏览器（例如某些 App 的 webview）
-    let lastSidebarOpen = 0;
+    let lastSidebarOpen = -Infinity;
     const openSidebar = () => {
       const now = performance.now();
       if (now - lastSidebarOpen < 400) return;
@@ -649,7 +657,7 @@
     });
 
     document.addEventListener("keydown", (e) => {
-      if(A.mode?.ownsFrame)return;
+      if(A.mode?.ownsFrame || A.excView?.active)return;
       if (e.target?.closest?.('#btnMarkerLibrary, #markerList')) return;
       const tag = (e.target && e.target.tagName) || "";
       if (e.defaultPrevented || e.target.isContentEditable || tag === 'SUMMARY'

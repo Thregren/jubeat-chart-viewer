@@ -213,7 +213,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             return self._serve_static("index.html")
         if path.startswith("/static/"):
-            return self._serve_static(path[len("/static/"):])
+            return self._serve_static(media.unquote_path(path[len("/static/"):]))
         if path.startswith("/markers/"):
             return self._serve_marker(path[len("/markers/"):])
 
@@ -388,7 +388,7 @@ class Handler(BaseHTTPRequestHandler):
         dest = media.safe_join(config.STATIC_DIR, rel or "index.html")
         if not dest.is_file():
             raise FileNotFoundError(rel)
-        ctype = mimetypes.guess_type(dest.name)[0] or "application/octet-stream"
+        ctype = media.guess_ctype(dest.name)
         if dest.suffix in {".html", ".js", ".css"}:
             ctype += "; charset=utf-8"
         # 静态文件开发时改动频繁：用 ETag 重新校验，别让浏览器拿旧的 JS

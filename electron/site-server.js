@@ -27,6 +27,7 @@ const MIME = {
   ".caf": "audio/x-caf",
   ".webm": "audio/webm",
   ".m4a": "audio/mp4",
+  ".mp4": "video/mp4",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
   ".woff": "font/woff",

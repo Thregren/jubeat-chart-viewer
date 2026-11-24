@@ -556,9 +556,10 @@
     return {song: s, rank, node: li, button: btn, img, cover};
   }
 
-  async function selectSong(song, preferredCode = null, matchedChart = null) {
+  async function selectSong(song, preferredCode = null, matchedChart = null, {preserveExcView = false} = {}) {
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
+    if (!preserveExcView) A.excView?.close(false);
     state.song = song;
     setCoverHold(false);
     // 首次有效选曲即进入播放器，资源缺失与加载错误仍交给原界面展示。

@@ -560,23 +560,19 @@ button:focus-visible,
   gap: 6px 8px;
   margin-bottom: 12px;
 }
-
 .chart-actions .diff-row { margin-bottom: 0; }
-#btnDownloadMemo {
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--cabinet);
-  color: var(--ink);
-  padding: 5px 8px;
-  font: 11px var(--font);
-  white-space: nowrap;
-  cursor: pointer;
-}
-#btnDownloadMemo:disabled { opacity: .4; cursor: default; }
-#btnDownloadMemo:hover:not(:disabled), #btnDownloadMemo:focus-visible { border-color: var(--amber); }
 @media (max-width: 560px) {
-  .chart-actions { margin-bottom: 0; gap: 3px 5px; }
-  #btnDownloadMemo { padding: 4px 6px; }
+  .chart-actions { margin-bottom: 0; }
+}
+@media (min-width: 561px) {
+  /* Preserve the header height, including when the previous download label wrapped. */
+  body:not(.private-play-active) .stage .chart-actions::after {
+    content: "下载数字谱 TXT";
+    visibility: hidden;
+    padding: 6px 9px;
+    font: 11px var(--font);
+    white-space: nowrap;
+  }
 }
 
 .diff-btn {
@@ -1576,8 +1572,22 @@ input[type="range"] {
 .np-main { position: relative; }
 .stage .np-main { padding-right: 66px; }
 .stage .np-kicker { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.np-actions { position:absolute; top:0; right:0; z-index:2; display:grid; gap:4px; }
-.song-share-btn { width:58px; height:26px; padding:0; border:1px solid var(--line); border-radius:7px; background:var(--cabinet); color:var(--muted); font:10px var(--font); cursor:pointer; }
+.np-actions {
+  /* Keep the height of the original three actions, including the gaps. */
+  --original-action-count: 3;
+  --original-action-height: 26px;
+  --action-gap: 4px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: var(--action-gap);
+  height: calc(var(--original-action-count) * var(--original-action-height) + (var(--original-action-count) - 1) * var(--action-gap));
+}
+.np-actions:has(> #btnBackgroundStory[hidden]) { --original-action-count: 2; }
+.song-share-btn { width:58px; height:100%; min-height:0; padding:0; border:1px solid var(--line); border-radius:7px; background:var(--cabinet); color:var(--muted); font:10px var(--font); cursor:pointer; }
 .song-share-btn:disabled { opacity:.4; cursor:default; }
 .song-share-btn:hover:not(:disabled), .song-share-btn:focus-visible { color:var(--amber); border-color:var(--amber); }
 .share-dialog { max-width:min(90vw,480px); padding:20px; border:1px solid var(--line); border-radius:14px; background:var(--cabinet); color:var(--ink); }
@@ -1625,8 +1635,8 @@ input[type="range"] {
 .story-copy { min-width:0; max-width:100%; margin:0; color:var(--ink); font-size:13px; line-height:1.72; overflow-wrap:anywhere; white-space:pre-wrap; }
 
 @media (max-width:560px) {
-  .np-actions { gap:3px; }
-  .song-share-btn { width:56px; height:24px; border-radius:6px; font-size:9px; }
+  .np-actions { --original-action-height: 24px; --action-gap: 3px; }
+  .song-share-btn { width:56px; border-radius:6px; font-size:9px; }
   .story-dialog { width:calc(100vw - 20px); max-height:calc(100vh - 20px); max-height:calc(100dvh - 20px); border-radius:12px; }
   .story-dialog-head { padding:14px 14px 11px; }
   .story-dialog-title h2 { font-size:17px; }
@@ -1640,14 +1650,11 @@ input[type="range"] {
 /* Touch targets stay in a compact right-hand column and must not add height. */
 @media (pointer: coarse) {
   .np-actions {
-    position: absolute;
-    top: 0;
-    right: 0;
-    display: grid;
-    gap: 5px;
+    --original-action-height: 34px;
+    --action-gap: 5px;
     width: 58px;
   }
-  .np-actions > .song-share-btn { width: 58px; height: 34px; padding: 0; border-radius: 8px; color: var(--ink); font: 600 11px var(--font); }
+  .np-actions > .song-share-btn { width: 58px; border-radius: 8px; color: var(--ink); font: 600 11px var(--font); }
 }
 
 /* Secondary information stays in the sidebar, outside the chart layout. */
@@ -1860,10 +1867,10 @@ body:not(.private-play-active) .stage .pad .idx {
     right: max(12px, env(safe-area-inset-right));
     bottom: 0;
     width: 68px;
-    grid-auto-rows: minmax(0, 1fr);
+    height: auto;
   }
   body:not(.private-play-active) .stage .np-actions > .song-share-btn {
-    width: 100%; height: 100%; font: 500 12px var(--font);
+    width: 100%; font: 500 12px var(--font);
   }
 }
 @media (min-width: 901px) {

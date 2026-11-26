@@ -13,7 +13,7 @@
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
   <link rel="stylesheet" href="static/radar.css?v=0.7.18">
-  <link rel="stylesheet" href="static/style.css?v=0.7.18&ui=welcome-20261117&memo=1" />
+  <link rel="stylesheet" href="static/style.css?v=0.7.18&ui=welcome-20261117&memo-actions=1" />
   <link rel="stylesheet" href="static/theme-early.css?v=0.7.18" />
   <link rel="stylesheet" href="static/theme-late.css?v=0.7.18" />
   <link rel="stylesheet" href="static/theme-panel.css?v=0.7.18" />
@@ -170,6 +170,7 @@
           <div class="np-actions" aria-label="歌曲操作">
             <button id="btnShare" class="song-share-btn" type="button" aria-label="分享歌曲" title="分享歌曲，从头开始" disabled>分享</button>
             <button id="btnBackgroundStory" class="song-share-btn" type="button" aria-label="查看歌曲背景故事" aria-expanded="false" aria-haspopup="dialog" hidden>背景故事</button>
+            <button id="btnDownloadMemo" class="song-share-btn" type="button" aria-label="下载数字谱 TXT" title="下载数字谱 TXT" disabled>下载数字谱</button>
             <button id="btnRadar" class="song-share-btn" type="button" aria-label="查看谱面能力图" aria-haspopup="dialog" disabled>能力图</button>
           </div>
           <div class="np-kicker" id="npVersion">选择一首曲目</div>
@@ -177,7 +178,6 @@
           <div class="np-artist" id="npArtist">—</div>
           <div class="chart-actions">
             <div class="diff-row" id="diffRow" role="tablist" aria-label="难度"></div>
-            <button id="btnDownloadMemo" type="button" disabled>下载数字谱 TXT</button>
           </div>
         </div>
         <div class="np-side">

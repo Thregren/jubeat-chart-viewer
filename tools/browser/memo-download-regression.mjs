@@ -89,15 +89,45 @@ try {
   await page.locator('#btnPlay').click();
   await page.waitForFunction(() => JubeatApp.state.playing && JubeatApp.currentMediaTime() > 0.05);
   await page.locator('#btnPlay').click();
-  for (const width of [320, 390, 768]) {
+
+  const assertActionStack = async (target, width, gap, expectedHeight) => {
+    const stack = target.locator('#nowPlaying .np-actions');
+    const box = await stack.boundingBox();
+    const buttons = stack.locator('button:visible');
+    assert.deepEqual(await buttons.evaluateAll(elements => elements.map(element => element.id)),
+      ['btnShare', 'btnBackgroundStory', 'btnDownloadMemo', 'btnRadar']);
+    assert(box && box.x >= 0 && box.x + box.width <= width, `Action stack fits at ${width}px`);
+    assert.equal(box.height, expectedHeight);
+    const rowHeight = (expectedHeight - 3 * gap) / 4;
+    for (let index = 0; index < 4; index++) {
+      const row = await buttons.nth(index).boundingBox();
+      assert(Math.abs(row.height - rowHeight) < 0.05, 'All four action buttons have equal height');
+      assert(Math.abs(row.y - (box.y + index * (rowHeight + gap))) < 0.05, 'Rows fill the original action stack');
+    }
+  };
+
+  await page.locator('#btnBackgroundStory').evaluate(element => { element.hidden = false; });
+  for (const width of [320, 390, 768, 1200]) {
     await page.setViewportSize({ width, height: 850 });
-    const box = await button.boundingBox();
-    const stats = await page.locator('#statRow').boundingBox();
-    assert(box && box.x >= 0 && box.x + box.width <= width, `Download button fits at ${width}px`);
-    assert(box.y + box.height <= stats.y, `Download button clears the stats at ${width}px`);
+    const header = await page.locator('#nowPlaying').boundingBox();
+    const originalHeight = width <= 560 ? 78 : header.height - (width < 901 ? 36 : 52);
+    await assertActionStack(page, width, width <= 560 ? 3 : 4, originalHeight);
   }
+
+  const touch = await browser.newPage({ viewport: { width: 390, height: 850 }, hasTouch: true, serviceWorkers: 'block' });
+  await touch.route('**/data/library.json*', route =>
+    route.fulfill({ json: { songs: [song], versions: ['jubeat'] } }));
+  await touch.goto(base.href);
+  await touch.locator('#btnWelcomeLibrary').click();
+  await touch.locator('#songList button[data-song-id="memo-fixture"]').click();
+  await touch.waitForFunction(() => !document.getElementById('btnShare').disabled);
+  assert.equal(await touch.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
+  await touch.locator('#btnBackgroundStory').evaluate(element => { element.hidden = false; });
+  await assertActionStack(touch, 390, 5, 112);
+  await touch.close();
+
   assert.deepEqual(errors, []);
-  console.log('MEMO TXT: correct difficulty, exact and fallback barlines, stale downloads cancelled, chart playback works, replay UI removed.');
+  console.log('MEMO TXT: correct difficulty, exact and fallback barlines, stale downloads cancelled, original action stack height retained, chart playback works, replay UI removed.');
 } finally {
   await browser.close();
 }

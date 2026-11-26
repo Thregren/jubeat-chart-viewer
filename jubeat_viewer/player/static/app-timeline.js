@@ -11,7 +11,7 @@
   let ordinaryDivision=division.value, divisionChart=null;
   function chartDivision(data) {
     const grid=data?.meta?.rhythm_grid;
-    return grid?.version===1 && [2,3,4].includes(grid.default_division) ? String(grid.default_division) : null;
+    return grid?.version===1 && [2,3,4,8].includes(grid.default_division) ? String(grid.default_division) : null;
   }
   function syncDivision() {
     const data=state.chart;

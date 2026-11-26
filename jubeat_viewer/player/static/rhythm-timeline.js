@@ -48,7 +48,7 @@
     const fastLines = [], fastLinePool = [], fastNotes = [], fastView = {};
     function buildFrame(sec, width, span = 4, division = 1, reuse = false) {
       span = [4,8,16].includes(span) ? span : 4;
-      division = [1,2,3,4].includes(division) ? division : 1;
+      division = [1,2,3,4,8].includes(division) ? division : 1;
       const beat = secToBeat(sec), left = beat - span * .2, right = left + span;
       const scale = Math.max(1,width) / span;
       const x = b => (b-left)*scale;

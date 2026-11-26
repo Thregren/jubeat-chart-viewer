@@ -25,7 +25,7 @@ test('beat spacing distinguishes dotted eighths and triplets across BPM changes'
 });
 test('quarter grid is default and subdivisions stay anchored to musical beats',()=>{
  const m=Timeline.create([],chart.time);
- for(const division of [1,2,3,4]){
+ for(const division of [1,2,3,4,8]){
   const f=m.frame(.5,400,4,division);
   assert.equal(f.lines.filter(l=>l.major).length,4);
   assert.equal(f.lines.length,4*division);
@@ -76,7 +76,7 @@ test('hiding the timeline drops its model and rebuilds only when shown again', (
   querySelector:element,createElement:element,
  };
  const p=Core.parseNotes(chart);
- const firstChart={meta:{rhythm_grid:{version:1,default_division:4}}};
+ const firstChart={meta:{rhythm_grid:{version:1,default_division:8}}};
  const A={state:{notes:p.notes,bpmEvents:p.timeEvents,chart:firstChart,padEls:[],duration:3},
   store(){},STORAGE:{},services:{register(){}},renderRatio:()=>1,fmtTime:String,density:{}};
  const window={JubeatApp:A,addEventListener(){},JubeatTimeline:{create(notes,...args){
@@ -89,7 +89,7 @@ test('hiding the timeline drops its model and rebuilds only when shown again', (
  open(true);
  A.drawTimeline(1);
  assert.deepEqual(built,[p.notes]);
- assert.equal(division.value,'4');
+ assert.equal(division.value,'8');
  division.value='3';
  division.dispatchEvent(new Event('change'));
  open(false);

@@ -553,6 +553,32 @@ button:focus-visible,
   margin-bottom: 12px;
 }
 
+.chart-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 12px;
+}
+
+.chart-actions .diff-row { margin-bottom: 0; }
+#btnDownloadMemo {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--cabinet);
+  color: var(--ink);
+  padding: 5px 8px;
+  font: 11px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+#btnDownloadMemo:disabled { opacity: .4; cursor: default; }
+#btnDownloadMemo:hover:not(:disabled), #btnDownloadMemo:focus-visible { border-color: var(--amber); }
+@media (max-width: 560px) {
+  .chart-actions { margin-bottom: 0; gap: 3px 5px; }
+  #btnDownloadMemo { padding: 4px 6px; }
+}
+
 .diff-btn {
   background: var(--cabinet);
   border: 1px solid var(--line);
@@ -1685,7 +1711,7 @@ input[type="range"] {
   }
   body:not(.private-play-active) .stage .np-main { grid-column: 2; grid-row: 1; justify-content: end; gap: 3px; }
   body:not(.private-play-active) .stage .np-artist { margin-bottom: 2px; }
-  body:not(.private-play-active) .stage .diff-row { margin-bottom: 0; }
+  body:not(.private-play-active) .stage .chart-actions { margin-bottom: 0; }
   body:not(.private-play-active) .stage .np-side { grid-column: 2; grid-row: 2; justify-content: start; }
   body:not(.private-play-active) .stage .stat-row { grid-template-columns: repeat(4, max-content); justify-content: start; gap: 0 24px; }
 }

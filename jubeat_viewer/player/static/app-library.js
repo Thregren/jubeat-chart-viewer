@@ -556,7 +556,7 @@
     return {song: s, rank, node: li, button: btn, img, cover};
   }
 
-  async function selectSong(song, preferredCode = null, matchedChart = null, {preserveExcView = false} = {}) {
+  async function selectSong(song, preferredCode = null, {preserveExcView = false} = {}) {
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
     if (!preserveExcView) A.excView?.close(false);
@@ -614,7 +614,7 @@
       els.statTime.textContent = els.timeTotal.textContent = els.timeNow.textContent = '00:00';
       els.btnPlay.disabled = true; buildDensity(); A.requestPaint(); return;
     }
-    return loadChart(pick.code, matchedChart);
+    return loadChart(pick.code);
   }
 
   /** 按难度代号找谱面（BAS/ADV/EXT…）；兼容旧深链接里直接传 file 的写法 */
@@ -629,9 +629,6 @@
   const chartCachePut = (key, payload) => catalog.put(key, payload);
 
   async function readChartPayload(song, chart, signal) {
-    const key = `${song.id}::${chart.code}`;
-    const cached = chartCacheGet(key);
-    if (cached) return cached;
     const res = await fetch(chartPath(song, chart), { signal });
     if (!res.ok) throw new Error(`谱面读取失败（${res.status}）`);
     const buf = await Runtime.readBytes(res, 8 * 1024 * 1024);
@@ -639,7 +636,7 @@
     return { chart: chartData, chartMeta: chart, bytes: buf.byteLength };
   }
 
-  async function loadChart(code, matchedChart = null) {
+  async function loadChart(code) {
     A.mode?.chartChanging?.();
     if (!state.song) return;
     const song = state.song;
@@ -648,10 +645,7 @@
     els.btnShare.disabled = true;
     const request = chartRequests.start();
     const started = performance.now();
-    const picked = pickChart(song.charts, code);
-    const chart = picked || { code: "EXT" };
-    const matchedPayload = matchedChart?.song === song && matchedChart.chart === picked
-      ? matchedChart.payload : null;
+    const chart = pickChart(song.charts, code) || { code: "EXT" };
     els.btnShare.dataset.chart = chart.code;
     const key = `${song.id}::${chart.code}`;
     const src = audioUrl(song);
@@ -661,12 +655,12 @@
     clearAB(null);   // 换歌 / 换难度：上一首的 A–B 打在旧谱面上，直接清掉
     // 换歌的第一段等待：谱面 json + 音源首包。这时候进度条先出来，别让界面看起来是死的。
     A.audioLoad.pending = true;
-    A.audioLoad.pendingLabel = (matchedPayload || state.chartCache.has(key)) ? "音频加载" : "谱面读取";
+    A.audioLoad.pendingLabel = state.chartCache.has(key) ? "音频加载" : "谱面读取";
     A.updateLoadMeter();
     let chartReady = false;
     try {
       const cachedPayload = chartCacheGet(key);
-      const payload = matchedPayload || cachedPayload || await readChartPayload(song, chart, request.signal);
+      const payload = cachedPayload || await readChartPayload(song, chart, request.signal);
       // 加载期间可能已切歌 / 又发起了一次加载：请求不再是当前请求、或 state.song
       // 已变，就丢弃这次结果，避免旧谱面覆盖新选择。
       if (!chartRequests.current(request) || state.song !== song) return;
@@ -734,6 +728,7 @@
       // 音源还没就绪时这一跳会被挂起，等可播了再落下去（深链接 / 截图脚本都靠它）
       if (src) A.seekWhenReady(urlT != null ? urlT : 0);
       chartReady = true;
+      A.memo?.setChart(song, chart, chartJson, parsed);
       A.visitors?.event('chart_ready',{bucketMs:A.metrics.chartMs});
       A.requestPaint();     // 换谱面后立刻重画一帧（暂停时渲染循环是停着的）
 
@@ -787,6 +782,7 @@
 
   /** 切歌/切难度：先停播、进度归零、清掉上一首的状态，再去加载新谱面 */
   function stopForLoad(keepAudio = false) {
+    A.memo?.setChart();
     A.stopBufferSource();
     if (!keepAudio) {
       A.cancelAudioLoad();
@@ -874,7 +870,6 @@
     hasHold,
     renderList,
     selectSong,
-    readChartPayload,
     loadChart,
     rebuildVisualState,
   });

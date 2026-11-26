@@ -10,10 +10,27 @@ const source = fs.readFileSync(
   'utf8',
 );
 
-function setup() {
+function setup({ captureArrows = false } = {}) {
   const text = [];
+  const sprites = [];
+  const gradient = () => ({ addColorStop() {} });
+  const document = {
+    createElement() {
+      const strokes = [];
+      const spriteCtx = new Proxy({
+        createLinearGradient: gradient,
+        createRadialGradient: gradient,
+        stroke() { strokes.push(this.strokeStyle); },
+      }, { get: (target, key) => target[key] ?? (() => {}) });
+      return { strokes, getContext: () => spriteCtx };
+    },
+  };
   const ctx = new Proxy({
     clearRect() {},
+    createLinearGradient: gradient,
+    drawImage(sprite, _x, _y, width, height) {
+      sprites.push({ width, height, strokes: sprite.strokes });
+    },
     save() {},
     restore() {},
     beginPath() {},
@@ -49,6 +66,8 @@ function setup() {
     numCfg: { corner: true, scale: 1 },
     markerCfg: { design: null },
     normalizeHexColor: (value) => value || '#ffffff',
+    GLOW_PAIRS: [{ main: '#abcdef', alt: '#123456' }],
+    hexRgb: color => color.slice(1).match(/../g).map(channel => parseInt(channel, 16)).join(','),
   };
   const window = {
     JubeatApp: A,
@@ -58,6 +77,7 @@ function setup() {
     window,
     console,
     location: { search: '' },
+    ...(captureArrows ? { document } : {}),
     URLSearchParams,
     performance: { now: () => 0 },
   });
@@ -71,8 +91,22 @@ function setup() {
     A.markerPrimitives.drawOrderNumber(note, A.state.padRects[note.index]);
     return [...text];
   };
-  return { A, draw, drawNumber };
+  return { A, draw, drawNumber, sprites };
 }
+
+test('the moving hold arrow keeps full-strength strokes before, at, and after the hit', () => {
+  const { A, draw, sprites } = setup({ captureArrows: true });
+  A.state.notes[0].tailTip = 4;
+  for (const [time, size] of [[0.51, 50], [0.999, 50], [1, 50], [1.06, 75], [1.3, 100]]) {
+    sprites.length = 0;
+    draw(time);
+    assert.equal(sprites.length, 2);
+    const arrow = sprites.at(-1);
+    assert.ok(Math.abs(arrow.width - size) < 1e-9);
+    assert.ok(Math.abs(arrow.height - size) < 1e-9);
+    assert.deepEqual(arrow.strokes.slice(-2), ['rgba(232,240,252,0.7)', 'rgba(228,238,252,0.42)']);
+  }
+});
 
 test('long-hold countdown avoids the order-number corner and uses one decimal place', () => {
   const { A, draw } = setup();

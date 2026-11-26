@@ -74,8 +74,8 @@ test('density canvases resize only when pixel dimensions change', () => {
   assert.equal(A.density.counts.reduce((sum,count)=>sum+count,0),3);
 });
 
-test('duplicate layout skips painting but logical DPR, exact counts and replay columns refresh', () => {
-  let dpr = 1, baseClears = 0, composites = 0, replayColumns = null;
+test('duplicate layout skips painting but logical DPR, exact counts refresh', () => {
+  let dpr = 1, baseClears = 0, composites = 0;
   function canvas(visible = false) {
     const methods = visible ? { drawImage(...args) { if (args.length === 3) composites++; } }
       : { clearRect() { baseClears++; } };
@@ -84,8 +84,7 @@ test('duplicate layout skips painting but logical DPR, exact counts and replay c
       parentElement: { getBoundingClientRect: () => ({ width: 640 }) } };
   }
   const A = { renderRatio: () => dpr, Core: {MAX_CHART_SECONDS:21600}, els: { densityCanvas: canvas(true) },
-    state: { notes: [{t:1},{t:2}], duration: 10 }, abLoop: {}, currentMediaTime: () => 0,
-    matchReplay: { forChart: () => ({ densityColumns: () => replayColumns }) } };
+    state: { notes: [{t:1},{t:2}], duration: 10 }, abLoop: {}, currentMediaTime: () => 0 };
   vm.runInNewContext(fs.readFileSync(new URL('../jubeat_viewer/player/static/app-density.js', import.meta.url), 'utf8'),
     { window: { JubeatApp: A }, document: { createElement: () => canvas() } });
   A.layoutDensity();
@@ -111,11 +110,8 @@ test('duplicate layout skips painting but logical DPR, exact counts and replay c
   assert.equal(A.density.counts, counts);
   assert.equal(A.density.dur, 9);
   assert.equal(baseClears, 6);
-  replayColumns = counts.map(() => ({ grade: 'NON_PERFECT', revealAt: Infinity }));
   A.layoutDensity();
-  assert.equal(baseClears, 8);
-  A.layoutDensity();
-  assert.equal(baseClears, 8);
+  assert.equal(baseClears, 6);
 });
 
 test('arcade density bins original ticks using END, with separate hold endpoints', () => {

@@ -630,11 +630,8 @@
   // 结束后的残留：终点格的 V 到 endT 就该消失，之后那 0.27s 盖着的是松开命中
   // 动画的爆花（实测 hold0 终点格在 endT+0.26、hold30 在 endT+0.31 回到空闲底色）。
   const HOLD_POST = 0.28;
-  // 提前量那 0.5s 里：走廊光束 + 终点格是「半亮」，移动箭头本身却淡得多。
-  // 实测（格宽 101px）：光束峰值 227，预卷时 152 → 0.56；箭头平边 125，预卷时
-  // 69.6（底色 56）→ 换算成不透明度只有正式版的 ≈ 1/5。
+  // 提前量那 0.5s 里，走廊光束和终点格先半亮。
   const HOLD_PRE_BEAM = 0.56;
-  const HOLD_PRE_ARROW = 0.22;
   const HOLD_ARROW_GROW = 0.12; // 判定后 120ms 平滑放大到整格
 
   // 顺序数字的出现时机：官方只在「拍点前 0.10s」才把数字画出来 —— 逐帧量了 7 条 note
@@ -931,10 +928,8 @@
     // 平边始终贴住行进位置；放大时从平边向箭尖方向展开。
     const backY = prog * headNear;
     const apexY = backY + arrowH;
-    // 正式开画前（提前量那 0.5s）：走廊光束与终点格先半亮起来，移动箭头本身很淡地
-    // 停在起点格上；到了 t 一起转成全亮，箭头才开始往前走。
+    // 移动箭头在命中前保持半格大小，命中后开始移动和放大。
     const lightBeam = started ? 1 : HOLD_PRE_BEAM;
-    const lightArrow = started ? 1 : HOLD_PRE_ARROW;
     const tint = holdTint();
     const tintLight = holdTintLight();
 
@@ -964,7 +959,7 @@
     ctx.translate(0, headNear);
     drawV(w, along, tint, lightBeam);
     ctx.translate(0, backY - headNear);
-    drawV(arrowW, arrowH, null, lightArrow);
+    drawV(arrowW, arrowH, null, 1);
     ctx.restore();
 
     ctx.restore();
@@ -1682,9 +1677,7 @@
     if(A.mode?.ownsFrame&&A.mode.draw?.(chartT))return;
     if (!ctx) return;
     ctx.clearRect(0, 0, canvasW, canvasH);
-    const replay = A.matchReplay?.forChart();
-    const replayCombo = replay?.updateProgress(chartT);
-    drawComboOverlay(replayCombo ?? state.combo);     // 连击在 marker 下面：marker 会压住它（和游戏一致）
+    drawComboOverlay(state.combo);     // 连击在 marker 下面：marker 会压住它（和游戏一致）
     // 长押（官方「会移动的箭头」）画在 marker 下面：它不属于任何一张 marker 素材，
     // 就算设成「无（仅面板灯）」也要画，所以放在 design 的早退之前。
     drawHoldArrows(chartT);
@@ -1692,13 +1685,11 @@
     const design = markerCfg.design;
     if (!design || !state.notes.length) {
       drawHoldCountdowns(chartT);
-      replay?.paint(chartT, ctx);
       return;
     }
     const tier = tierOf(design, 4);            // PERFECT 档；缺档自动回落最高可用档
     if (!tier) {
       drawHoldCountdowns(chartT);
-      replay?.paint(chartT, ctx);
       return;
     }
     const maFrames = Math.max(1, Number(design.ma) || 0);
@@ -1721,18 +1712,13 @@
     // 数字是压在按键动画之上的覆盖层。挤在同一趟循环里先画的话，后面那些 marker
     // 会把先画的数字盖掉（同押的时候尤其明显）。
 
-    // A recorded hit can move the start of the judgment animation off the chart beat.
-    const replayShift = replay ? replay.maxShift : 0;
-    for (const n of markerNotesInWindow(chartT - lateSec - replayShift, chartT - Math.min(earlySec, -replayShift), holdBack)) {
+    for (const n of markerNotesInWindow(chartT - lateSec, chartT - earlySec, holdBack)) {
       const rect = state.padRects[n.index];
       if (!rect) continue;
       // 长押在松开（endT）那一瞬重播一次同一套命中动画：把 endT 当成新的 0 点
       const dur = n.kind === "hold" && n.endT != null ? n.endT - n.t : null;
       const rel = chartT - n.t;
-      let u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / animationRate;
-      const hit = replay?.record(n);
-      const hasJudgment = hit && chartT >= hit.eventTime;
-      if (hasJudgment) u = ((chartT - hit.eventTime) * 1000) / animationRate;
+      const u = ((dur != null && rel >= dur ? rel - dur : rel) * 1000) / animationRate;
 
       // 默认从接近动画的第一帧显示；开启开关后使用拍点前 0.10s 规则。
       // 长押期间持续显示；数字略早于尾判动画结束，高亮仍维持原来的完整周期。
@@ -1753,8 +1739,6 @@
         number[4] = showNumber;
       }
 
-      if (hasJudgment && !hit.tier) continue;
-      if (hit && !hasJudgment && u >= 0) u = -0.001;
       if (u < early || u >= late) continue;
       const count = counts.get(n.index) || 0;
       // v0.6.56: 同屏上限原本按 1× 的窗口宽度定死为 6。开「Marker 原速」后
@@ -1772,12 +1756,10 @@
         frame = Math.min(maFrames - 1, Math.floor((u - early) / maPer));
         if (frame < 0) continue;
       } else {
-        const hitTier = hasJudgment ? tierOf(design, hit.tier) : tier;
-        channel = `H${hitTier}`;
-        total = hasJudgment ? Math.max(1, Number(design.h?.[hitTier]) || 0) : hFrames;
-        const frameMs = timing.burstMs ? timing.burstMs / total : hPer;
-        frame = Math.floor(u / frameMs);
-        if (frame >= total) continue;
+        channel = `H${tier}`;
+        total = hFrames;
+        frame = Math.floor(u / hPer);
+        if (frame >= hFrames) continue;
       }
 
       counts.set(n.index, count + 1);
@@ -1796,7 +1778,6 @@
       const [n, rect, opacity, allowChord, allowNumber] = numbers[i];
       drawOrderNumber(n, rect, opacity, undefined, allowChord, allowNumber);
     }
-    replay?.paint(chartT, ctx);
   }
 
   /** 首批落点预告：与同押 frame 共用颜色、粗细、内缩和圆角。 */

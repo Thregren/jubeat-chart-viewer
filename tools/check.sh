@@ -149,6 +149,7 @@ if [ "$WANT_FULL" = 1 ]; then
         && node tools/browser/version-picker-regression.mjs "$base" \
         && node tools/browser/density-touch-regression.mjs "$base" \
         && node tools/browser/library-order-regression.mjs "$base" \
+        && node tools/browser/memo-download-regression.mjs "$base" \
         && JUBEAT_PREVIEW_URL="$base" node tools/browser/check-audio-rate.mjs \
         && JUBEAT_PREVIEW_URL="$base" node tools/browser/speed-seek-regression.mjs
       result=$?

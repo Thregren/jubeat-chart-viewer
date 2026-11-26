@@ -34,7 +34,7 @@ const song = {
 
 const browser = await chromium.launch({ headless: true, executablePath: process.env.BROWSER_EXECUTABLE });
 try {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 850 }, serviceWorkers: 'block' });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 850 }, serviceWorkers: 'block' });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/data/library.json*', route =>
@@ -43,10 +43,14 @@ try {
   let handleExact = route => route.fulfill({ json: events });
   await page.route('**/songs/shared/exact.json', route => handleExact(route));
   await page.goto(base.href);
+  const toggle = page.getByRole('button', { name: '数字谱', exact: true });
+  const memoPanel = page.locator('#memoPanel');
   const button = page.getByRole('button', { name: '下载数字谱 TXT' });
-  assert.equal(await page.locator('#btnDownloadMemo').isDisabled(), true);
+  assert.equal(await page.locator('#btnMemo').isDisabled(), true);
+  assert.equal(await memoPanel.isVisible(), false);
   assert.equal(await page.locator('#welcome-import-oft, [id^="match-replay"]').count(), 0);
   await page.locator('#songList button[data-song-id="memo-fixture"]').click();
+  await toggle.click();
   const download = async () => {
     const [file] = await Promise.all([page.waitForEvent('download'), button.click()]);
     return [file.suggestedFilename(), await readFile(await file.path(), 'utf8')];
@@ -57,6 +61,22 @@ try {
   assert.match(ext, /EXT 10\nBPM 120/);
   assert.match(ext, /小节线按每四拍划分/);
   assert.match(ext, /长押结束/);
+  const board = await page.locator('.panel-bezel').boundingBox();
+  const memo = await memoPanel.boundingBox();
+  const list = await page.locator('#memoList').boundingBox();
+  const toolbar = await button.boundingBox();
+  assert(memo.x >= board.x + board.width, 'Desktop MEMO stays beside the board');
+  assert(toolbar.y + toolbar.height <= list.y, 'Download is above the scrollable score');
+  const desktopMemo = await page.locator('.memo-measure').first().evaluate(card => ({
+    cells: Array.from(card.querySelectorAll('.memo-cell'), cell => {
+      const { width, height } = cell.getBoundingClientRect();
+      return { width, height, fontSize: parseFloat(getComputedStyle(cell).fontSize) };
+    }),
+    rhythmFont: parseFloat(getComputedStyle(card.querySelector('.memo-rhythm')).fontSize),
+  }));
+  assert(desktopMemo.cells.every(cell => Math.abs(cell.width - cell.height) < 0.05), 'Desktop MEMO cells are square');
+  assert(desktopMemo.cells.every(cell => cell.fontSize >= 18), 'Desktop MEMO pad numbers are larger');
+  assert.equal(desktopMemo.rhythmFont, 13);
 
   await page.getByRole('tab', { name: 'BSC4' }).click();
   await page.waitForFunction(() => !document.getElementById('btnShare').disabled);
@@ -65,37 +85,49 @@ try {
   assert.match(bsc, /BSC 4\nBPM 120/);
   assert.match(bsc, /\|①②－－－－\|/);
   assert.match(bsc, /\(0.5 拍\)/);
+  assert.equal(await page.locator('.memo-measure .memo-beat-slots').first().textContent(), '①②－－－－');
 
+  await page.getByRole('tab', { name: 'EXT10' }).click();
+  await page.waitForFunction(() => !document.getElementById('btnDownloadMemo').disabled);
   handleExact = route => route.fulfill({ status: 404 });
+  await page.getByRole('tab', { name: 'BSC4' }).click();
   const [, fallback] = await download();
   assert.match(fallback, /小节线按每四拍划分/);
   assert.doesNotMatch(fallback, /\(0.5 拍\)/);
 
-  let pending;
+  await page.getByRole('tab', { name: 'EXT10' }).click();
+  await page.waitForFunction(() => !document.getElementById('btnDownloadMemo').disabled);
+  const pending = [];
   let captured;
   const requested = new Promise(resolve => { captured = resolve; });
-  handleExact = route => { pending = route; captured(); };
-  const staleDownloads = [];
-  const capture = file => staleDownloads.push(file.suggestedFilename());
-  page.on('download', capture);
-  await button.click();
+  handleExact = route => { pending.push(route); captured(); };
+  await page.getByRole('tab', { name: 'BSC4' }).click();
   await requested;
-  assert.equal(await button.isDisabled(), true);
+  assert.equal(await page.locator('#btnDownloadMemo').isDisabled(), true);
   await page.getByRole('tab', { name: 'EXT10' }).click();
-  await pending.fulfill({ json: events }).catch(() => {}); // Cancelling the fetch may close the route.
+  await Promise.all(pending.map(route => route.fulfill({ json: events }).catch(() => {})));
   const [nextName] = await download();
   assert.equal(nextName, extName);
-  assert.deepEqual(staleDownloads, [extName]);
+
+  const measure = page.locator('.memo-measure[aria-current="true"]');
+  await measure.filter({ hasText: '第 1 小节' }).waitFor();
+  await page.evaluate(() => JubeatApp.seekTo(1.7));
   await page.locator('#btnPlay').click();
-  await page.waitForFunction(() => JubeatApp.state.playing && JubeatApp.currentMediaTime() > 0.05);
+  await measure.filter({ hasText: '第 2 小节' }).waitFor();
+  await page.waitForFunction(() => document.getElementById('memoList').scrollTop > 0);
   await page.locator('#btnPlay').click();
+  await page.evaluate(() => JubeatApp.seekTo(12.3));
+  await measure.filter({ hasText: '第 7 小节' }).waitFor();
+  await page.evaluate(() => JubeatApp.seekTo(0));
+  await measure.filter({ hasText: '第 1 小节' }).waitFor();
+  await page.waitForFunction(() => document.getElementById('memoList').scrollTop === 0);
 
   const assertActionStack = async (target, width, gap, expectedHeight) => {
     const stack = target.locator('#nowPlaying .np-actions');
     const box = await stack.boundingBox();
     const buttons = stack.locator('button:visible');
     assert.deepEqual(await buttons.evaluateAll(elements => elements.map(element => element.id)),
-      ['btnShare', 'btnBackgroundStory', 'btnDownloadMemo', 'btnRadar']);
+      ['btnShare', 'btnBackgroundStory', 'btnRadar', 'btnMemo']);
     assert(box && box.x >= 0 && box.x + box.width <= width, `Action stack fits at ${width}px`);
     assert.equal(box.height, expectedHeight);
     const rowHeight = (expectedHeight - 3 * gap) / 4;
@@ -124,10 +156,26 @@ try {
   assert.equal(await touch.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
   await touch.locator('#btnBackgroundStory').evaluate(element => { element.hidden = false; });
   await assertActionStack(touch, 390, 5, 112);
+  await touch.getByRole('button', { name: '数字谱', exact: true }).tap();
+  const mobileMemo = await touch.locator('#memoPanel').boundingBox();
+  const mobileBoard = await touch.locator('.panel-bezel').boundingBox();
+  assert(mobileMemo.x < mobileBoard.x + mobileBoard.width, 'Mobile MEMO overlays the right side of the board');
+  assert(mobileMemo.x > mobileBoard.x + mobileBoard.width / 2);
+  assert(mobileMemo.x + mobileMemo.width <= 390);
+  assert(Math.abs(mobileMemo.y + mobileMemo.height - (mobileBoard.y + mobileBoard.height)) <= 1,
+    'Mobile MEMO reaches the bottom of the board');
+  await touch.locator('.memo-measure[aria-current="true"]').waitFor();
+  const mobileList = await touch.locator('#memoList').boundingBox();
+  const secondMeasure = await touch.locator('.memo-measure').nth(1).boundingBox();
+  assert(secondMeasure.y + secondMeasure.height <= mobileList.y + mobileList.height,
+    'Two opening measures fit in the phone viewport');
+  assert.match(await touch.locator('#memoPanel').evaluate(panel => getComputedStyle(panel).backgroundColor), /\/ 0\.78\)/);
+  await touch.getByRole('button', { name: '关闭数字谱' }).tap();
+  assert.equal(await touch.locator('#memoPanel').isVisible(), false);
   await touch.close();
 
   assert.deepEqual(errors, []);
-  console.log('MEMO TXT: correct difficulty, exact and fallback barlines, stale downloads cancelled, original action stack height retained, chart playback works, replay UI removed.');
+  console.log('MEMO: desktop list, translucent touch overlay, playback and seek scrolling, TXT export, chart changes and original action stack height verified.');
 } finally {
   await browser.close();
 }

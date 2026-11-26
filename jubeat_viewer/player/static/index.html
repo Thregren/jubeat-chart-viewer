@@ -13,7 +13,7 @@
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
   <link rel="stylesheet" href="static/radar.css?v=0.7.18">
-  <link rel="stylesheet" href="static/style.css?v=0.7.18&ui=welcome-20261117&memo-actions=1" />
+  <link rel="stylesheet" href="static/style.css?v=0.7.18&ui=welcome-20261117&memo-view=3" />
   <link rel="stylesheet" href="static/theme-early.css?v=0.7.18" />
   <link rel="stylesheet" href="static/theme-late.css?v=0.7.18" />
   <link rel="stylesheet" href="static/theme-panel.css?v=0.7.18" />
@@ -170,8 +170,8 @@
           <div class="np-actions" aria-label="歌曲操作">
             <button id="btnShare" class="song-share-btn" type="button" aria-label="分享歌曲" title="分享歌曲，从头开始" disabled>分享</button>
             <button id="btnBackgroundStory" class="song-share-btn" type="button" aria-label="查看歌曲背景故事" aria-expanded="false" aria-haspopup="dialog" hidden>背景故事</button>
-            <button id="btnDownloadMemo" class="song-share-btn" type="button" aria-label="下载数字谱 TXT" title="下载数字谱 TXT" disabled>下载数字谱</button>
             <button id="btnRadar" class="song-share-btn" type="button" aria-label="查看谱面能力图" aria-haspopup="dialog" disabled>能力图</button>
+            <button id="btnMemo" class="song-share-btn" type="button" aria-controls="memoPanel" aria-expanded="false" disabled>数字谱</button>
           </div>
           <div class="np-kicker" id="npVersion">选择一首曲目</div>
           <h2 id="npTitle">未加载谱面</h2>
@@ -197,6 +197,14 @@
           </div>
           <canvas id="markerCanvas" class="marker-canvas" aria-hidden="true"></canvas>
           <div class="panel-glow" id="panelGlow" aria-hidden="true"></div>
+          <aside id="memoPanel" class="memo-panel" aria-label="数字谱" hidden>
+            <div class="memo-toolbar">
+              <button id="btnDownloadMemo" type="button" aria-label="下载数字谱 TXT" disabled>下载 TXT</button>
+              <button id="btnCloseMemo" type="button" aria-label="关闭数字谱" title="关闭数字谱">×</button>
+            </div>
+            <p id="memoStatus" class="memo-status" role="status" hidden></p>
+            <div id="memoList" class="memo-list" tabindex="0" aria-label="数字谱小节"></div>
+          </aside>
         </div>
       </section>
 
@@ -491,10 +499,10 @@
   <script src="static/marker-library.js?v=0.7.18&ui=version-picker-20261112"></script>
   <script src="static/version-library.js?v=0.7.18&ui=version-picker-20261112-2"></script>
   <script src="static/app-player.js?v=0.7.18"></script>
-  <script src="static/app-render.js?v=0.7.18"></script>
+  <script src="static/app-render.js?v=0.7.18&memo-view=1"></script>
   <script src="static/app-wiring.js?v=0.7.18&ui=jojo-sfx"></script>
-  <script src="static/memo-generator.js?v=0.7.18"></script>
-  <script src="static/app-memo.js?v=0.7.18"></script>
+  <script src="static/memo-generator.js?v=0.7.18&memo-view=1"></script>
+  <script src="static/app-memo.js?v=0.7.18&memo-view=2"></script>
   <script src="static/app.js?v=0.7.18&memo=1"></script>
   <script src="static/app-welcome.js?v=0.7.18"></script>
   <script src="static/app-exc.js?v=0.7.18"></script>

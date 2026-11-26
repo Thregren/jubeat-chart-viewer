@@ -147,6 +147,7 @@
     if(A.mode?.ownsFrame&&A.mode.paintDensity)A.mode.paintDensity();
     else drawDensity(mediaT);
     A.drawTimeline?.(mediaT);
+    A.memo?.paint?.(mediaT);
   }
 
   // 画面「需要重画」的脏标记 + 把渲染循环重新点起来的入口。

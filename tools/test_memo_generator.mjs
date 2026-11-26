@@ -40,6 +40,7 @@ test('keeps holds linked across measures and groups a release with a simultaneou
     { beat: 5, index: 3 },
   ], [{ beat: 0, bpm: 120 }, { beat: 2, bpm: 240 }]);
   const [first, second] = create(chart).measures;
+  assert.equal(second.startSeconds, 1.5);
   const [start] = first.groups[0].actions;
   const release = second.groups[0].actions.find(a => a.kind === 'hold-end');
   assert.equal(start.tailTip, 1);
@@ -74,6 +75,7 @@ test('uses original arcade barlines, exact strike ticks and the encoded hold tip
   const [intro, measure] = result.measures;
   assert.equal(result.barlineSource, 'arcade');
   assert.equal(intro.length, 3);
+  assert.equal(measure.startSeconds, 449 / 300);
   assert.equal(measure.groups[0].chartSeconds, 449 / 300);
   assert.equal(measure.groups[1].actions[0].tailTip, 1);
   assert.equal(measure.groups[2].actions[0].kind, 'hold-end');

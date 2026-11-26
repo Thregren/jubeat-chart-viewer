@@ -1,19 +1,39 @@
-/* Download the selected chart as a UTF-8 MEMO text file. */
+/* Display the selected chart on the playback clock and export the same MEMO. */
 (function () {
   "use strict";
   const A = window.JubeatApp;
   const Runtime = window.JubeatRuntime;
   const Memo = window.JubeatMemo;
-  const button = document.getElementById("btnDownloadMemo");
+  const toggle = document.getElementById("btnMemo");
+  const panel = document.getElementById("memoPanel");
+  const list = document.getElementById("memoList");
+  const status = document.getElementById("memoStatus");
+  const download = document.getElementById("btnDownloadMemo");
+  const close = document.getElementById("btnCloseMemo");
   const requests = new Runtime.RequestScope();
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let selection = null;
+  let memo = null;
+  let active = -1;
+  let wasPlaying = false;
 
-  if (window.__recActive) button.hidden = true;
+  if (window.__recActive) toggle.hidden = true;
+
+  function showStatus(message) {
+    status.textContent = message;
+    status.hidden = !message;
+  }
 
   function setChart(song, difficulty, chart, parsed) {
     requests.cancel();
     selection = chart ? { song, difficulty, chart, parsed } : null;
-    button.disabled = !selection;
+    memo = null;
+    active = -1;
+    wasPlaying = false;
+    list.replaceChildren();
+    download.disabled = true;
+    toggle.disabled = !selection && panel.hidden;
+    if (!panel.hidden) load();
   }
 
   async function makeMemo(selected, signal) {
@@ -69,21 +89,137 @@
     }
   }
 
-  button.addEventListener("click", async () => {
-    if (!selection || button.disabled) return;
+  function element(tag, className, content) {
+    const node = document.createElement(tag);
+    node.className = className;
+    if (content != null) node.textContent = content;
+    return node;
+  }
+
+  function measureCard(measure) {
+    const card = element("section", "memo-measure");
+    card.append(element("h3", "memo-measure-title", `第 ${measure.number} 小节`));
+    const boards = element("div", "memo-boards");
+    const holds = new Map();
+    for (const group of measure.groups) {
+      for (const action of group.actions) {
+        if (action.kind !== "tap") holds.set(`${group.label}:${action.index}`, action.kind);
+      }
+    }
+    for (const cells of measure.frames) {
+      const board = element("div", "memo-board");
+      cells.forEach((label, index) => {
+        const cell = element("span", "memo-cell", label);
+        if (label) {
+          cell.classList.add("memo-note");
+          const hold = holds.get(`${label}:${index}`);
+          if (hold) {
+            const start = hold === "hold-start";
+            cell.title = start ? "长押开始" : "长押结束";
+            cell.append(element("small", "memo-hold", start ? "始" : "终"));
+          }
+        }
+        board.append(cell);
+      });
+      boards.append(board);
+    }
+    card.append(boards);
+    const rhythm = element("div", "memo-rhythm");
+    measure.rhythm.forEach((row, index) => {
+      const line = element("div", "memo-beat");
+      const length = row.length === 1 ? "" : `（${Number(row.length.toFixed(6))} 拍）`;
+      line.append(element("span", "memo-beat-number", `${index + 1}${length}`));
+      const slots = element("div", "memo-beat-slots");
+      for (const slot of row.slots || row.offsets.map(o => `${o.label}@${Number(o.beat.toFixed(6))}`)) {
+        slots.append(element("span", slot ? "memo-slot memo-slot-hit" : "memo-slot", slot ?? "－"));
+      }
+      line.append(slots);
+      rhythm.append(line);
+    });
+    card.append(rhythm);
+    return card;
+  }
+
+  function scrollToActive(smooth = false) {
+    const card = list.children[active];
+    if (!card) return;
+    list.scrollTo({
+      top: card.offsetTop - list.firstElementChild.offsetTop,
+      behavior: smooth && !reduceMotion.matches ? "smooth" : "instant",
+    });
+  }
+
+  function paint(seconds) {
+    if (panel.hidden || !memo?.measures.length) return;
+    const playing = A.state.playing;
+    const { measures } = memo;
+    let lo = 0;
+    let hi = measures.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (measures[mid].startSeconds <= seconds) lo = mid + 1;
+      else hi = mid;
+    }
+    const next = Math.max(0, lo - 1);
+    if (next !== active) {
+      list.children[active]?.removeAttribute("aria-current");
+      list.children[next].setAttribute("aria-current", "true");
+      const movingForward = next === active + 1;
+      active = next;
+      scrollToActive(playing && wasPlaying && movingForward && !A.state.scrubbing);
+    } else if (playing && !wasPlaying) {
+      scrollToActive();
+    }
+    wasPlaying = playing;
+  }
+
+  async function load() {
+    showStatus("正在加载数字谱…");
+    if (!selection) return;
     const selected = selection;
     const request = requests.start(5000);
-    button.disabled = true;
     try {
-      const memo = await makeMemo(selected, request.signal);
-      if (memo && selection === selected) saveText(selected, memo);
+      const result = await makeMemo(selected, request.signal);
+      if (!result || requests.active !== request || selection !== selected || panel.hidden) return;
+      list.replaceChildren(...result.measures.map(measureCard));
+      memo = result;
+      download.disabled = false;
+      showStatus(result.measures.length ? "" : "这份谱面没有音符。");
+      A.requestPaint();
     } catch (error) {
-      if (selection === selected) A.toast(`数字谱下载失败：${error.message}`, true);
+      if (requests.active === request) showStatus(`数字谱加载失败：${error.message}`);
     } finally {
       requests.finish(request);
-      if (selection === selected) button.disabled = false;
     }
-  });
+  }
 
-  A.memo = { setChart };
+  function setOpen(open) {
+    panel.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.disabled = !selection && !open;
+    if (open) {
+      if (!memo) load();
+      else {
+        scrollToActive();
+        A.requestPaint();
+      }
+    } else {
+      requests.cancel();
+      wasPlaying = false;
+    }
+  }
+
+  toggle.addEventListener("click", () => setOpen(panel.hidden));
+  close.addEventListener("click", () => {
+    setOpen(false);
+    toggle.focus();
+  });
+  download.addEventListener("click", () => {
+    if (selection && memo) saveText(selection, memo);
+  });
+  if (window.ResizeObserver) new ResizeObserver(() => {
+    if (!panel.hidden && A.state.playing) scrollToActive();
+  }).observe(list);
+
+  A.memo = { setChart, paint };
 })();

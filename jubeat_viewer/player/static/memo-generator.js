@@ -215,7 +215,8 @@
       while (cursor < labeled.length && beforeBoundary(labeled[cursor], rowEnd, clock, origin, tolerance)) cursor++;
       rhythm.push(rhythmRow(rowStart, rowEnd, labeled.slice(first, cursor), clock, origin, tolerance));
     }
-    return { number: index + 1, start, length: end - start, frames, rhythm, groups: labeled };
+    const startSeconds = Math.min(clock.beatToSec(origin + start), labeled[0]?.chartSeconds ?? Infinity);
+    return { number: index + 1, start, startSeconds, length: end - start, frames, rhythm, groups: labeled };
   }
 
   /**

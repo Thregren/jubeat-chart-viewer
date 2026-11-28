@@ -1,7 +1,7 @@
 /* Choose the song version in the same sidebar area as the Marker picker. */
 (() => {
   'use strict';
-  const A = window.JubeatApp, {els} = A;
+  const A = window.JubeatApp, {els, state} = A;
   const toggle = document.getElementById('btnVersionLibrary');
   const list = document.getElementById('versionList');
   if (!toggle || !list) return;
@@ -14,12 +14,19 @@
     ['jubeat-copious-append', 'jubeat-copious'],
   ]);
   let active = false, saved = null;
+  let countedSongs;
+  const songCounts = new Map();
   function logoPath(version) {
     const logoId = logoAliases.get(version) || version;
     return logos.has(logoId) ? A.resourcePath(`static/version-logo-${logoId}.png`) : '';
   }
   function refresh() {
     if (!active) return;
+    if (state.songs !== countedSongs) {
+      countedSongs = state.songs;
+      songCounts.clear();
+      for (const {version} of countedSongs) songCounts.set(version, (songCounts.get(version) ?? 0) + 1);
+    }
     const query = A.normalizeSearch(els.search.value.trim());
     const options = [...els.versionFilter.options].filter(option => !query || A.normalizeSearch(option.textContent).includes(query));
     list.replaceChildren();
@@ -48,7 +55,10 @@
       const detail = option.textContent.match(/（([^）]+)）$/);
       caption.textContent = option.value ? (detail?.[1] || '') : '显示全部歌曲';
       if (!caption.textContent) button.classList.add('no-caption');
-      button.append(title, caption); li.append(button); list.append(li);
+      const count = document.createElement('span'); count.className = 'version-song-count';
+      const total = option.value ? (songCounts.get(option.value) ?? 0) : countedSongs.length;
+      count.textContent = `${total.toLocaleString('zh-CN')} 首`;
+      button.append(title, caption, count); li.append(button); list.append(li);
     }
   }
   function setActive(on) {

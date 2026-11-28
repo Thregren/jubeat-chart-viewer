@@ -14,6 +14,8 @@
   const next = document.getElementById("btnMemoNext");
   const requests = new Runtime.RequestScope();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const { firstAfter, firstAtOrAfter } = A.Core;
+  const mountedLights = new Map();
   let selection = null;
   let memo = null;
   let cards = [];
@@ -37,6 +39,7 @@
     selection = chart ? { song, difficulty, chart, parsed } : null;
     memo = null;
     cards = [];
+    mountedLights.clear();
     active = -1;
     wasPlaying = false;
     renderedFrom = renderedTo = 0;
@@ -121,11 +124,16 @@
     return card;
   }
 
-  function measureBody(measure) {
+  function measureBody(measure, measureIndex) {
     const body = document.createElement("div");
     const boards = element("div", "memo-boards");
     const holds = new Map();
+    const byLabel = new Map();
+    const groups = [];
     for (const group of measure.groups) {
+      const light = { t: group.chartSeconds, cells: [] };
+      byLabel.set(group.label, light);
+      groups.push(light);
       for (const action of group.actions) {
         if (action.kind !== "tap") holds.set(`${group.label}:${action.index}`, action.kind);
       }
@@ -135,6 +143,7 @@
       cells.forEach((label, index) => {
         const cell = element("span", "memo-cell", label);
         if (label) {
+          byLabel.get(label).cells.push(cell);
           cell.classList.add("memo-note");
           if (label.startsWith("[")) {
             cell.replaceChildren(element("span", "memo-cell-number", label.slice(1, -1)));
@@ -163,7 +172,40 @@
       rhythm.append(line);
     });
     body.append(rhythm);
+    mountedLights.set(measureIndex, { groups, from: 0, hit: 0, to: 0 });
     return body;
+  }
+
+  function setLight(group, phase) {
+    for (const cell of group.cells) {
+      if (phase) cell.dataset.light = phase;
+      else cell.removeAttribute("data-light");
+    }
+  }
+
+  function paintLights(chartTime, timing) {
+    const playing = timing && A.state.playing && !A.state.scrubbing;
+    for (const lights of mountedLights.values()) {
+      const { groups, from: oldFrom, hit: oldHit, to: oldTo } = lights;
+      let from = 0, hit = 0, to = 0;
+      if (playing && groups.length && groups[0].t <= chartTime + timing.arm
+          && groups.at(-1).t >= chartTime - timing.flash) {
+        from = firstAtOrAfter(groups, chartTime - timing.flash);
+        hit = firstAfter(groups, chartTime);
+        to = firstAfter(groups, chartTime + timing.arm);
+      }
+      if (from === oldFrom && hit === oldHit && to === oldTo) continue;
+      for (let i = oldFrom; i < oldTo; i++) {
+        if (i < from || i >= to) setLight(groups[i], "");
+      }
+      for (let i = from; i < to; i++) {
+        if (i >= oldFrom && i < oldTo && (i < hit) === (i < oldHit)) continue;
+        setLight(groups[i], i < hit ? "hit" : "armed");
+      }
+      lights.from = from;
+      lights.hit = hit;
+      lights.to = to;
+    }
   }
 
   function scrollToActive(smooth = false) {
@@ -217,6 +259,7 @@
       for (let index = renderedFrom; index < renderedTo; index++) {
         if (index >= from && index < to) continue;
         const card = cards[index];
+        mountedLights.delete(index);
         leaving.push([card, card.offsetHeight]);
       }
       for (const [card, blockHeight] of leaving) {
@@ -228,7 +271,7 @@
         const card = cards[index];
         card.classList.remove("memo-placeholder");
         card.style.removeProperty("min-height");
-        card.append(measureBody(memo.measures[index]));
+        card.append(measureBody(memo.measures[index], index));
       }
       renderedFrom = from;
       renderedTo = to;
@@ -263,7 +306,7 @@
     showMeasure(index);
   }
 
-  function paint() {
+  function paint(chartTime, timing) {
     if (panel.hidden || !memo?.measures.length) return;
     const playing = A.state.playing;
     // Follow the progress clock used by seekTo, including immediately after a paused seek.
@@ -286,6 +329,7 @@
       scrollToActive();
     }
     wasPlaying = playing;
+    if (timing) paintLights(chartTime, timing);
   }
 
   async function load() {
@@ -323,6 +367,7 @@
       requests.cancel();
       cancelWindow();
       wasPlaying = false;
+      paintLights();
     }
   }
 
@@ -333,6 +378,7 @@
   });
   previous.addEventListener("click", () => seekMeasure(active - 1));
   next.addEventListener("click", () => seekMeasure(active + 1));
+  next.parentElement.addEventListener("contextmenu", event => event.preventDefault());
   list.addEventListener("scroll", scheduleWindow, { passive: true });
   list.addEventListener("click", event => {
     const card = event.target.closest(".memo-measure");
@@ -347,5 +393,5 @@
     else scheduleWindow();
   }).observe(list);
 
-  A.memo = { setChart, paint };
+  A.memo = { setChart, paint, get needsPausePaint() { return wasPlaying; } };
 })();

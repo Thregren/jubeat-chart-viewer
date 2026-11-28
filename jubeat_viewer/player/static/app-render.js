@@ -28,6 +28,7 @@
 
   const FLASH = 0.14; // seconds pad stays lit after hit
   const ARM = 0.12; // pre-arm window
+  const PAD_LIGHT_TIMING = { flash: FLASH, arm: ARM };
 
   let lastAdvancedTime = -Infinity;
   function advanceNotes(chartT) {
@@ -147,7 +148,7 @@
     if(A.mode?.ownsFrame&&A.mode.paintDensity)A.mode.paintDensity();
     else drawDensity(mediaT);
     A.drawTimeline?.(mediaT);
-    A.memo?.paint?.(mediaT);
+    A.memo?.paint?.(mediaT, PAD_LIGHT_TIMING);
   }
 
   // 画面「需要重画」的脏标记 + 把渲染循环重新点起来的入口。
@@ -172,7 +173,8 @@
     if (A.mode?.ownsFrame) return;
     // 完全空闲（暂停、没在拖、没有外部指定帧时间、没开调试面板）且没有脏标记
     // → 这一帧不画，也不再排下一帧。
-    if (!paintDirty && !state.playing && !state.scrubbing
+    // 数字谱从播放切到暂停时补一帧，清掉还亮着的键位。
+    if (!paintDirty && !state.playing && !state.scrubbing && !A.memo?.needsPausePaint
       && A.forcedMediaTime == null && !DEBUG_TIMELINE) {
       return;
     }

@@ -132,12 +132,36 @@ try {
   assert.equal(await holdEnd.evaluate(cell => getComputedStyle(cell).backgroundColor), 'rgb(132, 47, 64)');
   await page.evaluate(() => JubeatApp.seekTo(1.7));
   await page.locator('#btnPlay').click();
+  await page.waitForFunction(() => JubeatApp.state.playing);
+  const lights = await page.evaluate(() => {
+    const start = document.querySelector('.memo-hold-start');
+    const end = document.querySelector('.memo-hold-end');
+    const next = [...start.closest('.memo-board').children].find(cell => cell.textContent === '②');
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.getElementById('memoList'), {subtree: true, attributeFilter: ['data-light']});
+    __player.paintFrame(2.02);
+    const hit = {start: start.dataset.light, end: end.dataset.light, next: next.dataset.light,
+      text: start.textContent, color: getComputedStyle(start).color, edge: getComputedStyle(start).borderTopColor};
+    observer.takeRecords();
+    __player.paintFrame(2.02);
+    const duplicateWrites = observer.takeRecords().length;
+    __player.paintFrame(4.02);
+    const release = {start: start.dataset.light, end: end.dataset.light, edge: getComputedStyle(end).borderTopColor};
+    observer.disconnect();
+    return {hit, release, duplicateWrites};
+  });
+  assert.deepEqual(lights, {
+    hit: {start: 'hit', end: undefined, next: 'armed', text: '①', color: 'rgb(255, 255, 255)', edge: 'rgb(134, 242, 189)'},
+    release: {start: undefined, end: 'hit', edge: 'rgb(255, 154, 169)'},
+    duplicateWrites: 0,
+  });
   await measure.filter({ hasText: '第 2 小节' }).waitFor();
   await page.waitForFunction(() => document.getElementById('memoList').scrollTop > 0);
   await page.getByRole('button', { name: '第 3 小节', exact: true }).click();
   await page.waitForFunction(() => JubeatApp.state.playing && JubeatApp.currentMediaTime() >= 3.99);
   await measure.filter({ hasText: '第 3 小节' }).waitFor();
   await page.locator('#btnPlay').click();
+  await page.waitForFunction(() => !document.querySelector('.memo-cell[data-light]'));
   await page.evaluate(() => JubeatApp.seekTo(12.3));
   await measure.filter({ hasText: '第 7 小节' }).waitFor();
   await page.getByRole('button', { name: '第 16 小节', exact: true }).focus();
@@ -204,6 +228,19 @@ try {
     'Two opening measures fit in the phone viewport');
   const footer = await touch.locator('.memo-navigation').boundingBox();
   assert(footer.y >= mobileList.y + mobileList.height, 'Navigation stays below the scrollable list');
+  const mobileNext = touch.getByRole('button', { name: '下一小节' });
+  const nextBox = await mobileNext.boundingBox();
+  assert(nextBox.height <= 30);
+  assert.equal(await mobileNext.evaluate(button => getComputedStyle(button).userSelect), 'none');
+  assert.equal(await mobileNext.evaluate(button =>
+    button.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}))), false);
+  const touchClient = await touch.context().newCDPSession(touch);
+  await touchClient.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [
+    {x: nextBox.x + nextBox.width / 2, y: nextBox.y + nextBox.height / 2},
+  ]});
+  await touch.waitForTimeout(650);
+  assert.equal(await touch.evaluate(() => getSelection().toString()), '');
+  await touchClient.send('Input.dispatchTouchEvent', {type: 'touchCancel', touchPoints: []});
   const loadingGap = await touch.locator('#loadRow').evaluate(row => {
     const hidden = row.hidden;
     row.hidden = false;
@@ -245,7 +282,7 @@ try {
   await touch.close();
 
   assert.deepEqual(errors, []);
-  console.log('MEMO: visible-window rendering, manual scroll and seek, mobile layout, hold colors, playback following and TXT export verified.');
+  console.log('MEMO: windowed rendering, seeking, mobile navigation, timed key lights, hold colors and TXT export verified.');
 } finally {
   await browser.close();
 }

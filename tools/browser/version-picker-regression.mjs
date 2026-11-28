@@ -16,8 +16,13 @@ try {
     await page.locator('#btnVersionLibrary').click();
     assert(await page.locator('#versionList').isVisible());
     assert.equal(await page.locator('#search').inputValue(), '');
+    const counts = await page.locator('#versionList .version-song-count').evaluateAll(elements =>
+      elements.map(element => ({text: element.textContent, right: element.getBoundingClientRect().right})));
+    assert.deepEqual(counts.map(count => count.text), ['320 首', ...Array(8).fill('40 首')]);
+    assert(counts.every(count => count.right === counts[0].right), 'Version counts align at the right edge');
     await page.locator('#search').fill('v2');
     await page.waitForFunction(() => document.querySelectorAll('#versionList [data-version]').length === 1);
+    assert.equal(await page.locator('#versionList .version-song-count').textContent(), '40 首');
     await page.locator('#versionList [data-version="v2"]').click();
     assert(await page.locator('#songList').isVisible());
     assert.equal(await page.locator('#search').inputValue(), 'Song');
@@ -38,6 +43,7 @@ try {
     });
     await page.locator('#btnVersionLibrary').click();
     const logo = page.locator('#versionList [data-version="jubeat-plus"] img');
+    assert.equal(await page.locator('#versionList [data-version="jubeat-plus"] .version-song-count').textContent(), '0 首');
     await logo.scrollIntoViewIfNeeded();
     await logo.evaluate(image => image.decode());
     assert.equal(await logo.evaluate(image => image.naturalWidth === image.naturalHeight),true);

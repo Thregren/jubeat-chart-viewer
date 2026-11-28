@@ -184,13 +184,22 @@ try {
     return top >= canvas.top && bottom <= canvas.bottom;
   });
   assert.deepEqual(await verifyRim(holdEnd, { time: 4.02, rgb: [255, 154, 169] }), transparentRim);
-  await page.locator('#btnPlay').click();
+  const pausedFrame = await page.evaluate(() => {
+    const canvas = document.getElementById('memoLights');
+    __player.paintFrame(4.02);
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    __player.pause();
+    return { image: canvas.toDataURL(), lit: pixels.some(Boolean) };
+  });
+  assert(pausedFrame.lit);
   await page.waitForFunction(() => !JubeatApp.state.playing && !JubeatApp.memo.needsPausePaint);
-  assert(await page.locator('#memoLights').evaluate(canvas =>
-    !canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(value => value)),
-  'Pausing clears the overlay');
+  assert.equal(await page.locator('#memoLights').evaluate(canvas => canvas.toDataURL()),
+    pausedFrame.image, 'Pausing freezes the highlighted frame');
   await page.evaluate(() => JubeatApp.seekTo(12.3));
   await measure.filter({ hasText: '第 7 小节' }).waitFor();
+  assert(await page.locator('#memoLights').evaluate(canvas =>
+    !canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(Boolean)),
+  'Seeking replaces the frozen highlight');
   await page.getByRole('button', { name: '第 16 小节', exact: true }).focus();
   await page.keyboard.press('Enter');
   await measure.filter({ hasText: '第 16 小节' }).waitFor();
@@ -281,33 +290,50 @@ try {
     return gap;
   });
   assert(loadingGap >= 0, 'The loading indicator stays clear of the navigation');
-  const playbackAlignment = async (index, start) => {
+  const playbackAlignment = async (index, start, reducedMotion) => {
+    await touch.emulateMedia({ reducedMotion });
     await touch.evaluate(time => JubeatApp.seekTo(time), start - 0.45);
     await touch.waitForFunction(previous => document.querySelector('.memo-measure[aria-current]')
       ?.dataset.measureIndex === String(previous), index - 1);
-    await touch.locator('#btnPlay').tap();
-    await touch.waitForFunction(current => JubeatApp.state.playing
-      && document.querySelector('.memo-measure[aria-current]')?.dataset.measureIndex === String(current), index);
-    const alignment = await touch.evaluate(async index => {
-      await new Promise(requestAnimationFrame);
-      await new Promise(requestAnimationFrame);
+    const transition = touch.evaluate(async index => {
       const list = document.getElementById('memoList');
+      const active = () => list.querySelector('.memo-measure[aria-current]');
+      const target = list.querySelector(`.memo-measure[data-measure-index="${index}"]`);
+      const previous = active();
       const top = list.getBoundingClientRect().top;
-      const inset = parseFloat(getComputedStyle(list).paddingTop);
-      const active = list.querySelector('.memo-measure[aria-current]').getBoundingClientRect();
-      const previous = list.querySelector(`.memo-measure[data-measure-index="${index - 1}"]`).getBoundingClientRect();
-      return { offset: active.top - top - inset, previousBottom: previous.bottom - top };
+      const positions = [];
+      const deadline = performance.now() + 4000;
+      while (active() !== target && performance.now() < deadline) {
+        await new Promise(requestAnimationFrame);
+      }
+      const started = performance.now();
+      do {
+        positions.push(target.getBoundingClientRect().top - top);
+        await new Promise(requestAnimationFrame);
+      } while (performance.now() - started < 220);
+      return {
+        positions,
+        offset: target.getBoundingClientRect().top - top,
+        previousBottom: previous.getBoundingClientRect().bottom - top,
+      };
     }, index);
     await touch.locator('#btnPlay').tap();
+    const alignment = await transition;
+    await touch.locator('#btnPlay').tap();
     await touch.waitForFunction(() => !JubeatApp.state.playing);
+    assert(Math.abs(alignment.offset) <= 1 && alignment.previousBottom <= 1,
+      `The playing measure settles at the top: ${JSON.stringify(alignment)}`);
     return alignment;
   };
-  const openingAlignment = await playbackAlignment(1, 2);
-  const closingAlignment = await playbackAlignment(15, 30);
-  for (const alignment of [openingAlignment, closingAlignment]) {
-    assert(Math.abs(alignment.offset) <= 1 && alignment.previousBottom <= 1,
-      `The playing measure reaches the top and the previous one leaves view: ${JSON.stringify(alignment)}`);
+  for (const [index, time] of [[1, 2], [15, 30]]) {
+    const { positions } = await playbackAlignment(index, time, 'no-preference');
+    assert(new Set(positions.map(Math.round)).size >= 3, `The score slides between measures: ${positions}`);
+    assert(positions.every((position, i) => i === 0 || position <= positions[i - 1] + 1),
+      `The score slide moves in one direction: ${positions}`);
   }
+  const { positions } = await playbackAlignment(1, 2, 'reduce');
+  assert(new Set(positions.map(Math.round)).size <= 2, 'Reduced motion aligns the measure without sliding');
+  await touch.emulateMedia({ reducedMotion: 'no-preference' });
   await touch.evaluate(() => JubeatApp.seekTo(0));
   await touch.waitForFunction(() => document.getElementById('memoList').scrollTop === 0);
   await touch.locator('.memo-measure').nth(1).locator('.memo-cell').first().tap();
@@ -344,7 +370,7 @@ try {
   await touch.close();
 
   assert.deepEqual(errors, []);
-  console.log('MEMO: windowed rendering, seeking, mobile navigation, timed key lights, hold colors and TXT export verified.');
+  console.log('MEMO: windowed rendering, smooth playback follow, frozen key lights, mobile navigation and TXT export verified.');
 } finally {
   await browser.close();
 }

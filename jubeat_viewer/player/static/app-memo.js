@@ -14,6 +14,8 @@
   const previous = document.getElementById("btnMemoPrevious");
   const next = document.getElementById("btnMemoNext");
   const requests = new Runtime.RequestScope();
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const followDuration = 150;
   const { firstAfter } = A.Core;
   const mountedLights = new Map();
   let lightContext;
@@ -30,7 +32,8 @@
   let renderedFrom = 0;
   let renderedTo = 0;
   let windowFrame = 0;
-  let followActive = false;
+  let follow = null;
+  let slide = null;
 
   if (window.__recActive) toggle.hidden = true;
 
@@ -46,10 +49,8 @@
     memo = null;
     cards = [];
     mountedLights.clear();
-    clearLightPixels();
+    resetLights();
     lightsNeedLayout = true;
-    lastFrameTiming = undefined;
-    nextLightTime = -Infinity;
     active = -1;
     wasPlaying = false;
     renderedFrom = renderedTo = 0;
@@ -241,13 +242,14 @@
     lightBottom = -Infinity;
   }
 
+  function resetLights() {
+    clearLightPixels();
+    lastFrameTiming = undefined;
+    nextLightTime = -Infinity;
+  }
+
   function paintLights(chartTime, timing) {
     if (!lightContext) return;
-    if (!timing || !A.state.playing || A.state.scrubbing) {
-      clearLightPixels();
-      nextLightTime = -Infinity;
-      return;
-    }
     // Most frames fall between note transitions. Repaint on a transition, a rewind, or a scroll.
     if (chartTime >= sampledLightTime && chartTime < nextLightTime) return;
     sampledLightTime = chartTime;
@@ -287,16 +289,22 @@
     }
   }
 
-  function scrollToActive() {
+  function scrollToActive(smooth = false) {
     if (active < 0) return;
-    followActive = true;
+    follow = smooth && !reduceMotion.matches;
     scheduleWindow();
+  }
+
+  function cancelSlide() {
+    slide = null;
+    if (follow === true) follow = null;
   }
 
   function cancelWindow() {
     cancelAnimationFrame(windowFrame);
     windowFrame = 0;
-    followActive = false;
+    follow = null;
+    slide = null;
   }
 
   function scheduleWindow() {
@@ -316,21 +324,42 @@
     return lo;
   }
 
-  function renderWindow() {
+  function syncLightPosition(scrollTop) {
+    const lightsMoved = lightsNeedLayout || scrollTop !== lightScroll;
+    layoutLights(scrollTop);
+    if (lightsMoved && lastFrameTiming) paintLights(lastFrameTime, lastFrameTiming);
+  }
+
+  function renderWindow(now) {
     windowFrame = 0;
+    const playing = A.state.playing && !A.state.scrubbing;
+    if (!playing) cancelSlide();
+    if (slide && follow === null) {
+      const progress = Math.min(1, (now - slide.start) / followDuration);
+      const eased = progress * progress * (3 - 2 * progress);
+      list.scrollTop = slide.from + (slide.to - slide.from) * eased;
+      syncLightPosition(list.scrollTop);
+      if (progress === 1) slide = null;
+      scheduleWindow();
+      return;
+    }
+    slide = null;
     const height = list.clientHeight;
     if (!height) return;
     const scrollTop = list.scrollTop;
     const origin = cards[0].offsetTop;
-    const target = followActive ? cards[active] : null;
-    followActive = false;
-    const position = target ? target.offsetTop : origin + scrollTop;
-    const from = cardAt(position - height / 2);
+    const visibleTop = origin + scrollTop;
+    const target = follow !== null ? cards[active] : null;
+    const position = target ? target.offsetTop : visibleTop;
+    const smooth = follow === true && position > visibleTop + 1
+      && (position - visibleTop <= height || cards[active - 1]?.offsetTop <= visibleTop + 1);
+    follow = null;
+    const from = cardAt((smooth ? visibleTop : position) - height / 2);
     const to = Math.min(cards.length, cardAt(position + height * 1.5) + 2);
 
     if (from !== renderedFrom || to !== renderedTo) {
       // Keep headings in the list for keyboard navigation. Mount only nearby grids and rhythm rows.
-      const anchor = target ? null : cards[cardAt(origin + scrollTop)];
+      const anchor = target && !smooth ? null : cards[cardAt(visibleTop)];
       const anchorTop = anchor?.offsetTop;
       const leaving = [];
       for (let index = renderedFrom; index < renderedTo; index++) {
@@ -355,12 +384,20 @@
       lightsNeedLayout = true;
       if (anchor && anchor.offsetTop !== anchorTop) list.scrollTop = scrollTop + anchor.offsetTop - anchorTop;
     }
-    if (target) list.scrollTop = target.offsetTop - origin;
+    if (target) {
+      const to = target.offsetTop - origin;
+      const from = list.scrollTop;
+      if (smooth && to > from + 1) {
+        // Keep the old and new viewport mounted until the scroll and light layer settle.
+        slide = { from, to, start: now };
+        scheduleWindow();
+      } else {
+        list.scrollTop = to;
+      }
+    }
     // Estimates can run tall. Fill any newly exposed rows after measuring the mounted cards.
     const finalScroll = list.scrollTop;
-    const lightsMoved = lightsNeedLayout || finalScroll !== lightScroll;
-    layoutLights(finalScroll);
-    if (lightsMoved && lastFrameTiming) paintLights(lastFrameTime, lastFrameTiming);
+    syncLightPosition(finalScroll);
     if (cards[to]?.offsetTop < origin + finalScroll + height) scheduleWindow();
   }
 
@@ -369,14 +406,21 @@
     next.disabled = active < 0 || active >= (memo?.measures.length ?? 0) - 1;
   }
 
-  function showMeasure(index) {
+  function showMeasure(index, smooth = false) {
     if (active !== index) {
       cards[active]?.removeAttribute("aria-current");
       active = index;
       cards[active].setAttribute("aria-current", "true");
       updateNavigation();
     }
-    scrollToActive();
+    scrollToActive(smooth);
+  }
+
+  function onSeek() {
+    follow = null;
+    slide = null;
+    resetLights();
+    wasPlaying = false;
   }
 
   function seekMeasure(index) {
@@ -389,6 +433,13 @@
   function paint(chartTime, timing) {
     if (panel.hidden || !memo?.measures.length) return;
     const playing = A.state.playing;
+    const scrubbing = A.state.scrubbing;
+    if (!playing && !scrubbing && lastFrameTiming) {
+      // Hold the last rendered note phase and scroll position for frame inspection.
+      wasPlaying = false;
+      cancelSlide();
+      return;
+    }
     // Follow the progress clock used by seekTo, including immediately after a paused seek.
     const seconds = Math.max(0, A.currentMediaTime()) + 0.001;
     const { measures } = memo;
@@ -402,12 +453,17 @@
         if (measures[mid].startSeconds <= seconds) lo = mid + 1;
         else hi = mid;
       }
-      showMeasure(Math.max(0, lo - 1));
+      const next = Math.max(0, lo - 1);
+      showMeasure(next, playing && (wasPlaying || lastFrameTiming)
+        && next === active + 1 && !scrubbing);
     } else if (playing && !wasPlaying) {
-      scrollToActive();
+      scrollToActive(Boolean(lastFrameTiming));
     }
     wasPlaying = playing;
-    if (timing) {
+    if (scrubbing) {
+      cancelSlide();
+      if (lastFrameTiming) resetLights();
+    } else if (playing && timing) {
       lastFrameTime = chartTime;
       lastFrameTiming = timing;
       paintLights(chartTime, timing);
@@ -454,8 +510,7 @@
       requests.cancel();
       cancelWindow();
       wasPlaying = false;
-      lastFrameTiming = undefined;
-      paintLights();
+      resetLights();
       if (lightContext) {
         lightCanvas.width = lightCanvas.height = 1;
         lightsNeedLayout = true;
@@ -472,6 +527,8 @@
   next.addEventListener("click", () => seekMeasure(active + 1));
   next.parentElement.addEventListener("contextmenu", event => event.preventDefault());
   list.addEventListener("scroll", scheduleWindow, { passive: true });
+  list.addEventListener("pointerdown", cancelSlide, { passive: true });
+  list.addEventListener("wheel", cancelSlide, { passive: true });
   list.addEventListener("click", event => {
     const card = event.target.closest(".memo-measure");
     if (card) seekMeasure(Number(card.dataset.measureIndex));
@@ -486,5 +543,5 @@
     else scheduleWindow();
   }).observe(list);
 
-  A.memo = { setChart, paint, get needsPausePaint() { return wasPlaying; } };
+  A.memo = { setChart, paint, onSeek, get needsPausePaint() { return wasPlaying; } };
 })();

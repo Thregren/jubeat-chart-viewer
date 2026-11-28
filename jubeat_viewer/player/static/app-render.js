@@ -173,7 +173,7 @@
     if (A.mode?.ownsFrame) return;
     // 完全空闲（暂停、没在拖、没有外部指定帧时间、没开调试面板）且没有脏标记
     // → 这一帧不画，也不再排下一帧。
-    // 数字谱从播放切到暂停时补一帧，清掉还亮着的键位。
+    // 数字谱暂停时收住滚动，保留上一帧的键位高亮。
     if (!paintDirty && !state.playing && !state.scrubbing && !A.memo?.needsPausePaint
       && A.forcedMediaTime == null && !DEBUG_TIMELINE) {
       return;

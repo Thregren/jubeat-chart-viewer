@@ -914,6 +914,7 @@
 
   function seekPosition(sec) {
     if(A.mode?.ownsFrame)return;
+    A.memo?.onSeek?.();
     const s = Math.max(0, Math.min(sec, state.duration || 0));
     const off = (Number(els.offset.value) || 0) / 1000;
     const audioT = Math.max(0, s + (state.baseOffset || 0) - off);

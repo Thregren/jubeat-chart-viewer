@@ -130,38 +130,65 @@ try {
   assert.match(await holdEnd.textContent(), /^①$/);
   assert.equal(await holdStart.evaluate(cell => getComputedStyle(cell).backgroundColor), 'rgb(20, 88, 61)');
   assert.equal(await holdEnd.evaluate(cell => getComputedStyle(cell).backgroundColor), 'rgb(132, 47, 64)');
-  await page.evaluate(() => JubeatApp.seekTo(1.7));
+  await next.click();
+  await measure.filter({ hasText: '第 2 小节' }).waitFor();
+  await page.waitForFunction(() => {
+    const canvas = document.getElementById('memoLights');
+    return canvas.width > 1 && document.getElementById('memoList').scrollTop > 0;
+  });
   await page.locator('#btnPlay').click();
   await page.waitForFunction(() => JubeatApp.state.playing);
-  const lights = await page.evaluate(() => {
-    const start = document.querySelector('.memo-hold-start');
-    const end = document.querySelector('.memo-hold-end');
-    const next = [...start.closest('.memo-board').children].find(cell => cell.textContent === '②');
-    const observer = new MutationObserver(() => {});
-    observer.observe(document.getElementById('memoList'), {subtree: true, attributeFilter: ['data-light']});
-    __player.paintFrame(2.02);
-    const hit = {start: start.dataset.light, end: end.dataset.light, next: next.dataset.light,
-      text: start.textContent, color: getComputedStyle(start).color, edge: getComputedStyle(start).borderTopColor};
-    observer.takeRecords();
-    __player.paintFrame(2.02);
-    const duplicateWrites = observer.takeRecords().length;
-    __player.paintFrame(4.02);
-    const release = {start: start.dataset.light, end: end.dataset.light, edge: getComputedStyle(end).borderTopColor};
-    observer.disconnect();
-    return {hit, release, duplicateWrites};
+  const verifyRim = (cell, { time, rgb }) => cell.evaluate((target, { time, rgb }) => {
+    const canvas = document.getElementById('memoLights');
+    const ctx = canvas.getContext('2d');
+    const viewport = canvas.getBoundingClientRect();
+    const bounds = target.getBoundingClientRect();
+    const scaleX = canvas.width / viewport.width;
+    const scaleY = canvas.height / viewport.height;
+    const x = Math.floor((bounds.left - viewport.left) * scaleX);
+    const y = Math.floor((bounds.top - viewport.top) * scaleY);
+    const w = Math.ceil(bounds.width * scaleX);
+    const h = Math.ceil(bounds.height * scaleY);
+    __player.paintFrame(time);
+    const pixels = ctx.getImageData(x, y, w, h).data;
+    const lit = pixels.some((alpha, i) => i % 4 === 3 && alpha >= 96
+      && rgb.every((color, channel) => Math.abs(pixels[i - 3 + channel] - color) <= 2));
+    const center = (Math.floor(h / 2) * w + Math.floor(w / 2)) * 4;
+    return { lit, centerAlpha: pixels[center + 3] };
+  }, { time, rgb });
+  const transparentRim = { lit: true, centerAlpha: 0 };
+  assert.deepEqual(await verifyRim(holdStart, { time: 2.02, rgb: [134, 242, 189] }), transparentRim);
+  const armed = holdStart.locator('..').getByText('②', { exact: true });
+  assert.deepEqual(await verifyRim(armed, { time: 2.02, rgb: [131, 175, 204] }), transparentRim);
+  const strokesWithoutTransition = await page.evaluate(() => {
+    const ctx = document.getElementById('memoLights').getContext('2d');
+    let strokes = 0;
+    ctx.strokeRect = () => { strokes++; };
+    try {
+      __player.paintFrame(2.02);
+      strokes = 0;
+      __player.paintFrame(2.02);
+      __player.paintFrame(2.025);
+      return strokes;
+    } finally {
+      delete ctx.strokeRect;
+    }
   });
-  assert.deepEqual(lights, {
-    hit: {start: 'hit', end: undefined, next: 'armed', text: '①', color: 'rgb(255, 255, 255)', edge: 'rgb(134, 242, 189)'},
-    release: {start: undefined, end: 'hit', edge: 'rgb(255, 154, 169)'},
-    duplicateWrites: 0,
-  });
-  await measure.filter({ hasText: '第 2 小节' }).waitFor();
-  await page.waitForFunction(() => document.getElementById('memoList').scrollTop > 0);
+  assert.equal(strokesWithoutTransition, 0);
   await page.getByRole('button', { name: '第 3 小节', exact: true }).click();
   await page.waitForFunction(() => JubeatApp.state.playing && JubeatApp.currentMediaTime() >= 3.99);
   await measure.filter({ hasText: '第 3 小节' }).waitFor();
+  await page.waitForFunction(() => {
+    const canvas = document.getElementById('memoLights').getBoundingClientRect();
+    const { top, bottom } = document.querySelector('.memo-hold-end').getBoundingClientRect();
+    return top >= canvas.top && bottom <= canvas.bottom;
+  });
+  assert.deepEqual(await verifyRim(holdEnd, { time: 4.02, rgb: [255, 154, 169] }), transparentRim);
   await page.locator('#btnPlay').click();
-  await page.waitForFunction(() => !document.querySelector('.memo-cell[data-light]'));
+  await page.waitForFunction(() => !JubeatApp.state.playing && !JubeatApp.memo.needsPausePaint);
+  assert(await page.locator('#memoLights').evaluate(canvas =>
+    !canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(value => value)),
+  'Pausing clears the overlay');
   await page.evaluate(() => JubeatApp.seekTo(12.3));
   await measure.filter({ hasText: '第 7 小节' }).waitFor();
   await page.getByRole('button', { name: '第 16 小节', exact: true }).focus();
@@ -200,7 +227,8 @@ try {
     await assertActionStack(page, width, width <= 560 ? 3 : 4, originalHeight);
   }
 
-  const touch = await browser.newPage({ viewport: { width: 390, height: 850 }, hasTouch: true, serviceWorkers: 'block' });
+  const touch = await browser.newPage({ viewport: { width: 390, height: 850 }, deviceScaleFactor: 3,
+    hasTouch: true, serviceWorkers: 'block' });
   await touch.route('**/data/library.json*', route =>
     route.fulfill({ json: { songs: [song], versions: ['jubeat'] } }));
   await touch.goto(base.href);
@@ -222,6 +250,10 @@ try {
   assert(mobileMemo.y + mobileMemo.height <= mobileTransport.y,
     'Mobile MEMO leaves the transport uncovered');
   await touch.locator('.memo-measure[aria-current="true"]').waitFor();
+  await touch.waitForFunction(() => {
+    const canvas = document.getElementById('memoLights');
+    return canvas.width === Math.ceil(canvas.getBoundingClientRect().width * 1.5);
+  });
   const mobileList = await touch.locator('#memoList').boundingBox();
   const secondMeasure = await touch.locator('.memo-measure').nth(1).boundingBox();
   assert(secondMeasure.y + secondMeasure.height <= mobileList.y + mobileList.height,
@@ -279,6 +311,7 @@ try {
   assert.match(await touch.locator('#memoPanel').evaluate(panel => getComputedStyle(panel).backgroundColor), /\/ 0\.78\)/);
   await touch.getByRole('button', { name: '关闭数字谱' }).tap();
   assert.equal(await touch.locator('#memoPanel').isVisible(), false);
+  assert.equal(await touch.locator('#memoLights').evaluate(canvas => canvas.width * canvas.height), 1);
   await touch.close();
 
   assert.deepEqual(errors, []);

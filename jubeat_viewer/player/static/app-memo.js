@@ -7,6 +7,7 @@
   const toggle = document.getElementById("btnMemo");
   const panel = document.getElementById("memoPanel");
   const list = document.getElementById("memoList");
+  const lightCanvas = document.getElementById("memoLights");
   const status = document.getElementById("memoStatus");
   const download = document.getElementById("btnDownloadMemo");
   const close = document.getElementById("btnCloseMemo");
@@ -14,8 +15,14 @@
   const next = document.getElementById("btnMemoNext");
   const requests = new Runtime.RequestScope();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const { firstAfter, firstAtOrAfter } = A.Core;
+  const { firstAfter } = A.Core;
   const mountedLights = new Map();
+  let lightContext;
+  let lightHeight = 0, lightScaleY = 1, lightScroll = 0;
+  let lightTop = Infinity, lightBottom = -Infinity;
+  let lightsNeedLayout = true;
+  let lastFrameTime = 0, lastFrameTiming;
+  let sampledLightTime = -Infinity, nextLightTime = -Infinity;
   let selection = null;
   let memo = null;
   let cards = [];
@@ -40,6 +47,10 @@
     memo = null;
     cards = [];
     mountedLights.clear();
+    clearLightPixels();
+    lightsNeedLayout = true;
+    lastFrameTiming = undefined;
+    nextLightTime = -Infinity;
     active = -1;
     wasPlaying = false;
     renderedFrom = renderedTo = 0;
@@ -130,6 +141,7 @@
     const holds = new Map();
     const byLabel = new Map();
     const groups = [];
+    const lightBoards = [];
     for (const group of measure.groups) {
       const light = { t: group.chartSeconds, cells: [] };
       byLabel.set(group.label, light);
@@ -140,15 +152,17 @@
     }
     for (const cells of measure.frames) {
       const board = element("div", "memo-board");
+      const lightBoard = { node: board };
+      lightBoards.push(lightBoard);
       cells.forEach((label, index) => {
         const cell = element("span", "memo-cell", label);
         if (label) {
-          byLabel.get(label).cells.push(cell);
+          const hold = holds.get(`${label}:${index}`);
+          byLabel.get(label).cells.push({ board: lightBoard, row: index >> 2, col: index & 3, hold });
           cell.classList.add("memo-note");
           if (label.startsWith("[")) {
             cell.replaceChildren(element("span", "memo-cell-number", label.slice(1, -1)));
           }
-          const hold = holds.get(`${label}:${index}`);
           if (hold) {
             cell.classList.add(`memo-${hold}`);
             cell.title = hold === "hold-start" ? "长押开始" : "长押结束";
@@ -172,39 +186,105 @@
       rhythm.append(line);
     });
     body.append(rhythm);
-    mountedLights.set(measureIndex, { groups, from: 0, hit: 0, to: 0 });
+    mountedLights.set(measureIndex, { groups, boards: lightBoards });
     return body;
   }
 
-  function setLight(group, phase) {
-    for (const cell of group.cells) {
-      if (phase) cell.dataset.light = phase;
-      else cell.removeAttribute("data-light");
+  function layoutLights(scrollTop) {
+    if (!lightCanvas) return;
+    if (scrollTop !== lightScroll) {
+      lightScroll = scrollTop;
+      nextLightTime = -Infinity;
+    }
+    if (!lightsNeedLayout) return;
+    lightsNeedLayout = false;
+    nextLightTime = -Infinity;
+    const viewport = list.getBoundingClientRect();
+    const lightWidth = viewport.width;
+    lightHeight = viewport.height;
+    lightContext ||= lightCanvas.getContext("2d");
+    if (!lightContext || !lightWidth || !lightHeight) return;
+    const scale = Math.min(window.devicePixelRatio || 1, 1.5);
+    const width = Math.ceil(lightWidth * scale), height = Math.ceil(lightHeight * scale);
+    if (lightCanvas.width !== width || lightCanvas.height !== height) {
+      lightCanvas.width = width;
+      lightCanvas.height = height;
+      lightTop = Infinity;
+      lightBottom = -Infinity;
+    }
+    lightScaleY = height / lightHeight;
+    lightContext.setTransform(width / lightWidth, 0, 0, lightScaleY, 0, 0);
+    // Cache content coordinates when boards are mounted or resized. Playback never measures cells.
+    for (const { boards } of mountedLights.values()) {
+      for (const board of boards) {
+        const grid = board.node.getBoundingClientRect();
+        const first = board.node.firstElementChild.getBoundingClientRect();
+        board.x = first.left - viewport.left;
+        board.y = first.top - viewport.top + scrollTop;
+        board.width = first.width;
+        board.height = first.height;
+        board.stepX = (grid.width - first.width) / 3;
+        board.stepY = (grid.height - first.height) / 3;
+      }
     }
   }
 
+  function clearLightPixels() {
+    if (lightBottom > lightTop) {
+      const top = Math.floor(lightTop * lightScaleY);
+      const bottom = Math.ceil(lightBottom * lightScaleY);
+      lightContext.save();
+      lightContext.resetTransform();
+      lightContext.clearRect(0, top, lightCanvas.width, bottom - top);
+      lightContext.restore();
+    }
+    lightTop = Infinity;
+    lightBottom = -Infinity;
+  }
+
   function paintLights(chartTime, timing) {
-    const playing = timing && A.state.playing && !A.state.scrubbing;
-    for (const lights of mountedLights.values()) {
-      const { groups, from: oldFrom, hit: oldHit, to: oldTo } = lights;
-      let from = 0, hit = 0, to = 0;
-      if (playing && groups.length && groups[0].t <= chartTime + timing.arm
-          && groups.at(-1).t >= chartTime - timing.flash) {
-        from = firstAtOrAfter(groups, chartTime - timing.flash);
-        hit = firstAfter(groups, chartTime);
-        to = firstAfter(groups, chartTime + timing.arm);
+    if (!lightContext) return;
+    if (!timing || !A.state.playing || A.state.scrubbing) {
+      clearLightPixels();
+      nextLightTime = -Infinity;
+      return;
+    }
+    // Most frames fall between note transitions. Repaint on a transition, a rewind, or a scroll.
+    if (chartTime >= sampledLightTime && chartTime < nextLightTime) return;
+    sampledLightTime = chartTime;
+    nextLightTime = Infinity;
+    clearLightPixels();
+    const oldest = chartTime - timing.flash;
+    const latest = chartTime + timing.arm;
+    for (const { groups, boards } of mountedLights.values()) {
+      const last = boards.at(-1);
+      if (!last || !groups.length || last.y + last.height + 3 * last.stepY <= lightScroll
+          || boards[0].y >= lightScroll + lightHeight || groups.at(-1).t <= oldest) continue;
+      if (groups[0].t > latest) {
+        nextLightTime = Math.min(nextLightTime, groups[0].t - timing.arm);
+        continue;
       }
-      if (from === oldFrom && hit === oldHit && to === oldTo) continue;
-      for (let i = oldFrom; i < oldTo; i++) {
-        if (i < from || i >= to) setLight(groups[i], "");
-      }
+      const from = firstAfter(groups, oldest);
+      const hit = firstAfter(groups, chartTime);
+      const to = firstAfter(groups, latest);
+      if (from < hit) nextLightTime = Math.min(nextLightTime, groups[from].t + timing.flash);
+      if (hit < to) nextLightTime = Math.min(nextLightTime, groups[hit].t);
+      if (to < groups.length) nextLightTime = Math.min(nextLightTime, groups[to].t - timing.arm);
       for (let i = from; i < to; i++) {
-        if (i >= oldFrom && i < oldTo && (i < hit) === (i < oldHit)) continue;
-        setLight(groups[i], i < hit ? "hit" : "armed");
+        const struck = i < hit;
+        lightContext.lineWidth = struck ? 2 : 1;
+        for (const { board, row, col, hold } of groups[i].cells) {
+          const y = board.y + row * board.stepY - lightScroll;
+          if (y + board.height <= 0 || y >= lightHeight || board.width <= 2) continue;
+          const x = board.x + col * board.stepX;
+          // A rim leaves the center of each tile and its number untouched.
+          lightContext.strokeStyle = !struck ? "#83afcc"
+            : hold === "hold-start" ? "#86f2bd" : hold === "hold-end" ? "#ff9aa9" : "#d8f2ff";
+          lightContext.strokeRect(x + 1, y + 1, board.width - 2, board.height - 2);
+          lightTop = Math.min(lightTop, Math.max(0, Math.floor(y)));
+          lightBottom = Math.max(lightBottom, Math.min(lightHeight, Math.ceil(y + board.height)));
+        }
       }
-      lights.from = from;
-      lights.hit = hit;
-      lights.to = to;
     }
   }
 
@@ -275,13 +355,18 @@
       }
       renderedFrom = from;
       renderedTo = to;
+      lightsNeedLayout = true;
       if (anchor && anchor.offsetTop !== anchorTop) list.scrollTop = scrollTop + anchor.offsetTop - anchorTop;
     }
     if (target) {
       list.scrollTo({ top: target.offsetTop - origin, behavior: smooth ? "smooth" : "instant" });
     }
     // Estimates can run tall. Fill any newly exposed rows after measuring the mounted cards.
-    if (cards[to]?.offsetTop < origin + list.scrollTop + height) scheduleWindow();
+    const finalScroll = list.scrollTop;
+    const lightsMoved = lightsNeedLayout || finalScroll !== lightScroll;
+    layoutLights(finalScroll);
+    if (lightsMoved && lastFrameTiming) paintLights(lastFrameTime, lastFrameTiming);
+    if (cards[to]?.offsetTop < origin + finalScroll + height) scheduleWindow();
   }
 
   function updateNavigation() {
@@ -329,7 +414,11 @@
       scrollToActive();
     }
     wasPlaying = playing;
-    if (timing) paintLights(chartTime, timing);
+    if (timing) {
+      lastFrameTime = chartTime;
+      lastFrameTiming = timing;
+      paintLights(chartTime, timing);
+    }
   }
 
   async function load() {
@@ -367,7 +456,12 @@
       requests.cancel();
       cancelWindow();
       wasPlaying = false;
+      lastFrameTiming = undefined;
       paintLights();
+      if (lightContext) {
+        lightCanvas.width = lightCanvas.height = 1;
+        lightsNeedLayout = true;
+      }
     }
   }
 
@@ -389,6 +483,7 @@
   });
   if (window.ResizeObserver) new ResizeObserver(() => {
     if (panel.hidden) return;
+    lightsNeedLayout = true;
     if (A.state.playing) scrollToActive();
     else scheduleWindow();
   }).observe(list);

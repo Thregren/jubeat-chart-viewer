@@ -702,15 +702,28 @@ button:focus-visible,
   user-select: none;
 }
 .memo-status { margin: 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.memo-list {
+.memo-viewport {
   position: relative;
   flex: 1;
   min-height: 0;
+}
+.memo-list {
+  position: relative;
+  height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   overflow-anchor: none;
   scrollbar-width: thin;
   padding: 6px;
+}
+.memo-lights {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  contain: strict;
+  will-change: transform;
 }
 .memo-measure {
   margin-bottom: 6px;
@@ -769,17 +782,6 @@ button:focus-visible,
   border-color: var(--danger);
   border-style: dashed;
 }
-.memo-cell[data-light="armed"] {
-  box-shadow: inset 0 0 4px rgba(169, 221, 255, .75);
-}
-.memo-cell[data-light="hit"] {
-  color: #fff;
-  background-image: radial-gradient(ellipse, rgba(3, 11, 24, .9) 25%, rgba(13, 55, 83, .34) 74%);
-  box-shadow: inset 0 0 5px #b1e5ff;
-  border-color: #d8f2ff;
-}
-.memo-hold-start[data-light="hit"] { border-color: #86f2bd; box-shadow: inset 0 0 5px #86f2bd; }
-.memo-hold-end[data-light="hit"] { border-color: #ff9aa9; box-shadow: inset 0 0 5px #ff9aa9; }
 .memo-rhythm { display: grid; gap: 3px; margin-top: 6px; font: 11px/1.3 var(--mono); }
 .memo-beat { display: flex; align-items: flex-start; gap: 4px; }
 .memo-beat-number { color: var(--muted); flex-shrink: 0; }

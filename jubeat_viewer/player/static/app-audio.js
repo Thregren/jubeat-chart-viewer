@@ -121,6 +121,10 @@
   // click 是纯合成音，不查素材。三档都从同一个基础素材派生，不再按拍位换素材；
   // 前端优先播放真素材，缺失才整档回落到合成音。se/ 不入库。
   const SE_EXT = ["ogg", "mp3", "wav", "m4a"];
+  // 发布页列出实际存在的素材，空列表表示直接使用合成音。旧页面仍按扩展名探测。
+  const listedTaikoSamples = window.document?.querySelector('meta[name="jubeat-taiko-samples"]')?.content.split(/\s+/);
+  const taikoExtensions = new Map(["don", "ka"].map(name => [name, listedTaikoSamples
+    ? SE_EXT.filter(ext => listedTaikoSamples.includes(`${name}.${ext}`)) : SE_EXT]));
   const seCache = new Map();          // name -> AudioBuffer | null | "loading"
   const seLoads = new Map();          // Request identity and bounded failure cooldown.
   let seDecodes = 0;                  // A timed-out decoder cannot be cancelled.
@@ -130,6 +134,9 @@
     const previous = seLoads.get(name);
     if (cached || (seCache.has(name) && !retry && Date.now() < (previous?.retryAt || 0))) return cached;
     if (!audioCtx) return undefined;
+    const bundled = BUNDLED_SAMPLES.has(name);
+    const extensions = bundled ? ["wav"] : (taikoExtensions.get(name) ?? SE_EXT);
+    if (!extensions.length) return null;
     const ctx = audioCtx;
     const load = { controller: new AbortController(), retryAt: 0 };
     seLoads.set(name, load);
@@ -143,10 +150,9 @@
     load.promise = (async () => {
       const timer = setTimeout(() => { failed(5000); load.controller.abort(); }, 15000);
       let missing = true;
-      const bundled = BUNDLED_SAMPLES.has(name);
       const folder = bundled ? "static" : "media/se";
       try {
-        for (const ext of bundled ? ["wav"] : SE_EXT) {
+        for (const ext of extensions) {
           try {
             const res = await fetch(A.resourcePath(`${folder}/${name}.${ext}?v=${frontVersion()}`), {
               cache: previous ? "reload" : "force-cache", signal: load.controller.signal,

@@ -61,9 +61,14 @@
     return PATHS.markersBase + encPath(String(rel || "").replace(/^\.?\//, ""));
   }
 
-  /** 某一帧贴图的 URL（官方命名：<dir>/<prefix>_<通道><NN>.png，序号两位补零） */
+  // 同一设计会遍历相同的几组帧，避免播放中重复拼接和编码素材路径。
+  const frameUrls = new WeakMap();
   function frameUrl(design, channel, frame) {
-    return markerUrl(`${design.dir}/${design.prefix}_${channel}${String(frame).padStart(2, "0")}.png`);
+    let channels = frameUrls.get(design);
+    if (!channels) frameUrls.set(design, channels = new Map());
+    let urls = channels.get(channel);
+    if (!urls) channels.set(channel, urls = []);
+    return urls[frame] ??= markerUrl(`${design.dir}/${design.prefix}_${channel}${String(frame).padStart(2, "0")}.png`);
   }
 
   // —— 帧贴图：下载 / 解码 / 失败重试 / 兜底 ——
@@ -172,7 +177,9 @@
         assertCurrent();
         const dimensions=window.JubeatRuntime.pngSize(bytes);
         const entries=[...atlasFrames].filter(([,metadata])=>metadata.file===url);
-        reserved=dimensions.width*dimensions.height*4+entries.reduce((sum,[,entry])=>sum+entry.rect[2]*entry.rect[3]*4,0);
+        const sheetBytes=dimensions.width*dimensions.height*4;
+        const frameBytes=entries.reduce((sum,[,entry])=>sum+entry.rect[2]*entry.rect[3]*4,0);
+        reserved=sheetBytes+frameBytes;
         trimFrameCache(reserved+reservedFrameBytes);
         const used=[...markerCfg.images.values()].reduce((sum,image)=>sum+(image._ownedBytes || image.naturalWidth*image.naturalHeight*4),0);
         if(used+reservedFrameBytes+reserved>FRAME_CACHE_BYTES){reserved=0;throw Error('Marker 解码预算不足');}
@@ -190,7 +197,11 @@
           }
         }
         assertCurrent();
-        img._frames=crops;img._ownedBytes=reserved;img._source=source;img.naturalWidth=source.width;img.naturalHeight=source.height;img.complete=true;
+        img.naturalWidth=source.width;img.naturalHeight=source.height;
+        // 每个分帧都已经有独立的位图。整张图集只在裁切期间需要。
+        if(crops.size)source.close?.();
+        img._frames=crops;img._ownedBytes=crops.size?frameBytes:sheetBytes;
+        img._source=crops.size?null:source;img.complete=true;
         img.dispatchEvent(new Event('load'));
       } catch (_) {
         if(img._source!==source){source?.close?.();for(const frame of crops.values())frame.close?.();}
@@ -203,7 +214,8 @@
   function atlasView(url, metadata) {
     const parent=frameImage(metadata.file);
     let view=atlasViews.get(url);
-    if(parent._settled&&parent._tries>=FRAME_RETRIES&&!ready(parent))return frameImage(url,false);
+    if((parent._settled&&parent._tries>=FRAME_RETRIES&&!resourceReady(parent))
+      ||(parent._frames?.size&&!parent._frames.has(url)))return frameImage(url,false);
     if(view?._parent===parent)return view;
     view={_parent:parent,get _crop(){return parent._frames?.has(url)?null:metadata.rect;},_alpha:metadata.rect[4],
       get complete(){return parent.complete;},get naturalWidth(){return metadata.rect[2];},
@@ -237,6 +249,10 @@
     return !!img && img.complete && img.naturalWidth > 0 && img._source !== null;
   }
 
+  function resourceReady(img) {
+    return ready(img) || !!img?._frames?.size;
+  }
+
   /** 贴图到货就补画一帧：暂停时渲染循环是停着的，不补就「下完了也不显示」。 */
   function repaintSoon() {
     if (typeof A.requestPaint === "function") A.requestPaint();
@@ -262,7 +278,7 @@
   function whenImageSettled(img, url) {
     if(img?._parent){img=img._parent;url=img._url;}
     if (!img) return Promise.resolve(false);
-    if (ready(img)) return Promise.resolve(true);
+    if (resourceReady(img)) return Promise.resolve(true);
     if (img._settled && img._tries >= FRAME_RETRIES) return Promise.resolve(false);
     return new Promise((resolve) => {
       const deadline = setTimeout(() => finish(false, true), 45000);
@@ -452,7 +468,7 @@
     const gateUrls = gateFrameUrls(design);
     const gate = preloadUrls(gateUrls);          // 立刻开始下载 + 解码
     preloadUrls(burstFrameUrls(design));         // 爆炸帧后台补齐，不挡切换
-    if (gateUrls.every((u) => ready(markerCfg.images.get(u)))) {
+    if (gateUrls.every((u) => resourceReady(markerCfg.images.get(u)))) {
       commitDesign(design, token);               // 已经缓存过：不给用户添等待
       return;
     }
@@ -517,10 +533,15 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const box = canvas.getBoundingClientRect();
-    state.padRects = state.padEls.map((el) => {
+    const rects = state.padEls.map((el) => {
       const r = el.getBoundingClientRect();
       return { x: r.left - box.left, y: r.top - box.top, w: r.width, h: r.height };
     });
+    const previous = state.padRects;
+    if (previous?.length !== rects.length || rects.some((r, i) => {
+      const old = previous[i];
+      return !old || r.x !== old.x || r.y !== old.y || r.w !== old.w || r.h !== old.h;
+    })) state.padRects = rects;
     A.requestPaint?.();
   }
 
@@ -580,6 +601,25 @@
     roundRectSubpath(c, x, y, w, h, r);
   }
 
+  const overlayClips = new WeakMap();
+  function clipPadOverlay(rect, inset) {
+    const x = rect.x + inset, y = rect.y + inset;
+    const w = rect.w - inset * 2, h = rect.h - inset * 2;
+    const radius = Math.max(4, rect.w * 0.12);
+    if (typeof window.Path2D !== "function") {
+      roundRectPath(ctx, x, y, w, h, radius);
+      ctx.clip();
+      return;
+    }
+    let path = overlayClips.get(rect);
+    if (!path) {
+      path = new window.Path2D();
+      roundRectSubpath(path, x, y, w, h, radius);
+      overlayClips.set(rect, path);
+    }
+    ctx.clip(path);
+  }
+
   /** notes with a marker animation window covering [lo, hi] (seconds) */
   function* notesInWindow(lo, hi, notes = state.notes) {
     // 窗口起点那一颗（t == lo）也要画，所以用 firstAtOrAfter（t ≥ lo），不是 firstAfter。
@@ -604,8 +644,10 @@
   function* markerNotesInWindow(lo, hi, holdBack) {
     // Only holds can still be visible before the normal H animation window.
     // Yield historical holds first to preserve the original chronological order.
-    for (const note of notesInWindow(lo - holdBack, lo, chartHolds())) {
-      if (note.t < lo) yield note;
+    if (holdBack > 0) {
+      for (const note of notesInWindow(lo - holdBack, lo, chartHolds())) {
+        if (note.t < lo && note.endT >= lo) yield note;
+      }
     }
     yield* notesInWindow(lo, hi);
   }
@@ -704,6 +746,37 @@
 
   function padClipRadius(rect) {
     return Math.max(2, Math.min(10, (rect.w || 0) * 0.08));
+  }
+
+  let holdRouteRects = null;
+  const holdRoutes = new Array(256);
+  function holdRoute(note) {
+    if (holdRouteRects !== state.padRects) {
+      holdRouteRects = state.padRects;
+      holdRoutes.fill(undefined);
+    }
+    const { index, tailTip } = note;
+    if (index == null || index < 0 || index > 15 || tailTip == null || tailTip < 0 || tailTip > 15) return null;
+    const slot = (index << 4) | tailTip;
+    if (holdRoutes[slot] === undefined) {
+      const g = holdCells(note);
+      const frame = g && holdFrame(g);
+      if (frame && typeof window.Path2D === "function") {
+        frame.clip = new window.Path2D();
+        traceHoldClip(frame.clip, frame, g.N);
+      }
+      holdRoutes[slot] = frame ? { g, frame } : null;
+    }
+    return holdRoutes[slot];
+  }
+
+  function traceHoldClip(path, frame, distance) {
+    const radius = padClipRadius(frame.tailRect);
+    const headRadius = padClipRadius(frame.headRect);
+    for (let k = 0; k <= distance; k++) {
+      roundRectSubpath(path, -frame.cross / 2, k * frame.pitch, frame.cross, frame.along,
+        k === distance ? headRadius : radius);
+    }
   }
 
   /** 那枚 V 的三角形路径：平边在 y=0、箭尖在 (0,h)，+y 就是行进方向 */
@@ -899,8 +972,7 @@
     return grad;
   }
 
-  function drawHoldArrow(note, g, chartT) {
-    const f = holdFrame(g);
+  function drawHoldArrow(note, g, chartT, f = holdFrame(g)) {
     if (!f) return;
     const t0 = note.t;
     const t1 = note.endT;
@@ -912,8 +984,6 @@
     const along = f.along;
     const pitch = f.pitch;
     const N = g.N;
-    const radius = padClipRadius(f.tailRect);
-    const headRadius = padClipRadius(f.headRect);
 
     ctx.save();
     ctx.translate(f.ox, f.oy);
@@ -933,14 +1003,13 @@
     const tint = holdTint();
     const tintLight = holdTintLight();
 
-    // 一组长押的每一格本来各自 save/clip/restore。长押重叠时，一帧会留下上百次
-    // 状态切换；把每格圆角作为同一条裁切路径的子路径，一遍提交即可。圆角仍然
-    // 存在，只是格缝之间不再反复进出 Canvas 状态栈。
-    ctx.beginPath();
-    for (let k = 0; k <= N; k++) {
-      roundRectSubpath(ctx, -hw, k * pitch, w, along, k === N ? headRadius : radius);
+    // 同一对按键共享走廊裁切路径，移动箭头仍使用当前时刻的位置。
+    if (f.clip) ctx.clip(f.clip);
+    else {
+      ctx.beginPath();
+      traceHoldClip(ctx, f, N);
+      ctx.clip();
     }
-    ctx.clip();
 
     // —— 终点格：整格提亮（实机里就是「被按住那一格」的亮面板）+ 一枚固定的 V ——
     ctx.fillStyle = `rgba(${tintLight}, ${0.20 * lightBeam})`;
@@ -980,9 +1049,8 @@
     for (const n of notesInWindow(lo, hi, chartHolds())) {
       if (n.endT == null) continue;
       if (chartT < n.t - holdPre || chartT > n.endT + holdPost) continue;
-      const g = holdCells(n);
-      if (!g) continue;
-      drawHoldArrow(n, g, chartT);
+      const route = holdRoute(n);
+      if (route) drawHoldArrow(n, route.g, chartT, route.frame);
     }
   }
 
@@ -1023,11 +1091,7 @@
       const layout = holdCountdownLayout(rect, text);
       const inset = Math.max(1, rect.w * 0.02);
       ctx.save();
-      roundRectPath(ctx,
-        rect.x + inset, rect.y + inset,
-        rect.w - inset * 2, rect.h - inset * 2,
-        Math.max(4, rect.w * 0.12));
-      ctx.clip();
+      clipPadOverlay(rect, inset);
       useFont(layout.size);
       ctx.textAlign = layout.align;
       ctx.textBaseline = layout.baseline;
@@ -1050,41 +1114,55 @@
     if (alpha < 1) ctx.globalAlpha = alpha;
     roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, padClipRadius(rect));
     ctx.clip();
-    if(img._crop)ctx.drawImage(img._source,...img._crop.slice(0,4),rect.x,rect.y,rect.w,rect.h);
-    else ctx.drawImage(img._source || img, rect.x, rect.y, rect.w, rect.h);
+    paintFrameImage(img, rect);
     ctx.restore();
   }
 
-  /** 同一帧的 marker 都只裁在各自的格子里；把所有圆角格子并成一条裁切路径，
-   *  再依次贴图，就不会为每一颗音符反复 save/clip/restore。
-   *  items 是 drawMarkers 的对象池，只有前 count 项有效（不再 filter 出一份副本：
-   *  每帧都复制一次上千个小对象，正是要消掉的那笔开销）。 */
-  function drawFrameImages(items, count) {
-    if (!ctx) return;
-    let any = false;
-    for (let i = 0; i < count; i++) {
-      const item = items[i];
-      if (item.rect && ready(item.image)) { any = true; break; }
+  function paintFrameImage(image, rect) {
+    const crop = image._crop;
+    if (crop) {
+      ctx.drawImage(image._source, crop[0], crop[1], crop[2], crop[3], rect.x, rect.y, rect.w, rect.h);
+    } else {
+      ctx.drawImage(image._source || image, rect.x, rect.y, rect.w, rect.h);
     }
-    if (!any) return;
+  }
+
+  let clipRects = null;
+  const markerClips = new Map();
+  function addPadClips(path, mask) {
+    for (let bits = mask; bits; bits &= bits - 1) {
+      const index = 31 - Math.clz32(bits & -bits);
+      const rect = state.padRects[index];
+      roundRectSubpath(path, rect.x, rect.y, rect.w, rect.h, padClipRadius(rect));
+    }
+  }
+
+  function drawFrameImages(items, count, mask) {
+    if (!count) return;
     ctx.save();
-    ctx.beginPath();
-    for (let i = 0; i < count; i++) {
-      const { image, rect } = items[i];
-      if (!rect || !ready(image)) continue;
-      roundRectSubpath(ctx, rect.x, rect.y, rect.w, rect.h, padClipRadius(rect));
+    if (typeof window.Path2D === "function") {
+      if (clipRects !== state.padRects) {
+        clipRects = state.padRects;
+        markerClips.clear();
+      }
+      let path = markerClips.get(mask);
+      if (!path) {
+        path = new window.Path2D();
+        addPadClips(path, mask);
+        if (markerClips.size >= 64) markerClips.delete(markerClips.keys().next().value);
+        markerClips.set(mask, path);
+      }
+      ctx.clip(path);
+    } else {
+      ctx.beginPath();
+      addPadClips(ctx, mask);
+      ctx.clip();
     }
-    ctx.clip();
+    let opacity = ctx.globalAlpha;
     for (let i = 0; i < count; i++) {
       const { image, rect, alpha } = items[i];
-      if (!rect || !ready(image)) continue;
-      ctx.globalAlpha = alpha;
-      if (image._crop) {
-        ctx.drawImage(image._source, ...image._crop.slice(0, 4),
-          rect.x, rect.y, rect.w, rect.h);
-      } else {
-        ctx.drawImage(image._source || image, rect.x, rect.y, rect.w, rect.h);
-      }
+      if (opacity !== alpha) ctx.globalAlpha = opacity = alpha;
+      paintFrameImage(image, rect);
     }
     ctx.restore();
   }
@@ -1134,6 +1212,25 @@
   function glowNow() {
     if (state.playing || glowClock == null) glowClock = performance.now();
     return glowClock;
+  }
+
+  const chordPulse = { time: NaN, stroke: 0, glow: 0, glowStep: 0, ring1: 0, ring2: 0, fade1: 0, fade2: 0 };
+  function pulseAt(time) {
+    if (time !== chordPulse.time) {
+      const phase = (time % 560) / 560;
+      const ring1 = phase % 1;
+      const ring2 = (phase + 0.5) % 1;
+      const glow = Math.pow(0.5 - 0.5 * Math.cos(phase * Math.PI * 2), 0.75);
+      chordPulse.time = time;
+      chordPulse.stroke = Math.pow(1 - phase, 1.4);
+      chordPulse.glow = glow;
+      chordPulse.glowStep = Math.round(glow * 16);
+      chordPulse.ring1 = 0.46 + 0.38 * ring1;
+      chordPulse.ring2 = 0.46 + 0.38 * ring2;
+      chordPulse.fade1 = Math.pow(1 - ring1, 1.5);
+      chordPulse.fade2 = Math.pow(1 - ring2, 1.5);
+    }
+    return chordPulse;
   }
 
   // 缓存按谱面对象刷新；拖动、暂停和重编号不会改变节奏分组。
@@ -1195,36 +1292,53 @@
   const glyphLayers = new Map();
   const GLYPH_CACHE_LIMIT = 64;
   let glyphCacheDpr = 0;
+  let glyphScratch = null;
 
-  function makeGlyphLayer(w, h, dpr, paint) {
+  function makeGlyphLayer(w, h, dpr, paint, crop = null) {
+    let scratch = null;
     try {
       if (typeof document === "undefined" || !document.createElement) return null;
       const layer = document.createElement("canvas");
-      layer.width = Math.max(1, Math.round(w * dpr));
-      layer.height = Math.max(1, Math.round(h * dpr));
-      const target = layer.getContext("2d");
+      const pixelW = Math.max(1, Math.round(w * dpr));
+      const pixelH = Math.max(1, Math.round(h * dpr));
+      layer.width = crop?.w ?? pixelW;
+      layer.height = crop?.h ?? pixelH;
+      if (crop) {
+        scratch = glyphScratch ||= document.createElement("canvas");
+        scratch.width = pixelW;
+        scratch.height = pixelH;
+      }
+      const target = (scratch || layer).getContext("2d");
       if (!target || typeof target.setTransform !== "function"
         || typeof target.strokeText !== "function" || typeof target.fillText !== "function") {
         return null;
       }
       target.setTransform(dpr, 0, 0, dpr, 0, 0);
       paint(target);
+      if (scratch) {
+        const output = layer.getContext("2d");
+        if (!output) return null;
+        output.drawImage(scratch, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+      }
       return layer;
     } catch (_) {
       // 老 WebView / 测试替身没有离屏 2D 能力时继续走原来的即时绘制。
       return null;
+    } finally {
+      if (scratch) scratch.width = scratch.height = 0;
     }
   }
 
-  function glyphLayerSet(text, layout, palette, rgb) {
+  function glyphLayerSet(text, layout, palette, rgb, wantGlow, wantSolid) {
     const dpr = canvasW > 0 ? canvas.width / canvasW : 1;
     if (glyphCacheDpr !== dpr) {
       glyphCacheDpr = dpr;
       glyphLayers.clear();
     }
-    const key = `${text}|${layout.font}|${palette.fill}|${palette.outline}|${rgb}|${dpr}`;
+    const key = recording ? `${text}|${layout.font}|${palette.fill}|${palette.outline}|${rgb}|${dpr}`
+      : `${text}|${layout.font}|${layout.corner}|${Math.ceil(layout.padW)}|${Math.ceil(layout.padH)}|${palette.fill}|${palette.outline}|${rgb}`;
     const cached = glyphLayers.get(key);
-    if (cached) {
+    if (cached && (!wantGlow || cached.glowInner && cached.glowOuter) && (!wantSolid || cached.solid)) {
       glyphLayers.delete(key);
       glyphLayers.set(key, cached);
       return cached;
@@ -1238,6 +1352,18 @@
       : layout.align === "center" ? cssW / 2 : pad;
     const anchorY = layout.baseline === "bottom" ? cssH - pad
       : layout.baseline === "middle" ? cssH / 2 : pad;
+    // 在完整画布里生成描边和模糊，再留下格子内需要的像素及采样余量。
+    const bitmapW = Math.max(1, Math.round(cssW * dpr)), bitmapH = Math.max(1, Math.round(cssH * dpr));
+    const stepX = cssW / bitmapW, stepY = cssH / bitmapH;
+    const margin = 2;
+    const cropX = Math.max(0, Math.floor((anchorX - layout.x - margin) / stepX));
+    const cropY = Math.max(0, Math.floor((anchorY - layout.y - margin) / stepY));
+    const cropW = Math.min(bitmapW, Math.ceil((anchorX - layout.x + layout.padW + margin) / stepX)) - cropX;
+    const cropH = Math.min(bitmapH, Math.ceil((anchorY - layout.y + layout.padH + margin) / stepY)) - cropY;
+    // 逐帧录制用完整贴图，保留原始插值精度。
+    const crop = !recording && cropW > 0 && cropH > 0 && (cropW < bitmapW || cropH < bitmapH)
+      ? { x: cropX, y: cropY, w: cropW, h: cropH } : null;
+    const makeLayer = paint => makeGlyphLayer(cssW, cssH, dpr, paint, crop);
     const base = (target) => {
       target.font = layout.font;
       target.textAlign = layout.align;
@@ -1245,42 +1371,40 @@
       target.lineJoin = "round";
     };
 
-    const glowOuter = makeGlyphLayer(cssW, cssH, dpr, (target) => {
-      base(target);
-      target.shadowColor = `rgb(${rgb})`;
-      target.shadowBlur = layout.size * 1.25;
-      target.lineWidth = Math.max(5, layout.size * 0.34);
-      target.strokeStyle = `rgb(${rgb})`;
-      target.strokeText(text, anchorX, anchorY);
-    });
-    const glowInner = makeGlyphLayer(cssW, cssH, dpr, (target) => {
-      base(target);
-      target.shadowColor = `rgb(${rgb})`;
-      target.shadowBlur = layout.size * 0.35;
-      target.lineWidth = Math.max(3, layout.size * 0.2);
-      target.strokeStyle = `rgb(${rgb})`;
-      target.strokeText(text, anchorX, anchorY);
-    });
-    const solid = makeGlyphLayer(cssW, cssH, dpr, (target) => {
-      base(target);
-      target.lineWidth = Math.max(2, layout.size * 0.14);
-      target.strokeStyle = palette.outline;
-      target.fillStyle = palette.fill;
-      target.strokeText(text, anchorX, anchorY);
-      target.fillText(text, anchorX, anchorY);
-    });
-    if (!glowOuter || !glowInner || !solid) {
-      glowOuter?.width && (glowOuter.width = 0);
-      glowInner?.width && (glowInner.width = 0);
-      solid?.width && (solid.width = 0);
-      return null;
+    const layers = cached || (crop ? {
+      w: cropW * stepX, h: cropH * stepY,
+      offsetX: anchorX - cropX * stepX, offsetY: anchorY - cropY * stepY,
+    } : { w: cssW, h: cssH, offsetX: anchorX, offsetY: anchorY });
+    if (wantGlow) {
+      layers.glowOuter ||= makeLayer((target) => {
+        base(target);
+        target.shadowColor = `rgb(${rgb})`;
+        target.shadowBlur = layout.size * 1.25;
+        target.lineWidth = Math.max(5, layout.size * 0.34);
+        target.strokeStyle = `rgb(${rgb})`;
+        target.strokeText(text, anchorX, anchorY);
+      });
+      layers.glowInner ||= makeLayer((target) => {
+        base(target);
+        target.shadowColor = `rgb(${rgb})`;
+        target.shadowBlur = layout.size * 0.35;
+        target.lineWidth = Math.max(3, layout.size * 0.2);
+        target.strokeStyle = `rgb(${rgb})`;
+        target.strokeText(text, anchorX, anchorY);
+      });
     }
-
-    const layers = {
-      glowOuter, glowInner, solid, w: cssW, h: cssH,
-      offsetX: anchorX, offsetY: anchorY,
-    };
-    if (glyphLayers.size >= GLYPH_CACHE_LIMIT) {
+    if (wantSolid) {
+      layers.solid ||= makeLayer((target) => {
+        base(target);
+        target.lineWidth = Math.max(2, layout.size * 0.14);
+        target.strokeStyle = palette.outline;
+        target.fillStyle = palette.fill;
+        target.strokeText(text, anchorX, anchorY);
+        target.fillText(text, anchorX, anchorY);
+      });
+    }
+    if ((wantGlow && (!layers.glowOuter || !layers.glowInner)) || (wantSolid && !layers.solid)) return null;
+    if (!cached && glyphLayers.size >= GLYPH_CACHE_LIMIT) {
       glyphLayers.delete(glyphLayers.keys().next().value);
     }
     glyphLayers.set(key, layers);
@@ -1354,32 +1478,34 @@
   // （一帧里所有同押共用同一个值）—— 所以这些都可以烘焙一次、帧内只 drawImage。
   // 每颗 note 各自的贴图透明度留在 globalAlpha 上乘：原实现是把 ga 乘进每个色标，
   // 这里是「色标 × globalAlpha」，结果一致（差别只有 8bit 往返的 ≤1/255 舍入）。
-  // 相位按 1/16 档量化（呼吸一周 560ms，相邻档 < 2ms），视觉上看不出差别。
+  // 光晕强度按 1/16 档量化，外扩波纹保留连续变化。
   const chordGlowSprites = new Map();
   const CHORD_GLOW_CACHE_LIMIT = 96;
+  let chordGlowDpr = 0;
 
   /** 把一段画法烘焙成小贴图；离屏 2D 不可用（老 WebView）时返回 null，调用方直接画。 */
-  function chordGlowSprite(key, cssW, cssH, paint) {
+  function chordGlowSprite(rgb, glowSize, glowStep, haloR) {
     const dpr = canvasW > 0 ? canvas.width / canvasW : 1;
-    const fullKey = `${key}|${dpr}`;
-    const cached = chordGlowSprites.get(fullKey);
+    if (chordGlowDpr !== dpr) {
+      chordGlowDpr = dpr;
+      chordGlowSprites.clear();
+    }
+    const key = `${rgb}|${glowSize.toFixed(2)}|${glowStep}`;
+    const cached = chordGlowSprites.get(key);
     if (cached) return cached;
     try {
-      const w = Math.max(1, Math.ceil(cssW));
-      const h = Math.max(1, Math.ceil(cssH));
+      const size = Math.ceil(haloR * 2 + 2);
       const sprite = document.createElement("canvas");
-      sprite.width = Math.max(1, Math.round(w * dpr));
-      sprite.height = Math.max(1, Math.round(h * dpr));
+      sprite.width = sprite.height = Math.max(1, Math.round(size * dpr));
       const target = sprite.getContext("2d");
       if (!target || typeof target.createRadialGradient !== "function") return null;
       target.setTransform(dpr, 0, 0, dpr, 0, 0);
-      paint(target, w, h);
-      sprite._cssW = w;
-      sprite._cssH = h;
+      paintHalo(target, size / 2, size / 2, glowSize, glowStep / 16, haloR, rgb);
+      sprite._cssSize = size;
       if (chordGlowSprites.size >= CHORD_GLOW_CACHE_LIMIT) {
         chordGlowSprites.delete(chordGlowSprites.keys().next().value);
       }
-      chordGlowSprites.set(fullKey, sprite);
+      chordGlowSprites.set(key, sprite);
       return sprite;
     } catch (_) {
       return null;
@@ -1399,10 +1525,7 @@
   }
 
   /** 一圈外扩光环（不透明绘制；逐帧的淡出由调用方的 globalAlpha 负责）。 */
-  function paintRing(target, cx, cy, radius, lineWidth, rgb) {
-    target.lineCap = "round";
-    target.strokeStyle = `rgb(${rgb})`;
-    target.lineWidth = lineWidth;
+  function paintRing(target, cx, cy, radius) {
     target.beginPath();
     target.arc(cx, cy, radius, 0, Math.PI * 2);
     target.stroke();
@@ -1465,7 +1588,7 @@
     gy = loY < hiY ? Math.min(hiY, Math.max(loY, gy)) : rect.h / 2;
 
     const layout = {
-      font, size, textWidth, x, y, gx, gy, glowSize, corner,
+      font, size, textWidth, x, y, gx, gy, glowSize, corner, padW: rect.w, padH: rect.h,
       align: corner ? "right" : "center",
       baseline: corner ? "bottom" : "middle",
     };
@@ -1488,7 +1611,7 @@
     return palette;
   }
 
-  function drawOrderNumber(note, rect, markerOpacity = 1, cache = orderNumberCache(), allowChord = true, allowNumber = true) {
+  function drawOrderNumber(note, rect, markerOpacity = 1, cache = orderNumberCache(), allowChord = true, allowNumber = true, frameGlowTime = null) {
     if (!rect) return;
     const text = String(note.seq || 0);
     const showNum = allowNumber && !!(els.showNumbers && els.showNumbers.checked);
@@ -1500,58 +1623,51 @@
     const { font, size, x: localX, y: localY, gx: localGx, gy: localGy, glowSize, corner } = layout;
     const x = rect.x + localX;
     const y = rect.y + localY;
-    let gx = rect.x + localGx;
-    let gy = rect.y + localGy;
+    const gx = rect.x + localGx;
+    const gy = rect.y + localGy;
     const palette = numberPalette(note, cache);
     const rgb = chord ? glowRgb(note.glowSlot || 0) : "";
-    const glyphs = (chord || showNum) ? glyphLayerSet(text, layout, palette, rgb) : null;
+    const style = chord ? chordStyle() : "";
+    const wantGlow = chord && style !== "frame";
+    const glyphs = (wantGlow || showNum) ? glyphLayerSet(text, layout, palette, wantGlow ? rgb : "", wantGlow, showNum) : null;
     ctx.save();
     ctx.globalAlpha = numCfg.alpha;   // 「序号透明度」：整层（光晕 + 数字）一起淡
-    if (ctx.font !== font) ctx.font = font;
-    ctx.textAlign = layout.align;
-    ctx.textBaseline = layout.baseline;
+    if (!glyphs && (wantGlow || showNum)) {
+      if (ctx.font !== font) ctx.font = font;
+      ctx.textAlign = layout.align;
+      ctx.textBaseline = layout.baseline;
+    }
 
     // 同押光晕 / 波纹的圆心与半径：跟着数字走。数字居中 = 格子中心；数字挪到右下角
     // 之后就缩到数字自己的中心（用户要的「光晕跟着序号走」，不再占满整格）。
     // 光晕 / 数字一律裁剪在这格 marker 的范围内：光晕不许溢出到相邻格子
     const inset = Math.max(1, rect.w * 0.02);
-    roundRectPath(ctx,
-      rect.x + inset, rect.y + inset,
-      rect.w - inset * 2, rect.h - inset * 2,
-      Math.max(4, rect.w * 0.12));
-    ctx.clip();
+    clipPadOverlay(rect, inset);
 
     if (chord) {
       // 同一批（一起按）的几个键共用一套呼吸时钟，所以整组同步。
       // 颜色按这一批所在位置的密度取：密的地方相邻两批在主色 / 副色之间交替。
-      const period = 560;                                     // ms，一个呼吸周期（收得比之前快）
-      const phase = (glowNow() % period) / period;             // 0 → 1（暂停时钉住）
-      const stroke = Math.pow(1 - phase, 1.4);                 // 波纹 / 描边淡出的速度
-      const glow = Math.pow(0.5 - 0.5 * Math.cos(phase * Math.PI * 2), 0.75); // 峰更尖，落得更快
+      const { stroke, glow, glowStep, ring1, ring2, fade1, fade2 } = pulseAt(frameGlowTime ?? glowNow());
       // 「光晕透明度」只乘在这一层上：光晕、波纹、数字的霓虹描边都跟着它淡，
       // 0 的时候就只剩下面那圈白色数字（形状 / 半径都不变，只改不透明度）。
       const ga = numCfg.glowAlpha * markerOpacity;
-      const style = chordStyle();
-
-      if (style !== "frame") {
+      if (wantGlow) {
         // 1) 数字背后的大团光晕：半径按格子尺寸算，正好在格子边缘淡到 0。
         // 呼吸相位按 1/16 量化（60fps 下 560ms 一个周期 ≈ 34 帧，16 档 = 每档 2 帧）：
         // 贴图必须是「纯函数(这个 key)」，半径 / 色标都用量化后的值算，否则同一个 key
         // 会被先遇到的那一帧烘焙掉。量化误差上界：色标 alpha ±0.03、半径 ±0.4%
         // （0.12·glowSize/32）—— 在一团本来就模糊的径向渐变上看不出差。
-        const glowQ = Math.round(glow * 16) / 16;
+        const glowQ = glowStep / 16;
         const haloR = glowSize * (0.72 + 0.12 * glowQ);
         // 光晕形状只由（格子尺寸 / 呼吸相位）决定，颜色只由配色对决定，一帧里所有
         // 同押共用同一个相位 —— 所以烘焙成贴图，帧内只 drawImage（见 paintHalo 上方）。
-        const halo = chordGlowSprite(
-          `halo|${rgb}|${glowSize.toFixed(2)}|${Math.round(glowQ * 16)}`,
-          haloR * 2 + 2, haloR * 2 + 2,
-          (target, w) => paintHalo(target, w / 2, w / 2, glowSize, glowQ, haloR, rgb));
+        const halo = chordGlowSprite(rgb, glowSize, glowStep, haloR);
         // 每颗 note 的贴图淡入淡出只体现在 globalAlpha 上（原来它是乘进每个色标的，
         // 等效：贴图里存的色标已经含 glow 权重，这里再乘 numCfg.alpha × ga）
         ctx.globalAlpha = numCfg.alpha * ga;
         if (halo) {
-          ctx.drawImage(halo, gx - halo._cssW / 2, gy - halo._cssH / 2, halo._cssW, halo._cssH);
+          const s = halo._cssSize;
+          ctx.drawImage(halo, gx - s / 2, gy - s / 2, s, s);
         } else {
           paintHalo(ctx, gx, gy, glowSize, glowQ, haloR, rgb);   // 离屏画布不可用：照旧直接画
         }
@@ -1562,11 +1678,12 @@
         // 就是一档 ~35ms、半径跳 ~1css px），达不到「外观完全不变」。而一条描边圆弧
         // 本身很便宜（没有渐变要算），真正贵的是上面的径向渐变，所以只烘焙光晕。
         ctx.lineCap = "round";
-        for (const offset of [0, 0.5]) {
-          const p = (phase + offset) % 1;
-          ctx.globalAlpha = numCfg.alpha * ga * Math.pow(1 - p, 1.5) * 0.85;
-          paintRing(ctx, gx, gy, glowSize * (0.46 + 0.38 * p), Math.max(2.5, size * 0.1), rgb);
-        }
+        ctx.strokeStyle = `rgb(${rgb})`;
+        ctx.lineWidth = Math.max(2.5, size * 0.1);
+        ctx.globalAlpha = numCfg.alpha * ga * fade1 * 0.85;
+        paintRing(ctx, gx, gy, glowSize * ring1);
+        ctx.globalAlpha = numCfg.alpha * ga * fade2 * 0.85;
+        paintRing(ctx, gx, gy, glowSize * ring2);
         ctx.globalAlpha = numCfg.alpha;   // 别把「序号透明度」冲掉
 
         // 3) 数字的霓虹描边：字形已缓存，只改每层的呼吸透明度。
@@ -1659,7 +1776,7 @@
   // numbers / frames 是「定长对象池 + 长度计数」：以前每颗 note 每帧都 push 一个新
   // 数组 / 新对象（密集谱面一帧几百个），现在只覆盖池里已有的槽位，用 *_count 当
   // 有效长度。用到的字段每次写入前都整体重置，所以不会把上一帧的脏值带过来。
-  const counts = new Map();
+  const counts = new Uint32Array(16);
   const numbers = [];
   let numberCount = 0;
   const frames = [];
@@ -1705,7 +1822,15 @@
     const lateSec = (Math.min(late, hFrames * hPer) * animationRate) / 1000;
     // 长押时长本身已是谱面时间，不能随动画速度缩短，否则慢速播放时会提前隐藏。
     const holdBack = (state._parsed && state._parsed.maxHold) || 0;
-    counts.clear();
+    const numLead = NUM_LEAD * animationRate;
+    const numStart = els.numPerfectOnly?.checked ? -numLead : earlySec;
+    const numTail = Math.max(0, lateSec - NUM_TAIL_TRIM * animationRate);
+    const showNumbers = !!els.showNumbers?.checked;
+    const showChords = !A.mode?.suppressChords && (!els.showChordGlow || els.showChordGlow.checked);
+    const maxPerPad = Math.ceil(6 * Math.max(1, animationRate));
+    const burstChannel = `H${tier}`;
+    counts.fill(0);
+    let padMask = 0;
     numberCount = 0;
     frameCount = 0;
     // 序号（音符数字）先攒起来，等 marker 全部画完再统一盖上去 —— 和官方一样，
@@ -1722,12 +1847,8 @@
 
       // 默认从接近动画的第一帧显示；开启开关后使用拍点前 0.10s 规则。
       // 长押期间持续显示；数字略早于尾判动画结束，高亮仍维持原来的完整周期。
-      const numLead = NUM_LEAD * animationRate;
-      const numStart = els.numPerfectOnly?.checked ? -numLead : earlySec;
-      const chordEnd = (dur != null ? dur : 0) + lateSec;
-      const numEnd = (dur != null ? dur : 0) + Math.max(0, lateSec - NUM_TAIL_TRIM * animationRate);
-      const showNumber = rel >= numStart && rel < numEnd;
-      const showChord = rel >= -numLead && rel < chordEnd;
+      const showNumber = showNumbers && rel >= numStart && rel < (dur ?? 0) + numTail;
+      const showChord = showChords && n.groupSize > 1 && rel >= -numLead && rel < (dur ?? 0) + lateSec;
       // 池里的槽位先整体重置（尤其是 opacity=0），再写这一帧真正要用的字段
       let number = null;
       if (showNumber || showChord) {
@@ -1740,11 +1861,10 @@
       }
 
       if (u < early || u >= late) continue;
-      const count = counts.get(n.index) || 0;
+      const count = counts[n.index];
       // v0.6.56: 同屏上限原本按 1× 的窗口宽度定死为 6。开「Marker 原速」后
       // 2× 会把窗口拉到 2 倍宽，密集谱面里超出的 marker 会被静默丢弃，
       // 看起来就是「marker 没跟音乐对上」。上限随窗口等比放大。
-      const maxPerPad = Math.ceil(6 * Math.max(1, animationRate));
       if (count >= maxPerPad) continue;
 
       let channel;
@@ -1756,15 +1876,17 @@
         frame = Math.min(maFrames - 1, Math.floor((u - early) / maPer));
         if (frame < 0) continue;
       } else {
-        channel = `H${tier}`;
+        channel = burstChannel;
         total = hFrames;
         frame = Math.floor(u / hPer);
         if (frame >= hFrames) continue;
       }
 
-      counts.set(n.index, count + 1);
+      counts[n.index] = count + 1;
       const image = frameForChannel(design, channel, frame, total);
       const opacity = markerOpacity(image);
+      if (!opacity) continue;
+      padMask |= 1 << n.index;
       const slot = frameSlot(frameCount++);
       slot.image = image;
       slot.rect = rect;
@@ -1772,11 +1894,14 @@
       if (number) number[2] = opacity;
     }
 
-    drawFrameImages(frames, frameCount);
+    drawFrameImages(frames, frameCount, padMask);
     drawHoldCountdowns(chartT);
+    const cache = numberCount ? orderNumberCache() : null;
+    let frameGlowTime = null;
     for (let i = 0; i < numberCount; i++) {
       const [n, rect, opacity, allowChord, allowNumber] = numbers[i];
-      drawOrderNumber(n, rect, opacity, undefined, allowChord, allowNumber);
+      if (allowChord && opacity > 0) frameGlowTime ??= glowNow();
+      drawOrderNumber(n, rect, opacity, cache, allowChord, allowNumber, frameGlowTime);
     }
   }
 
@@ -1869,6 +1994,8 @@
   A.services.register('markerResources',{dispose(){
     selectToken++;for(const img of markerCfg.images.values()){img._abort?.abort();img._source?.close?.();for(const frame of img._frames?.values() || [])frame.close?.();}
     markerCfg.images.clear();atlasViews.clear();atlasFrames.clear();lastDrawn.clear();
+    markerClips.clear();
+    holdRoutes.fill(undefined);holdRouteRects=null;
     chordGlowSprites.clear();glyphLayers.clear();chordFrameLayers.clear();
   }});
   // —— 跨层可变状态 ——

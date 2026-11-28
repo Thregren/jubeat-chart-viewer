@@ -158,10 +158,11 @@
     if (themeToggle && themePicker) {
       const choices = [...themePicker.querySelectorAll('[data-theme-value]')];
       const applyTheme = value => {
-        const selected = choices.find(choice => choice.dataset.themeValue === value) || choices[0];
+        const selected = choices.find(choice => choice.dataset.themeValue === value)
+          || choices.find(choice => choice.dataset.themeValue === 'jubeat');
         const chosen = selected.dataset.themeValue;
         if (chosen === 'default') delete document.documentElement.dataset.theme;
-        else document.documentElement.dataset.theme = chosen;
+        else if (document.documentElement.dataset.theme !== chosen) document.documentElement.dataset.theme = chosen;
         for (const choice of choices) choice.setAttribute('aria-pressed', String(choice === selected));
       };
       applyTheme(window.__recActive ? 'default' : store('jubeat.viewerTheme'));
@@ -311,7 +312,7 @@
         sort: store(STORAGE.sort),
         holdFilter: store(STORAGE.holdFilter),
       };
-      els.autoPreview.checked = !window.__recActive && textOf(saved.autoPreview) === "1";
+      els.autoPreview.checked = !recording && (saved.autoPreview == null || textOf(saved.autoPreview) === "1");
       // v5 已删除「拍手」组：旧值 clap、更早的 billy / nyan 以及手改过的其它非法值
       // 统一迁移为 "click"（点击）并写回，避免升级后下拉框落到「关」、音效突然静音。
       // 必须先迁移再 restoreSelectValue —— 后者只在 option 存在时才赋值，传脏值会什么都不做。
@@ -320,28 +321,12 @@
         metroSound = "click";
         store(STORAGE.metroSound, "click");
       }
-      // One-time ABC rollout; preserve an explicitly muted selection.
-      if (store("jubeat.abcRollout") !== "1") {
-        if (metroSound !== "" && metroSound !== "ub-v2" && metroSound !== "ub-ora" && metroSound !== "star-platinum" && metroSound !== "dio") {
-          metroSound = "abc";
-          store(STORAGE.metroSound, "abc");
-        }
-        store("jubeat.abcRollout", "1");
-      }
-      if (metroSound != null) restoreSelectValue(els.metroSound, metroSound);
-      // Explicit audition link selects ABC without overwriting saved preferences.
-      if (new URLSearchParams(location.search).get("sfx") === "abc") els.metroSound.value = "abc";
+      restoreSelectValue(els.metroSound, recording ? "" : (metroSound ?? "taiko"));
+      if (!recording && QUERY.get("sfx") === "abc") els.metroSound.value = "abc";
       els.metroVolume.value = String(window.JubeatCore.soundEffectVolume(saved.metroVolume));
-      // 设置版本 9：「同押独立音效」改为默认打开。老浏览器存着的 "0" 几乎都是旧默认值
-      // （用户从没动过这个开关），只清一次让新默认露出来；之后照旧记住用户的选择。
       const savedSettingsVersion = Number(store(STORAGE.settingsVersion)) || 0;
-      const useChordSoundDefault = savedSettingsVersion < 9;
-      if (useChordSoundDefault) {
-        try { localStorage.removeItem(STORAGE.chordSound); } catch (_) { /* 存不了就算了 */ }
-      }
       if (els.chordSound) {
-        els.chordSound.checked = (useChordSoundDefault || saved.chordSound == null)
-          ? true : textOf(saved.chordSound) === "1";
+        els.chordSound.checked = saved.chordSound == null || textOf(saved.chordSound) === "1";
       }
       // 设置版本 2：「总连击 / marker 顺序数字」改为默认打开。
       // 老版本存过 0 的浏览器也吃一次新默认值（只忽略一次，之后照旧记住用户的选择）。
@@ -355,7 +340,6 @@
       //            没有历史包袱，缺省就是「光晕」，不需要清任何旧值。
       // 设置版本 8：「序号放右下角」改为默认打开（角落里不挡 marker 动画）。存着的值
       //            多半是旧默认「居中」——用户根本没动过，只清一次让新默认露出来。
-      // 设置版本 9：「同押独立音效」改为默认打开（见上面 chordSound 那一段）。
       const useComboDefaults = savedSettingsVersion < 2;
       const useCornerDefault = savedSettingsVersion < 8;
       if (savedSettingsVersion < 5) {
@@ -406,7 +390,7 @@
         els.numCorner.checked = textOf(saved.numCorner) === "1";
         numCfg.corner = els.numCorner.checked;
       }
-      els.longHoldCountdown.checked = !recording && textOf(saved.longHoldCountdown) === "1";
+      els.longHoldCountdown.checked = !recording && (saved.longHoldCountdown == null || textOf(saved.longHoldCountdown) === "1");
       els.longHoldCountdown.disabled = recording;
       // 序号颜色：老版本没存过 → 保持默认白（取色器里显示的也是 #ffffff）
       numCfg.color = normalizeHexColor(saved.numColor);

@@ -111,6 +111,10 @@ try {
 
   const measure = page.locator('.memo-measure[aria-current="true"]');
   await measure.filter({ hasText: '第 1 小节' }).waitFor();
+  await measure.locator('.memo-board').first().waitFor();
+  assert.equal(await page.locator('.memo-measure').count(), 16);
+  assert.equal(await page.locator('.memo-measure').last().locator('.memo-board').count(), 0,
+    'The end of the chart has a heading without an offscreen board');
   const previous = page.getByRole('button', { name: '上一小节' });
   const next = page.getByRole('button', { name: '下一小节' });
   assert(await previous.isDisabled());
@@ -139,8 +143,11 @@ try {
   await page.getByRole('button', { name: '第 16 小节', exact: true }).focus();
   await page.keyboard.press('Enter');
   await measure.filter({ hasText: '第 16 小节' }).waitFor();
+  await measure.locator('.memo-board').first().waitFor();
   await page.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 30) < 0.01);
   assert(await next.isDisabled());
+  assert.equal(await page.locator('.memo-measure').first().locator('.memo-board').count(), 0,
+    'A distant seek unmounts score details that have left the viewport');
   await page.evaluate(() => JubeatApp.seekTo(0));
   await measure.filter({ hasText: '第 1 小节' }).waitFor();
   await page.waitForFunction(() => document.getElementById('memoList').scrollTop === 0);
@@ -209,6 +216,7 @@ try {
   await touch.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 2) < 0.01 && !JubeatApp.state.playing);
   await touch.getByRole('button', { name: '下一小节' }).tap();
   await touch.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 4) < 0.01);
+  await touch.locator('.memo-measure[aria-current="true"] .memo-board').first().waitFor();
   const mobileCells = () => touch.locator('.memo-measure[aria-current="true"] .memo-cell').evaluateAll(cells =>
     cells.every(cell => {
       const { width, height } = cell.getBoundingClientRect();
@@ -220,13 +228,24 @@ try {
   assert(await mobileCells(), 'Phone cells are square and fit their numbers');
   await touch.setViewportSize({ width: 320, height: 570 });
   assert(await mobileCells(), 'Numbers also fit on a narrow phone');
+  const scrollList = touch.locator('#memoList');
+  await scrollList.evaluate(list => { list.scrollTop = list.scrollHeight; });
+  const lastCard = touch.locator('.memo-measure').last();
+  await lastCard.locator('.memo-board').first().waitFor();
+  assert.equal(await touch.locator('.memo-measure[aria-current="true"] h3').textContent(), '第 3 小节');
+  await lastCard.getByRole('button').tap();
+  await touch.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 30) < 0.01);
+  await touch.getByRole('button', { name: '关闭数字谱' }).tap();
+  await touch.evaluate(() => JubeatApp.seekTo(14));
+  await touch.getByRole('button', { name: '数字谱', exact: true }).tap();
+  await touch.locator('.memo-measure[aria-current="true"]').filter({hasText:'第 8 小节'}).locator('.memo-board').first().waitFor();
   assert.match(await touch.locator('#memoPanel').evaluate(panel => getComputedStyle(panel).backgroundColor), /\/ 0\.78\)/);
   await touch.getByRole('button', { name: '关闭数字谱' }).tap();
   assert.equal(await touch.locator('#memoPanel').isVisible(), false);
   await touch.close();
 
   assert.deepEqual(errors, []);
-  console.log('MEMO: mobile layout and square cells, hold colors, measure jumps and arrow navigation, playback following, TXT export and chart changes verified.');
+  console.log('MEMO: visible-window rendering, manual scroll and seek, mobile layout, hold colors, playback following and TXT export verified.');
 } finally {
   await browser.close();
 }

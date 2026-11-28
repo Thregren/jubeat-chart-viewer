@@ -79,6 +79,31 @@ test('releasing an atlas during a crop closes the bitmap and skips remaining cro
   assert.equal([...h.timers.values()].some(timer=>timer.ms===400),false);
 });
 
+test('an atlas releases its sheet after cropping and keeps its frames ready for playback', async () => {
+  const closed = [];
+  let sequence = 0;
+  const h = atlasFixture({
+    async createImageBitmap(_input, ...rect) {
+      const name = rect.length ? `frame-${sequence++}` : 'sheet';
+      return { name, width: rect.length ? 2 : 6, height: 2, close() { closed.push(name); } };
+    },
+  });
+  const {A,design} = h;
+  await A.loadMarkers();
+  await A.markerCfg.images.get(atlasPath).decode();
+  assert.deepEqual(closed, ['sheet']);
+  assert.equal(A.markerCfg.images.get(atlasPath)._ownedBytes, 48);
+  A.selectMarker('atlas');
+  assert.equal(A.markerCfg.design, design);
+  for (let i = 0; i < 3; i++) {
+    const frame = A.markerPrimitives.frameImage(A.markerPrimitives.frameUrl(design, 'MA', i));
+    assert(A.markerPrimitives.ready(frame));
+    assert.equal(frame._source.name, `frame-${i}`);
+  }
+  h.release();
+  assert.deepEqual(closed, ['sheet','frame-0','frame-1','frame-2']);
+});
+
 test('native atlas decode reuses fetched bytes, revokes object URLs and handles CSP rejection', async () => {
   for (const outcome of ['load','blob blocked','both fail','abort']) {
     const decoded = [], revoked = [];

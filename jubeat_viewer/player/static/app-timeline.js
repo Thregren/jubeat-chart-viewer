@@ -6,8 +6,8 @@
   const canvas=document.getElementById("timelineCanvas"), slot=document.getElementById("chartOverview");
   const division=document.getElementById("timelineDivision"), span=document.getElementById("timelineSpan");
   const flatten=document.getElementById("timelineFlatten");
-  const ctx=canvas.getContext("2d"), colors=["#66dcff","#b9a0ff","#ffd16a","#7ce3a5"];
-  let shown=false, model=null, notes=null, events=null, chart=null, view=null, drag=null;
+  const ctx=canvas.getContext("2d",{alpha:false}), colors=["#66dcff","#b9a0ff","#ffd16a","#7ce3a5"];
+  let shown=false, model=null, notes=null, events=null, chart=null, drag=null;
   let ordinaryDivision=division.value, divisionChart=null;
   function chartDivision(data) {
     const grid=data?.meta?.rhythm_grid;
@@ -27,21 +27,17 @@
   quickButton.setAttribute("aria-controls","timelineWrap");
   quickButton.hidden=recording;
   document.querySelector(".transport-top").append(quickButton);
-  let activeBefore=null, size={w:0,h:0,dirty:true}, ariaAt=null;
-  let background=null, backgroundKey="";
-  // Consumed by rhythm_timeline_smoke.js and dense-performance.mjs via
-  // A.timelineStats(); do not drop this while removing unused counters.
-  const stats={merged:0};
+  let activeBefore=null, size={w:0,h:0,dirty:true}, ariaAt=null, ariaDuration=null;
+  let tile=null, cache=null, presentedAt=NaN, viewSec=null, placeholder=false;
   button.hidden=recording;
   (button.closest('label') || button).hidden=recording;
   button.disabled=recording;
   function clearModel() {
-    model=notes=events=chart=view=null;
-    ariaAt=null;
-    stats.merged=0;
+    model=notes=events=chart=tile=cache=viewSec=null;
+    presentedAt=NaN;
+    ariaAt=ariaDuration=null;
   }
   function getModel() {
-    syncDivision();
     if(notes!==state.notes || events!==state.bpmEvents || chart!==state.chart) {
       notes=state.notes;events=state.bpmEvents;chart=state.chart;
       model=window.JubeatTimeline.create(notes,events,chart?.meta?.rhythm_grid);
@@ -49,12 +45,6 @@
         ? "节拍起点已校准（估计值，未核对官方小节）" : "节奏轴";
     }
     return model;
-  }
-  function layer(existing,w,h,dpr) {
-    const pixelW=Math.max(1,Math.round(w*dpr)),pixelH=Math.max(1,Math.round(h*dpr));
-    const target=existing||document.createElement("canvas");
-    if(target.width!==pixelW||target.height!==pixelH){target.width=pixelW;target.height=pixelH;}
-    return target;
   }
   function laneGeometry(h, flattened=false) {
     const top=12;
@@ -65,12 +55,9 @@
       top,lane:laneHeight,flattened:true,mergedTop:top+laneHeight*16+3,mergedHeight,
     };
   }
-  function drawBackground(target,w,h,dpr,flattened) {
-    const layerCtx=target.getContext("2d");
-    layerCtx.setTransform(1,0,0,1,0,0);layerCtx.clearRect(0,0,target.width,target.height);
-    layerCtx.setTransform(dpr,0,0,dpr,0,0);
+  function drawBackground(layerCtx,w,h,geometry) {
     layerCtx.fillStyle="#0a0d14";layerCtx.fillRect(0,0,w,h);
-    const {top,lane,mergedTop,mergedHeight}=laneGeometry(h,flattened);
+    const {top,lane,flattened,mergedTop,mergedHeight}=geometry;
     for(let row=0;row<4;row++) {
       layerCtx.fillStyle=row%2 ? "#182236" : "#111a29";
       layerCtx.fillRect(0,top+row*4*lane,w,lane*4);
@@ -81,29 +68,33 @@
       layerCtx.moveTo(0,Math.round(mergedTop-.5)+.5);
       layerCtx.lineTo(w,Math.round(mergedTop-.5)+.5);layerCtx.stroke();
     }
-    return layerCtx;
   }
-  /** Draw the chart in beat space. Never scroll a raster copy of it: repeatedly
-   * resampling fractional-pixel shifts blurs lines, labels and notes over time. */
-  function drawScene(layerCtx,frame,w,h,dpr,flattened) {
+  function drawScene(layerCtx,frame,w,h,dpr,geometry) {
     layerCtx.setTransform(dpr,0,0,dpr,0,0);
-    const {top,lane,mergedTop,mergedHeight}=laneGeometry(h,flattened);
+    drawBackground(layerCtx,w,h,geometry);
+    const {top,lane,flattened,mergedTop,mergedHeight}=geometry;
     layerCtx.font="9px monospace";layerCtx.textAlign="left";
-    const pixelX=x=>Math.round(x*dpr)/dpr,crispX=x=>pixelX(x)+.5/dpr;
-    for(const line of frame.lines) {
-      if(line.x<-40||line.x>w+40)continue;
-      layerCtx.strokeStyle=line.major ? "#62728e" : "#2f3e57";
-      const x=crispX(line.x);
-      layerCtx.beginPath();layerCtx.moveTo(x,top);layerCtx.lineTo(x,h);layerCtx.stroke();
-      if(line.major&&line.beat>=0) {layerCtx.fillStyle="#a5b4cd";layerCtx.fillText(String(line.beat+1),line.x+3,9);}
+    const cssX=x=>x/dpr;
+    for(const major of [false,true]) {
+      layerCtx.fillStyle=major ? "#62728e" : "#2f3e57";
+      layerCtx.beginPath();
+      for(const line of frame.lines) {
+        if(line.major===major)layerCtx.rect(cssX(line.x),top,1/dpr,h-top);
+      }
+      layerCtx.fill();
     }
+    layerCtx.fillStyle="#a5b4cd";
+    for(const line of frame.lines) {
+      if(line.major&&line.beat>=0)layerCtx.fillText(String(line.beat+1),cssX(line.x)+3,9);
+    }
+    if(!frame.notes.length)return;
     const bands=[[],[],[],[]],noteSize=Math.max(1.5,Math.min(5,lane-.5));
     for(const n of frame.notes)bands[Math.floor(n.index/4)].push(n);
     layerCtx.save();layerCtx.globalAlpha=.5;
     for(let band=0;band<4;band++) {
       layerCtx.fillStyle=colors[band];layerCtx.beginPath();
       for(const n of bands[band])if(n.hold) {
-        const left=Math.max(0,pixelX(n.x)),right=Math.min(w,pixelX(n.endX));
+        const left=Math.max(0,cssX(n.x)),right=Math.min(w,cssX(n.endX));
         if(right>left)layerCtx.rect(left,top+(n.index+.5)*lane-noteSize/3,right-left,Math.max(1,noteSize*2/3));
       }
       layerCtx.fill();
@@ -111,22 +102,22 @@
     layerCtx.restore();
     for(let band=0;band<4;band++) {
       layerCtx.strokeStyle=colors[band];layerCtx.beginPath();
-      for(const n of bands[band])if(n.hold&&n.endX>=0&&n.endX<=w)layerCtx.rect(pixelX(n.endX)-2,top+(n.index+.5)*lane-noteSize/2,4,noteSize);
+      for(const n of bands[band])if(n.hold&&n.endX>=0&&cssX(n.endX)<=w)layerCtx.rect(cssX(n.endX)-2,top+(n.index+.5)*lane-noteSize/2,4,noteSize);
       layerCtx.stroke();
     }
     for(let band=0;band<4;band++) {
       layerCtx.fillStyle=colors[band];layerCtx.beginPath();
-      for(const n of bands[band])if(n.x>=0&&n.x<=w)layerCtx.rect(pixelX(n.x)-2.5,top+(n.index+.5)*lane-noteSize/2,5,noteSize);
+      for(const n of bands[band])if(n.x>=0&&cssX(n.x)<=w)layerCtx.rect(cssX(n.x)-2.5,top+(n.index+.5)*lane-noteSize/2,5,noteSize);
       layerCtx.fill();
     }
-    if(flattened&&frame.notes.length) {
+    if(flattened) {
       const mergedNote=Math.max(3,Math.min(8,mergedHeight-7));
-      const mergedY=pixelX(mergedTop+(mergedHeight-mergedNote)/2);
+      const mergedY=Math.round((mergedTop+(mergedHeight-mergedNote)/2)*dpr)/dpr;
       layerCtx.save();layerCtx.globalAlpha=.52;
       for(let band=0;band<4;band++) {
         layerCtx.fillStyle=colors[band];layerCtx.beginPath();
         for(const n of bands[band])if(n.hold) {
-          const left=Math.max(0,pixelX(n.x)),right=Math.min(w,pixelX(n.endX));
+          const left=Math.max(0,cssX(n.x)),right=Math.min(w,cssX(n.endX));
           if(right>left)layerCtx.rect(left,mergedY+mergedNote/3,right-left,Math.max(1,mergedNote/3));
         }
         layerCtx.fill();
@@ -134,11 +125,30 @@
       layerCtx.restore();
       for(let band=0;band<4;band++) {
         layerCtx.fillStyle=colors[band];layerCtx.beginPath();
-        for(const n of bands[band])if(n.x>=0&&n.x<=w)layerCtx.rect(pixelX(n.x)-2,mergedY,4,mergedNote);
+        for(const n of bands[band])if(n.x>=0&&cssX(n.x)<=w)layerCtx.rect(cssX(n.x)-2,mergedY,4,mergedNote);
         layerCtx.fill();
       }
-      stats.merged=frame.notes.length;
-    } else stats.merged=0;
+    }
+  }
+  const playheadFraction=.2;
+  function spanBeats() {
+    const value=Number(span.value);
+    return value===8||value===16 ? value : 4;
+  }
+  function rebuildTile(left,pixelW,pixelH,dpr,pixelsPerBeat,divisionValue,flattened) {
+    // Pad beyond the usable range so labels and notes can cross either edge.
+    // Keep more of the cache ahead of the playhead for normal forward playback.
+    const padding=Math.ceil(44*dpr), extra=Math.ceil(pixelW/2);
+    const start=left-Math.floor(extra/4), end=start+pixelW+extra;
+    const origin=start-padding, tileWidth=end+padding-origin;
+    tile ||= document.createElement("canvas");
+    if(tile.width!==tileWidth)tile.width=tileWidth;
+    if(tile.height!==pixelH)tile.height=pixelH;
+    const frame=model.rasterRange(origin,tileWidth,pixelsPerBeat,divisionValue);
+    const h=pixelH/dpr;
+    drawScene(tile.getContext("2d",{alpha:false}),frame,tileWidth/dpr,h,dpr,laneGeometry(h,flattened));
+    cache={model,start,end,origin,pixelW,pixelH,dpr,pixelsPerBeat,divisionValue,flattened};
+    presentedAt=NaN;
   }
   function drawTimeline(sec) {
     const active=shown && !recording && !A.mode?.ownsFrame;
@@ -156,35 +166,49 @@
     const {w,h}=size;
     if(w<1 || h<1)return;
     const dpr=Math.min(2,A.renderRatio(w,h));
-    const pixelW=Math.max(1,Math.round(w*dpr)),pixelH=Math.max(1,Math.round(h*dpr));
-    if(canvas.width!==pixelW || canvas.height!==pixelH) {
-      canvas.width=pixelW;canvas.height=pixelH;
+    const pixelW=Math.round(w*dpr),pixelH=Math.round(h*dpr),resized=canvas.width!==pixelW||canvas.height!==pixelH;
+    if(resized) {
+      if(canvas.width!==pixelW)canvas.width=pixelW;
+      if(canvas.height!==pixelH)canvas.height=pixelH;
+      presentedAt=NaN;
     }
-    background=layer(background,w,h,dpr);
     const flattened=!!flatten.checked;
-    if(backgroundKey!==`${w}:${h}:${dpr}:${flattened}`){
-      drawBackground(background,w,h,dpr,flattened);
-      backgroundKey=`${w}:${h}:${dpr}:${flattened}`;
-    }
-    ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(background,0,0);
     if(!state.notes.length) {
       if(model)clearModel();
-      ctx.setTransform(dpr,0,0,dpr,0,0);
-      ctx.fillStyle="#98a3b9";ctx.font="11px sans-serif";ctx.fillText("选择谱面后显示横向节奏轴",8,h/2+4);return;
+      if(!placeholder||resized) {
+        ctx.fillStyle="#0a0d14";ctx.fillRect(0,0,pixelW,pixelH);
+        ctx.fillStyle="#98a3b9";ctx.font=`${11*dpr}px sans-serif`;
+        ctx.fillText("选择谱面后显示横向节奏轴",8*dpr,pixelH/2+4*dpr);
+        placeholder=true;
+      }
+      return;
     }
-    const timelineModel=getModel(),spanValue=Number(span.value),divisionValue=Number(division.value);
-    view=timelineModel.frameFast
-      ? timelineModel.frameFast(sec,w,spanValue,divisionValue)
-      : timelineModel.frame(sec,w,spanValue,divisionValue);
-    drawScene(ctx,view,w,h,dpr,flattened);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.strokeStyle="#ff7c88";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(view.playhead,0);ctx.lineTo(view.playhead,h);ctx.stroke();ctx.lineWidth=1;
-    const ariaKey=Math.floor(sec*10)+':'+state.duration;
-    if(ariaAt!==ariaKey) {
+    placeholder=false;
+    const timelineModel=getModel(),divisionValue=Number(division.value)||1;
+    const beat=timelineModel.secToBeat(sec),pixelsPerBeat=pixelW/spanBeats(),playhead=pixelW*playheadFraction;
+    const left=Math.round(beat*pixelsPerBeat-playhead);
+    viewSec=sec;
+    if(!cache||cache.model!==timelineModel||cache.pixelW!==pixelW||cache.pixelH!==pixelH||cache.dpr!==dpr
+      ||cache.pixelsPerBeat!==pixelsPerBeat||cache.divisionValue!==divisionValue||cache.flattened!==flattened
+      ||left<cache.start||left+pixelW>cache.end) {
+      rebuildTile(left,pixelW,pixelH,dpr,pixelsPerBeat,divisionValue,flattened);
+    }
+    if(presentedAt!==left) {
+      // Always crop the original raster at integer device pixels. The visible
+      // frame is never reused as input, so scrolling cannot accumulate blur.
+      ctx.drawImage(tile,left-cache.origin,0,pixelW,pixelH,0,0,pixelW,pixelH);
+      ctx.fillStyle="#ff7c88";ctx.fillRect(playhead-dpr,0,2*dpr,pixelH);
+      presentedAt=left;
+    }
+    const ariaKey=Math.floor(sec*10);
+    if(ariaAt!==ariaKey||ariaDuration!==state.duration) {
       ariaAt=ariaKey;
       canvas.setAttribute("aria-valuenow",String(Math.max(0,Math.round(sec*100)/100)));
+      canvas.setAttribute("aria-valuetext",`第 ${(beat+1).toFixed(2)} 拍，${A.fmtTime(sec)}`);
+    }
+    if(ariaDuration!==state.duration) {
+      ariaDuration=state.duration;
       canvas.setAttribute("aria-valuemax",String(state.duration||0));
-      canvas.setAttribute("aria-valuetext",`第 ${(view.beat+1).toFixed(2)} 拍，${A.fmtTime(sec)}`);
     }
   }
   // Scripts can arrive across separate animation frames. Boot builds the pads before
@@ -212,23 +236,24 @@
   flatten.addEventListener("change",()=>{
     A.store(A.STORAGE.timelineFlatten,flatten.checked?"1":"0");
     wrap.classList.toggle("timeline-flattened",flatten.checked);
-    backgroundKey="";size.dirty=true;repaint();
+    size.dirty=true;repaint();
   });
   // 指针坐标 → 时间轴内部 x。拖动期间用 pointerdown 量到的 rect：pointermove
   // 每秒上百次，每次都读 getBoundingClientRect() 会反复强制布局。
   const xOf=(e,rect=canvas.getBoundingClientRect())=>((e.clientX-rect.left)*(size.w||canvas.clientWidth))/rect.width;
   const clamp=t=>Math.max(0,Math.min(t,state.duration||0));
   function position(e,click=false,x=xOf(e)) {
-    const beat=click ? drag.view.left+x/drag.view.scale : drag.beat-(x-drag.x)/drag.view.scale;
+    const beat=click ? drag.beat+(x-drag.playhead)/drag.scale : drag.beat-(x-drag.x)/drag.scale;
     return clamp(drag.model.beatToSec(beat));
   }
   canvas.addEventListener("pointerdown",e=>{
-    if(!shown || A.mode?.ownsFrame || e.button!==0 || state.scrubbing || !state.notes.length || A.density.placeholder || !view)return;
+    if(!shown || A.mode?.ownsFrame || e.button!==0 || state.scrubbing || !state.notes.length || A.density.placeholder || viewSec===null)return;
     e.preventDefault();
     const sec=A.currentMediaTime(), m=getModel();
     const resume=A.playbackActive ? A.playbackActive() : state.playing;
     const rect=canvas.getBoundingClientRect();
-    drag={id:e.pointerId,rect,x:xOf(e,rect),start:sec,beat:m.secToBeat(sec),view:m.frame(sec,canvas.clientWidth,+span.value,+division.value),model:m,notes:state.notes,resume,moved:false};
+    drag={id:e.pointerId,rect,x:xOf(e,rect),start:sec,beat:m.secToBeat(sec),playhead:size.w*playheadFraction,
+      scale:size.w/spanBeats(),model:m,notes:state.notes,resume,moved:false};
     A.clearAB(null);if(resume)A.pause();
     state.scrubbing=true;state.scrubSec=sec;canvas.setPointerCapture(e.pointerId);
     canvas.focus({preventScroll:true});repaint();
@@ -273,6 +298,12 @@
     observer?.disconnect();window.removeEventListener('resize',resized);
     drag=null;clearModel();
   }});
-  Object.assign(A,{drawTimeline,timelineStats:()=>({...stats})});
+  // Measure visible notes on demand for diagnostics. The playback loop only
+  // computes the crop position on frames that reuse the cached tile.
+  function timelineStats() {
+    const merged=cache?.flattened ? model.frameFast(viewSec,size.w,spanBeats(),cache.divisionValue).notes.length : 0;
+    return {merged};
+  }
+  Object.assign(A,{drawTimeline,timelineStats});
   setShown(false);
 })();

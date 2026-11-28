@@ -29,6 +29,29 @@ try {
     await canvas.scrollIntoViewIfNeeded();
     const box = await canvas.boundingBox();
     assert(box && box.width > 0 && box.height > 0);
+    const redraws = await page.evaluate(() => {
+      const A = JubeatApp;
+      const ctx = A.els.densityCanvas.getContext('2d');
+      const drawImage = ctx.drawImage;
+      let draws = 0;
+      ctx.drawImage = function(...args) { draws++; return drawImage.apply(this, args); };
+      try {
+        const sec = (Math.round(A.density.graphW * A.density.dpr / 2) / A.density.dpr)
+          / A.density.graphW * A.density.dur;
+        const timePerPixel = A.density.dur / (A.density.graphW * A.density.dpr);
+        A.drawDensity(sec);
+        const first = draws;
+        A.drawDensity(sec + timePerPixel / 100);
+        const samePixel = draws - first;
+        A.drawDensity(sec + timePerPixel);
+        const nextPixel = draws - first;
+        A.abLoop.b = 11;
+        A.drawDensity(sec + timePerPixel);
+        return { samePixel, nextPixel, rangeChange: draws - first - nextPixel };
+      } finally { ctx.drawImage = drawImage; }
+    });
+    assert.equal(redraws.samePixel, 0);
+    assert(redraws.nextPixel > 0 && redraws.rangeChange > 0);
     const client = await context.newCDPSession(page);
     const point = fraction => ({x:box.x + box.width * fraction, y:box.y + box.height / 2, id:1});
     await client.send('Input.dispatchTouchEvent', {type:'touchStart', touchPoints:[point(.25)]});

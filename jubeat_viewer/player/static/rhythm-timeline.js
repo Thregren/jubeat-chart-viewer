@@ -45,13 +45,11 @@
       hold: n.kind === "hold",
     })).filter(n => Number.isFinite(n.beat) && Number.isFinite(n.end)).sort((a,b) => a.beat-b.beat);
     const appendOverlappingHolds = indexOverlappingHolds(entries);
-    const fastLines = [], fastLinePool = [], fastNotes = [], fastView = {};
-    function buildFrame(sec, width, span = 4, division = 1, reuse = false) {
-      span = [4,8,16].includes(span) ? span : 4;
-      division = [1,2,3,4,8].includes(division) ? division : 1;
-      const beat = secToBeat(sec), left = beat - span * .2, right = left + span;
-      const scale = Math.max(1,width) / span;
-      const x = b => (b-left)*scale;
+    const fastLines = [], fastLinePool = [], fastNotes = [], fastRange = {}, fastView = {};
+    function buildRange(left, right, scale, division, reuse, pixelOrigin) {
+      const x = pixelOrigin === undefined
+        ? b => (b-left)*scale
+        : b => Math.round(b*scale)-pixelOrigin;
       const lines = reuse ? fastLines : [];
       if (reuse) lines.length = 0;
       for (let tick = Math.ceil(left*division); tick <= Math.floor(right*division); tick++) {
@@ -71,8 +69,15 @@
       for(let i=lo;i<entries.length && entries[i].beat<=right;i++) {
         if(entries[i].end>=left)append(entries[i]);
       }
-      if (reuse) return Object.assign(fastView,{beat,left,right,scale,playhead:width*.2,lines,notes:visible});
-      return {beat,left,right,scale,playhead:width*.2,lines,notes:visible};
+      if (reuse) return Object.assign(fastRange,{left,right,scale,lines,notes:visible});
+      return {left,right,scale,lines,notes:visible};
+    }
+    function buildFrame(sec, width, span = 4, division = 1, reuse = false) {
+      span = [4,8,16].includes(span) ? span : 4;
+      division = [1,2,3,4,8].includes(division) ? division : 1;
+      const beat = secToBeat(sec), left = beat - span * .2;
+      const frame = buildRange(left, left + span, Math.max(1,width) / span, division, reuse);
+      return Object.assign(reuse ? fastView : frame,frame,{beat,playhead:width*.2});
     }
     function frame(sec, width, span = 4, division = 1) {
       return buildFrame(sec, width, span, division, false);
@@ -80,7 +85,12 @@
     function frameFast(sec, width, span = 4, division = 1) {
       return buildFrame(sec, width, span, division, true);
     }
-    return {frame, frameFast, beatToSec, secToBeat, calibrated, originSeconds, originBeat};
+    // Snap in absolute device pixels before subtracting the tile origin. This
+    // keeps half-pixel positions identical when the same beat changes tiles.
+    function rasterRange(origin, width, scale, division) {
+      return buildRange(origin/scale, (origin+width)/scale, scale, division, true, origin);
+    }
+    return {frame, frameFast, rasterRange, beatToSec, secToBeat, calibrated, originSeconds, originBeat};
   }
   return {create};
 });

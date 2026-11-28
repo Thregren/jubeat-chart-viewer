@@ -12,11 +12,17 @@ try{
   await page.goto(base+'?song=v0%2Fsong000&chart=EXT&paused=1');await page.waitForFunction(()=>window.__player&&JubeatApp.state.chart);
   const toggle=page.locator('#themeToggle'),choices=page.locator('#themePicker [data-theme-value]');
   const opts=await choices.evaluateAll(buttons=>buttons.map(button=>button.dataset.themeValue));assert.equal(opts.length,14);
+  assert.equal(opts[0],'jubeat');
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'jubeat');
   assert.equal(opts.at(-1),'jubeat2020');
   assert.equal(await choices.last().textContent(),'音乐魔方');
+  await toggle.click();
+  await page.locator('#themePicker [data-theme-value="default"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-theme'),null);
+  await page.waitForTimeout(100); // Let the playfield color transition settle.
   const defaultPad=await page.locator('.panel-inner .pad').first().evaluate(el=>getComputedStyle(el).backgroundColor);
   const panelColors=new Set();
-  for(const id of opts.slice(1)){
+  for(const id of opts.filter(id=>id!=='default')){
    await toggle.click();await page.locator('#themePicker [data-theme-value="'+id+'"]').click();assert.equal(await page.locator('html').getAttribute('data-theme'),id);
    await page.waitForFunction(()=>getComputedStyle(document.querySelector('.stage')).backgroundImage!=='none');
    await page.waitForTimeout(100); // Let the playfield color transition settle.

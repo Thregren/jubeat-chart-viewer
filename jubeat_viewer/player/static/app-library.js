@@ -556,7 +556,7 @@
     return {song: s, rank, node: li, button: btn, img, cover};
   }
 
-  async function selectSong(song, preferredCode = null, {preserveExcView = false} = {}) {
+  async function selectSong(song, preferredCode = null, {preserveExcView = false, autoPreview = true} = {}) {
     A.mode?.chartChanging?.();
     if (!song || !Array.isArray(song.charts)) return;
     if (!preserveExcView) A.excView?.close(false);
@@ -568,7 +568,7 @@
     els.btnShare.disabled = false;
     els.btnShare.dataset.chart = "";
     document.title = song.title + " · 谱面确认";
-    A.directory.show(song);
+    A.directory.show(song, autoPreview);
     els.btnPlay.disabled = !!song.assets && (!song.assets.audio || song.resourceOnly);
     updateActiveSongRow();
     if (isNarrow()) setSidebarOpen(false);   // 手机上选完曲就把抽屉收起来

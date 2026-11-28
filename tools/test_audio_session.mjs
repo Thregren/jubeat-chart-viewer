@@ -35,12 +35,13 @@ function player({nativeFallback=false,query="",userAgent="",fetchAudio}={}){
  const ctx={state:'running',currentTime:0,resume(){return Promise.resolve()},decodeAudioData(){return Promise.resolve({length:4096,numberOfChannels:2,duration:60})},createGain(){return{connect(){}}},createAnalyser(){return{connect(){}}},createBufferSource(){return{playbackRate:{value:1},connect(){},stop(){},disconnect(){},start(_,off){plays.push({url:A.backend.url,off})}}}};
  const A={services:new Services.Services(),QUERY:new URLSearchParams(query),els,state:{playing:false,song:{id:'first',audioInfo:{duration:60,sampleRate:48000,channels:2}},chart:{},_parsed:{},baseOffset:0,duration:60},density:{placeholder:false},audioCtx:ctx,mediaCompatibility:{nativeFallback},fmtTime:String,fmtBytes:n=>n?String(n):'',toast(message){toasts.push(message)},sfxReset(){},requestPaint(){},setPlaying(v){A.state.playing=v},drawDensity(){},rebuildVisualState(t){rebuilt.push(t)},audioUrl(){return A.backend.url},computeDuration(){return 60},buildDensity(){}};
  const Runtime={...R,AudioSession:class extends R.AudioSession{constructor(){super(time);sessions.push(this)}}};
- const window={JubeatApp:A,JubeatServices:{...Services,audioHeader:()=>({duration:60,sampleRate:48000,channels:2})},JubeatRuntime:Runtime,addEventListener(){}};
- vm.runInNewContext(source,{window,navigator:{userAgent},URL,Blob,URLSearchParams,location:{search:''},performance:perf,console:{info(){},warn(){}},document:{hidden:false},setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{
+ const document={hidden:false};
+ const window={JubeatApp:A,JubeatServices:{...Services,audioHeader:()=>({duration:60,sampleRate:48000,channels:2})},JubeatRuntime:Runtime,addEventListener(){},AudioContext:class{constructor(){Object.assign(this,ctx,{state:'running',currentTime:0});}}};
+ vm.runInNewContext(source,{window,navigator:{userAgent},URL,Blob,URLSearchParams,location:{search:''},performance:perf,console:{info(){},warn(){}},document,setTimeout:time.setTimeout,clearTimeout:time.clearTimeout,fetch:async()=>{
   fetches++;
   return fetchAudio ? fetchAudio() : new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/ogg'}});
  }});
- return{A,audio,ctx,time,plays,sessions,toasts,rebuilt,services:window.JubeatServices,fetches:()=>fetches,advanceClock(ms){now+=ms}};
+ return{A,audio,ctx,time,plays,sessions,toasts,rebuilt,services:window.JubeatServices,window,document,fetches:()=>fetches,advanceClock(ms){now+=ms}};
 }
 
 test('stream progress batches chunk updates with and without Content-Length, then switches to decoding immediately',async t=>{
@@ -184,6 +185,70 @@ test('actual player cancels old recovery across song change, pause and seek',asy
 test('recovery merges repeated focus nudges and resumes once at original position',async()=>{
  const h=player();Object.assign(h.A.backend,{mode:'webaudio',url:'old.ogg',buf:{duration:200},anchorPos:42});h.A.state.playing=true;h.ctx.state='suspended';h.A.keepAudioAlive();h.A.keepAudioAlive();assert.equal(h.time.pending.size,1);
  h.ctx.state='running';h.time.run();await turn();assert.deepEqual(h.plays,[{url:'old.ogg',off:42}]);assert.equal(h.sessions[0].recovery,null);
+});
+
+test('paused iOS playback resumes at the saved offset with a fresh graph even if the old graph says running',async()=>{
+ const h=player({userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X)'});
+ const buf={duration:60};
+ Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf,anchorPos:12});
+ await h.A.play();
+ const oldMaster=h.A.master();
+ h.ctx.currentTime=8;
+ h.A.pause();
+ let closed=0;
+ h.ctx.close=()=>{closed++;return Promise.resolve();};
+ h.document.hidden=true;h.A.keepAudioAlive();
+ h.document.hidden=false;h.A.keepAudioAlive();
+ assert.equal(h.A.state.playing,false);
+ assert.equal(h.A.audioNow(),20);
+ assert.equal(h.A.audioCtx,h.ctx);
+ assert.equal(h.plays.length,1);
+ await h.A.play();
+ assert.equal(closed,1);
+ assert.notEqual(h.A.audioCtx,h.ctx);
+ assert.notEqual(h.A.master(),oldMaster);
+ assert.equal(h.A.backend.buf,buf);
+ assert.equal(h.A.state.playing,true);
+ assert.deepEqual(h.plays.at(-1),{url:'song.ogg',off:20});
+ assert.equal(h.fetches(),0);
+});
+
+test('failed foreground Web Audio recovery switches to native playback once, with cancellation still possible',async()=>{
+ for (const cancel of [false,true]) {
+  const h=player({userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X)'});
+  h.window.AudioContext=class {state='interrupted';resume(){return new Promise(()=>{});}};
+  Object.assign(h.A.backend,{mode:'webaudio',url:'song.ogg',buf:{duration:60},anchorPos:27});
+  h.document.hidden=true;h.A.keepAudioAlive();
+  h.document.hidden=false;h.A.keepAudioAlive();
+  const play=h.A.play();
+  assert.equal(h.A.playbackActive(),true);
+  if (cancel) h.A.togglePlay();
+  h.time.run();await play;
+  assert.equal(h.A.state.playing,!cancel);
+  assert.equal(h.A.backend.mode,cancel?'webaudio':'element');
+  if(!cancel) assert.equal(h.audio.currentTime,27);
+  assert.equal(h.plays.length,0);
+ }
+});
+
+test('native iOS playback restores position if the browser resets paused media in the background',async()=>{
+ const h=player({userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X)',nativeFallback:true});
+ h.A.bindLoadEvents();
+ Object.assign(h.A.backend,{mode:'element',url:'song.caf'});
+ Object.assign(h.audio,{readyState:4,duration:60,currentTime:19,dataset:{src:'song.caf'}});
+ h.A.els.rate.value='0.75';
+ h.document.hidden=true;h.A.keepAudioAlive();
+ h.audio.currentTime=0;
+ h.document.hidden=false;h.A.keepAudioAlive();
+ assert.equal(h.audio.paused,true);
+ const play=h.A.play();
+ assert.equal(h.audio.paused,false);
+ assert.equal(h.audio.currentTime,19);
+ h.audio.emit('loadedmetadata');
+ await play;
+ assert.equal(h.A.state.playing,true);
+ assert.equal(h.A.audioNow(),19);
+ assert.equal(h.audio.playbackRate,0.75);
 });
 
 test('deferred backend seek preserves rate-change resume, but user pause and seek cancel it',async()=>{

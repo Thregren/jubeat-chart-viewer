@@ -16,8 +16,13 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let selection = null;
   let memo = null;
+  let cards = [];
   let active = -1;
   let wasPlaying = false;
+  let renderedFrom = 0;
+  let renderedTo = 0;
+  let windowFrame = 0;
+  let follow = null;
 
   if (window.__recActive) toggle.hidden = true;
 
@@ -28,10 +33,13 @@
 
   function setChart(song, difficulty, chart, parsed) {
     requests.cancel();
+    cancelWindow();
     selection = chart ? { song, difficulty, chart, parsed } : null;
     memo = null;
+    cards = [];
     active = -1;
     wasPlaying = false;
+    renderedFrom = renderedTo = 0;
     list.replaceChildren();
     download.disabled = true;
     updateNavigation();
@@ -100,14 +108,21 @@
   }
 
   function measureCard(measure, index) {
-    const card = element("section", "memo-measure");
+    const card = element("section", "memo-measure memo-placeholder");
     card.dataset.measureIndex = index;
+    card.style.setProperty("--memo-board-rows", Math.ceil(measure.frames.length / 2));
+    card.style.setProperty("--memo-beat-rows", measure.rhythm.length);
     const heading = element("h3", "memo-measure-title");
     const jump = element("button", "memo-measure-jump", `第 ${measure.number} 小节`);
     jump.type = "button";
     jump.title = "跳到小节开头";
     heading.append(jump);
     card.append(heading);
+    return card;
+  }
+
+  function measureBody(measure) {
+    const body = document.createElement("div");
     const boards = element("div", "memo-boards");
     const holds = new Map();
     for (const group of measure.groups) {
@@ -134,7 +149,7 @@
       });
       boards.append(board);
     }
-    card.append(boards);
+    body.append(boards);
     const rhythm = element("div", "memo-rhythm");
     measure.rhythm.forEach((row, index) => {
       const line = element("div", "memo-beat");
@@ -147,17 +162,83 @@
       line.append(slots);
       rhythm.append(line);
     });
-    card.append(rhythm);
-    return card;
+    body.append(rhythm);
+    return body;
   }
 
   function scrollToActive(smooth = false) {
-    const card = list.children[active];
-    if (!card) return;
-    list.scrollTo({
-      top: card.offsetTop - list.firstElementChild.offsetTop,
-      behavior: smooth && !reduceMotion.matches ? "smooth" : "instant",
-    });
+    if (active < 0) return;
+    follow = { smooth };
+    scheduleWindow();
+  }
+
+  function cancelWindow() {
+    cancelAnimationFrame(windowFrame);
+    windowFrame = 0;
+    follow = null;
+  }
+
+  function scheduleWindow() {
+    if (!windowFrame && !panel.hidden && cards.length) {
+      windowFrame = requestAnimationFrame(renderWindow);
+    }
+  }
+
+  function cardAt(offset) {
+    let lo = 0;
+    let hi = cards.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (cards[mid].offsetTop <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  function renderWindow() {
+    windowFrame = 0;
+    const height = list.clientHeight;
+    if (!height) return;
+    const scrollTop = list.scrollTop;
+    const origin = cards[0].offsetTop;
+    const target = follow && cards[active];
+    const targetTop = target ? target.offsetTop - origin : scrollTop;
+    const position = Math.min(targetTop, list.scrollHeight - height);
+    const smooth = target && follow.smooth && !reduceMotion.matches && Math.abs(position - scrollTop) <= height;
+    follow = null;
+    const from = cardAt(origin + (smooth ? Math.min(position, scrollTop) : position) - height / 2);
+    const to = Math.min(cards.length, cardAt(origin + (smooth ? Math.max(position, scrollTop) : position) + height * 1.5) + 2);
+
+    if (from !== renderedFrom || to !== renderedTo) {
+      // Keep headings in the list for keyboard navigation. Mount only nearby grids and rhythm rows.
+      const anchor = target ? null : cards[cardAt(origin + scrollTop)];
+      const anchorTop = anchor?.offsetTop;
+      const leaving = [];
+      for (let index = renderedFrom; index < renderedTo; index++) {
+        if (index >= from && index < to) continue;
+        const card = cards[index];
+        leaving.push([card, card.offsetHeight]);
+      }
+      for (const [card, blockHeight] of leaving) {
+        card.style.minHeight = `${blockHeight}px`;
+        card.lastElementChild.remove();
+      }
+      for (let index = from; index < to; index++) {
+        if (index >= renderedFrom && index < renderedTo) continue;
+        const card = cards[index];
+        card.classList.remove("memo-placeholder");
+        card.style.removeProperty("min-height");
+        card.append(measureBody(memo.measures[index]));
+      }
+      renderedFrom = from;
+      renderedTo = to;
+      if (anchor && anchor.offsetTop !== anchorTop) list.scrollTop = scrollTop + anchor.offsetTop - anchorTop;
+    }
+    if (target) {
+      list.scrollTo({ top: target.offsetTop - origin, behavior: smooth ? "smooth" : "instant" });
+    }
+    // Estimates can run tall. Fill any newly exposed rows after measuring the mounted cards.
+    if (cards[to]?.offsetTop < origin + list.scrollTop + height) scheduleWindow();
   }
 
   function updateNavigation() {
@@ -166,10 +247,12 @@
   }
 
   function showMeasure(index, smooth = false) {
-    list.children[active]?.removeAttribute("aria-current");
-    active = index;
-    list.children[active].setAttribute("aria-current", "true");
-    updateNavigation();
+    if (active !== index) {
+      cards[active]?.removeAttribute("aria-current");
+      active = index;
+      cards[active].setAttribute("aria-current", "true");
+      updateNavigation();
+    }
     scrollToActive(smooth);
   }
 
@@ -186,16 +269,18 @@
     // Follow the progress clock used by seekTo, including immediately after a paused seek.
     const seconds = Math.max(0, A.currentMediaTime()) + 0.001;
     const { measures } = memo;
-    let lo = 0;
-    let hi = measures.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (measures[mid].startSeconds <= seconds) lo = mid + 1;
-      else hi = mid;
-    }
-    const next = Math.max(0, lo - 1);
-    if (next !== active) {
-      const movingForward = next === active + 1;
+    const start = active > 0 ? measures[active].startSeconds : -Infinity;
+    const end = measures[active + 1]?.startSeconds ?? Infinity;
+    if (active < 0 || seconds < start || seconds >= end) {
+      let lo = 0;
+      let hi = measures.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (measures[mid].startSeconds <= seconds) lo = mid + 1;
+        else hi = mid;
+      }
+      const next = Math.max(0, lo - 1);
+      const movingForward = active >= 0 && next === active + 1;
       showMeasure(next, playing && wasPlaying && movingForward && !A.state.scrubbing);
     } else if (playing && !wasPlaying) {
       scrollToActive();
@@ -211,11 +296,12 @@
     try {
       const result = await makeMemo(selected, request.signal);
       if (!result || requests.active !== request || selection !== selected || panel.hidden) return;
-      list.replaceChildren(...result.measures.map(measureCard));
+      cards = result.measures.map(measureCard);
+      list.replaceChildren(...cards);
       memo = result;
       download.disabled = false;
       showStatus(result.measures.length ? "" : "这份谱面没有音符。");
-      A.requestPaint();
+      paint();
     } catch (error) {
       if (requests.active === request) showStatus(`数字谱加载失败：${error.message}`);
     } finally {
@@ -230,11 +316,12 @@
     if (open) {
       if (!memo) load();
       else {
+        paint();
         scrollToActive();
-        A.requestPaint();
       }
     } else {
       requests.cancel();
+      cancelWindow();
       wasPlaying = false;
     }
   }
@@ -246,6 +333,7 @@
   });
   previous.addEventListener("click", () => seekMeasure(active - 1));
   next.addEventListener("click", () => seekMeasure(active + 1));
+  list.addEventListener("scroll", scheduleWindow, { passive: true });
   list.addEventListener("click", event => {
     const card = event.target.closest(".memo-measure");
     if (card) seekMeasure(Number(card.dataset.measureIndex));
@@ -254,7 +342,9 @@
     if (selection && memo) saveText(selection, memo);
   });
   if (window.ResizeObserver) new ResizeObserver(() => {
-    if (!panel.hidden && A.state.playing) scrollToActive();
+    if (panel.hidden) return;
+    if (A.state.playing) scrollToActive();
+    else scheduleWindow();
   }).observe(list);
 
   A.memo = { setChart, paint };

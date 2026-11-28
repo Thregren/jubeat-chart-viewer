@@ -63,9 +63,11 @@ test('long overlapping holds and dense taps match a brute-force viewport on forw
  }
 });
 
-test('hiding the timeline drops its model and rebuilds only when shown again', () => {
- const elements=new Map(), built=[];
- const ctx=new Proxy({}, {get:(target,key)=>target[key]??(()=>{})});
+test('timeline reuses a device-pixel crop until it leaves the tile or changes settings', () => {
+ const elements=new Map(), built=[], crops=[], painted=[];
+ const context=handlers=>new Proxy(handlers, {get:(target,key)=>target[key]??(()=>{})});
+ const ctx=context({drawImage: (...args)=>crops.push(args)});
+ const tileCtx=context({setTransform: (...args)=>painted.push(args)});
  function element(){
   const target=new EventTarget();
   return Object.assign(target,{value:'2',clientWidth:400,clientHeight:160,
@@ -73,7 +75,11 @@ test('hiding the timeline drops its model and rebuilds only when shown again', (
  }
  const document={
   getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},
-  querySelector:element,createElement:element,
+  querySelector:element,createElement(tag) {
+   const node=element();
+   if(tag==='canvas')node.getContext=()=>tileCtx;
+   return node;
+  },
  };
  const p=Core.parseNotes(chart);
  const firstChart={meta:{rhythm_grid:{version:1,default_division:8}}};
@@ -85,15 +91,43 @@ test('hiding the timeline drops its model and rebuilds only when shown again', (
  const source=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-timeline.js',import.meta.url),'utf8');
  vm.runInNewContext(source,{window,document});
  const button=elements.get('btnTimeline'),division=elements.get('timelineDivision');
+ const span=elements.get('timelineSpan');
+ span.value='8';
  const open=checked=>{button.checked=checked;button.dispatchEvent(new Event('change'));};
  open(true);
  A.drawTimeline(1);
  assert.deepEqual(built,[p.notes]);
  assert.equal(division.value,'8');
+ assert.equal(crops.length,1);
+ assert.equal(painted.length,1);
+ A.drawTimeline(1.02);
+ assert.equal(crops.length,2);
+ assert.equal(painted.length,1);
+ const [bitmap,sourceX,...rect]=crops[1];
+ assert.equal(bitmap,crops[0][0]);
+ assert.ok(Number.isInteger(sourceX)&&sourceX>crops[0][1]);
+ assert.deepEqual(rect,[0,400,160,0,0,400,160]);
+ A.drawTimeline(1.02);
+ assert.equal(crops.length,2);
+ A.drawTimeline(2.4);
+ A.drawTimeline(.2);
+ assert.equal(painted.length,3);
+ span.value='16';
+ A.drawTimeline(.2);
+ assert.equal(painted.length,4);
  division.value='3';
  division.dispatchEvent(new Event('change'));
+ A.drawTimeline(.2);
+ assert.equal(painted.length,5);
+ const flatten=elements.get('timelineFlatten');
+ flatten.checked=true;
+ flatten.dispatchEvent(new Event('change'));
+ A.drawTimeline(.2);
+ assert.equal(painted.length,6);
+ assert.equal(A.timelineStats().merged,p.notes.length);
  open(false);
  A.drawTimeline(1);
+ assert.equal(A.timelineStats().merged,0);
  open(true);
  A.drawTimeline(1);
  assert.deepEqual(built,[p.notes,p.notes]);
@@ -108,6 +142,19 @@ test('hiding the timeline drops its model and rebuilds only when shown again', (
  A.drawTimeline(1);
  assert.equal(built.at(-1),replacementNotes);
  assert.equal(division.value,'2');
+});
+
+test('the raster range includes crossing holds and uses its own pixel origin',()=>{
+ const p=Core.parseNotes(chart),m=Timeline.create(p.notes,p.timeEvents);
+ const scale=182,origin=622,width=1250;
+ const range=m.rasterRange(origin,width,scale,8);
+ assert.ok(range.lines.length>8);
+ assert.ok(range.notes.some(n=>n.hold&&n.x<0&&n.endX>0));
+ const beat=4.25; // lands exactly on a half-pixel
+ const absolute=range.lines.find(line=>line.beat===beat).x+origin;
+ assert.equal(absolute,Math.round(beat*scale));
+ const shifted=m.rasterRange(origin+29,width,scale,8);
+ assert.equal(shifted.lines.find(line=>line.beat===beat).x+origin+29,absolute);
 });
 test('different viewport widths and zoom preserve the same current beat',()=>{
  const p=Core.parseNotes(chart),m=Timeline.create(p.notes,p.timeEvents);

@@ -31,6 +31,9 @@
   const backend = transport.backend;
   const FORCE_MEDIA = QUERY.get("media") === "1";
   const NATIVE_FALLBACK = !!A.mediaCompatibility?.nativeFallback;
+  const nav = globalThis.navigator;
+  const ios = /iPhone|iPad|iPod/.test(nav?.userAgent || "")
+    || (nav?.platform === "MacIntel" && nav.maxTouchPoints > 1);
   // ?outms=NN（毫秒）手动标定输出延迟，只在 IIFE 顶层解析一次；?outms=0 关闭补偿。
   // 无效值（非数字 / 越出 0~300）视为不覆盖，回退到 AudioContext 的实测延迟。
   const OUT_MS_OVERRIDE = (() => {
@@ -73,8 +76,10 @@
   const audioSession = transport.session;
   let cancelSeekCompletion = null;
   let pendingPlaybackResume = null;
+  let pendingBufferPlay = 0;
   let pendingElementPlay = 0;
   let pendingRateSeek = null; // Audio seconds, including the intro before chart time zero.
+  let pausedSource = null;
   // Browsers may retain the old media element's readyState briefly after load().
   // Do not treat that state as readiness for the source we just assigned.
   let elementSourcePending = false;
@@ -83,6 +88,7 @@
     return Boolean(
       state.playing || !els.audio.paused
       || (pendingPlaybackResume && audioSession.current(pendingPlaybackResume.generation))
+      || (pendingBufferPlay && audioSession.current(pendingBufferPlay))
       || (pendingElementPlay && audioSession.current(pendingElementPlay))
     );
   }
@@ -285,7 +291,8 @@
   }
   function releaseDecodedAudio() { stopBufferSource();backend.buf=null;backend.mode='element';A.metrics=A.metrics||{};A.metrics.audioPCMBytes=0; }
   window.addEventListener("pagehide", (event) => {
-    if (!event.persisted) cancelAudioLoad();
+    if (event.persisted) rememberBackgroundAudio();
+    else cancelAudioLoad();
   });
 
   function preservePitch() {
@@ -492,6 +499,7 @@
 
   /** 把音源解码成 AudioBuffer（换歌时调用；失败就继续用 <audio> 直出） */
   async function prepareBuffer(url, options = {}) {
+    pausedSource = null;
     const request = audioRequests.start(90000);
     const started = performance.now();
     const current = () => audioRequests.current(request) && backend.url === url;
@@ -606,27 +614,31 @@
     const generation = audioSession.invalidate();
     const buffer = backend.buf;
     const url = backend.url;
+    const ctx = A.audioCtx;
+    let timer;
     try {
-      // resume() 在某些环境下会一直 pending（状态其实已经是 running），所以加超时兜底，
-      // 绝不能因为等它而卡住播放
-      if (A.audioCtx.state !== "running") {
-        await Promise.race([A.audioCtx.resume(), new Promise((r) => setTimeout(r, 400))]);
+      // 有的浏览器不会兑现 resume()。超时后以音频图的状态为准。
+      if (ctx.state !== "running" && ctx.state !== "closed") {
+        await Promise.race([ctx.resume(), new Promise(resolve => { timer = setTimeout(resolve, 400); })]);
       }
     } catch (_) {
-      /* ignore */
+      // 最终状态会在下面检查。
+    } finally {
+      clearTimeout(timer);
     }
-    if (!audioSession.current(generation) || buffer !== backend.buf || url !== backend.url) return false;
+    if (!audioSession.current(generation) || buffer !== backend.buf || url !== backend.url
+        || ctx !== A.audioCtx || ctx.state !== "running") return false;
     const rate = 1;  // AudioBuffer 调速会改变音高，变速统一走保音调媒体后端
     const off = Math.max(0, Math.min(pos, Math.max(0, backend.buf.duration - 0.02)));
-    stopBufferSource();
-    const src = A.audioCtx.createBufferSource();
+    const src = ctx.createBufferSource();
     src.buffer = backend.buf;
     src.playbackRate.value = rate;
-    src.connect(master() || A.audioCtx.destination);   // 接输出总线（不是打点音总线！）
-    src.start(0, off);
+    src.connect(master() || ctx.destination);
+    try { src.start(0, off); } catch (err) { src.disconnect(); throw err; }
+    stopBufferSource();
     backend.src = src;
     backend.anchorPos = off;
-    backend.anchorCtx = A.audioCtx.currentTime;
+    backend.anchorCtx = ctx.currentTime;
     backend.rate = rate;
     return true;
   }
@@ -653,6 +665,25 @@
   // 之后，按那个位置重新起一个源。
   let suspendedPos = null;      // 进后台那一刻的播放位置（音频秒）；null = 当时没在播
 
+  function rememberBackgroundAudio() {
+    audioSession.cancelRecovery();
+    suspendedPos = state.playing ? audioNow() : null;
+    if (state.playing || !backend.url || pausedSource === backend.url) return;
+    pausedSource = backend.url;
+    if (backend.mode === "element" && els.audio.dataset.src === backend.url) {
+      backend.anchorPos = rawAudioTime();
+    }
+  }
+
+  function renewAudioContext() {
+    const previous = A.audioCtx;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    sfxReset();
+    masterBus = masterAnalyser = masterSamples = null;
+    A.audioCtx = ctx;
+    try { Promise.resolve(previous?.close?.()).catch(() => {}); } catch (_) {}
+  }
+
   /** 现在是「整首解码好了、走 WebAudio」这条后端吗 */
   function webaudioLive() {
     return backend.mode === "webaudio" && !!backend.buf;
@@ -674,10 +705,10 @@
   function keepAudioAlive() {
     if(A.mode?.ownsFrame){if(A.audioCtx?.state!=="running")A.mode.interrupt?.("音频恢复请求");return;}
     if (document.hidden) {
-      audioSession.cancelRecovery();
-      suspendedPos = state.playing ? audioNow() : null;
+      rememberBackgroundAudio();
       return;
     }
+    if (!state.playing) return;
     const ctx = A.audioCtx;
     if (!ctx) return;
     if (ctx.state === "running") {
@@ -890,7 +921,7 @@
       // 直接换一个 BufferSource 从新位置起播：采样级精确，不存在「管线重建」
       const lim = backend.buf ? backend.buf.duration : audioT;
       backend.anchorPos = Math.max(0, Math.min(audioT, lim));
-      if (state.playing) startBufferAt(backend.anchorPos);
+      if (state.playing) startBufferAt(backend.anchorPos).catch(() => {});
     } else {
       if (elementMediaReady(1)) {
         const dur = els.audio.duration;
@@ -923,20 +954,48 @@
       toast("谱面尚未就绪，请选择有效谱面后播放");
       return;
     }
+    const url = backend.url, song = state.song;
+    const returning = Boolean(url && pausedSource === url);
+    pausedSource = null;
+    const wasNative = backend.mode === "element";
     if (backend.mode === "webaudio" && selectedRate() !== 1) {
       applyPlaybackRate();
     }
     if (backend.mode === "webaudio" && backend.buf) {
+      const pos = backend.anchorPos;
+      const contextState = A.audioCtx?.state;
+      const renew = returning && (ios || contextState !== "running")
+        || contextState === "interrupted" || contextState === "closed";
+      let generation = audioSession.generation;
       try {
-        const url = backend.url, song = state.song;
-        if (!await startBufferAt(backend.anchorPos) || url !== backend.url || song !== state.song || !backend.src) return;
-        setPlaying(true);       // 已经出声了，排队的这次请求就算用掉了（图标 / aria 由它同步）
+        // iOS 有时报告 running，但音频时钟已经冻结。从点播放的手势里直接建新图，复用已解码音频。
+        if (renew) renewAudioContext();
+        const start = startBufferAt(pos);
+        generation = audioSession.generation;
+        pendingBufferPlay = generation;
+        if (!await start) {
+          if (!audioSession.current(generation)) return;
+          throw new Error("浏览器未能恢复音频输出");
+        }
+        if (url !== backend.url || song !== state.song || !backend.src) return;
+        setPlaying(true);
         sfxReset();
       } catch (err) {
+        if (url !== backend.url || song !== state.song || !audioSession.current(generation)) return;
+        if (renew && !document.hidden) {
+          releaseDecodedAudio();
+          return restartElementAt(pos);
+        }
         A.visitors?.event('play_error',{code:'buffer_play'});
         toast(`无法播放：${err.message}`, true);
+      } finally {
+        if (pendingBufferPlay === generation) pendingBufferPlay = 0;
       }
       return;
+    }
+    if (returning && wasNative && els.audio.dataset.src === url
+        && (ios || els.audio.error || !elementMediaReady(1))) {
+      return restartElementAt(pendingAudioTime() ?? backend.anchorPos);
     }
     if (!playbackLoaded()) {
       // 已有元数据且整首音频已在本地或等待流式续播，交给媒体管线等 seek/解码落地；play promise 可被 pause 取消。
@@ -954,6 +1013,15 @@
       return;
     }
     startElementPlay();
+  }
+
+  function restartElementAt(pos) {
+    pendingSeek = null;
+    pendingRateSeek = pos;
+    loadElementSource(backend.url);
+    // 元数据还没回来时先写入起播点，再在手势中请浏览器播放。loadedmetadata 会再次校准位置。
+    try { els.audio.currentTime = pos; } catch (_) {}
+    return startElementPlay();
   }
 
   /** element 后端起播（音频已经可以出声了） */

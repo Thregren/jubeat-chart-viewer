@@ -172,6 +172,11 @@ def optimize_markers(root, manifest):
 
 def hash_frontend(root):
     html = (root/'index.html').read_text(encoding='utf-8')
+    samples = [f'{name}.{ext}' for name in ('don', 'ka') for ext in ('ogg', 'mp3', 'wav', 'm4a')
+               if (root/'media/se'/f'{name}.{ext}').is_file()]
+    sample_meta = f'  <meta name="jubeat-taiko-samples" content="{" ".join(samples)}">\n'
+    html = re.sub(r'^  <meta name="jubeat-taiko-samples" content="[^"\n]*">\n', '', html, flags=re.M)
+    html = html.replace('<head>\n', '<head>\n' + sample_meta, 1)
     for relative in set(re.findall(r'(?:src|href)="(static/[^"?]+)', html)):
         source = safe_join(root, relative)
         data = source.read_bytes(); digest = hashlib.sha256(data).hexdigest()[:20]

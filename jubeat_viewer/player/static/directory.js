@@ -97,13 +97,13 @@
       void playPreview(true); return true;
     }
     function cancelAutoPreview() { if (automatic) stopPreview(); }
-    function show(song) {
+    function show(song, autoPreview = true) {
       stopPreview(); audio.removeAttribute('src'); audio.load();
       currentSong = song; audio.preload = 'none';
       const preview = song.assets?.preview;
       button.hidden = !preview;
       if (preview) audio.src = A.mediaUrl(preview);
-      playAutoPreview(song);
+      if (autoPreview) playAutoPreview(song);
     }
     audio.addEventListener('error', () => {
       const active = loading || automatic || button.getAttribute('aria-pressed') === 'true';

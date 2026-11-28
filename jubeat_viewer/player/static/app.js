@@ -131,7 +131,7 @@
       const song = state.songs.find(s => s.id === url.song);
       if (!song) { toast('分享的曲目不在当前曲库中', true); return; }
       restored = true;
-      await selectSong(song, url.chart, {preserveExcView: true});
+      await selectSong(song, url.chart, {preserveExcView: true, autoPreview: false});
       if (url.play && !A.excView?.active) await play();
       else if (!state.playing) pause();
     };

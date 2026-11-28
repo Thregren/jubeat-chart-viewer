@@ -51,7 +51,9 @@
   const TILE = { edge: "#8f6c05", face: "#ffd94a" };
   const PENDING_TILE = { edge: "#424957", face: "#89919e" };
   let paintedCounts = null, paintedCropSides = false, paintedPlaceholder = false;
+  let paintedCursor = NaN, paintedA = null, paintedB = null;
   let countedNotes = null, countedCounts = null, countedDuration = NaN, countedExact = null;
+  const recording = !!window.__recActive;
 
   // 窄屏按可用宽度缩小列距，保证左右两端的柱子都能显示。
   function densityPitch(w) {
@@ -263,45 +265,51 @@
   function drawDensity(posSec = null, onlyIfDirty = false) {
     const cv = els.densityCanvas;
     if (!cv || !density.rect) return;
-    const ctx2 = cv.getContext("2d");
-    if (!ctx2) return;
-    if (!density.baseReady || paintedCounts !== density.counts
-        || paintedCropSides !== density.cropSides || paintedPlaceholder !== density.placeholder) {
+    const baseChanged = !density.baseReady || paintedCounts !== density.counts
+      || paintedCropSides !== density.cropSides || paintedPlaceholder !== density.placeholder;
+    if (baseChanged) {
       if (!drawDensityBase()) return;
       paintedCounts = density.counts;
       paintedCropSides = density.cropSides;
       paintedPlaceholder = density.placeholder;
     } else if (onlyIfDirty) return;
 
-    const { w, h } = density.rect;
-    const dpr = density.dpr;
-    ctx2.setTransform(1, 0, 0, 1, 0, 0);
-    ctx2.drawImage(density.base, 0, 0);
-    if (!density.counts.length || density.placeholder) return;
+    const { w, h } = density.rect, dpr = density.dpr;
+    const hasPlot = density.counts.length > 0 && !density.placeholder;
+    if (!hasPlot && !baseChanged) return;
 
     // 播放进度同时控制柱子的颜色和播放头。
-    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     const dur = density.dur || 1;
-    const now = posSec == null ? A.currentMediaTime() : posSec;
     // 和柱子同一套坐标（图是居中的，不能拿画布宽度去线性摊）
-    const graphW = density.graphW || w;
-    const x0 = density.graphX;
-    const xOf = (sec) => x0 + (Math.max(0, Math.min(dur, sec)) / dur) * graphW;
-    const px = xOf(now);
-    const playedWidth = Math.max(0, Math.min(cv.width, px * dpr));
+    const scale = (density.graphW || w) / dur, x0 = density.graphX;
+    const now = hasPlot ? posSec ?? A.currentMediaTime() : 0;
+    const cursor = (x0 + Math.max(0, Math.min(dur, now)) * scale) * dpr;
+    // 现场播放只在播放头跨过一个画布像素时重画。逐帧录制和拖动预览仍按原始精度绘制。
+    const cursorPixel = recording || state.scrubbing ? cursor : Math.round(cursor);
+    const { a, b } = abLoop;
+    if (!baseChanged && cursorPixel === paintedCursor && a === paintedA && b === paintedB) return;
+    const ctx2 = cv.getContext("2d");
+    if (!ctx2) return;
+    ctx2.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2.drawImage(density.base, 0, 0);
+    if (!hasPlot) return;
+
+    paintedCursor = cursorPixel; paintedA = a; paintedB = b;
+    const px = cursorPixel / dpr;
+    const playedWidth = Math.max(0, Math.min(cv.width, cursorPixel));
     if (playedWidth > 0 && density.played) {
-      ctx2.setTransform(1, 0, 0, 1, 0, 0);
       ctx2.drawImage(density.played, 0, 0, playedWidth, cv.height, 0, 0, playedWidth, cv.height);
-      ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
     // A–B 段落循环的打点：中间淡淡的循环区间 + 两条琥珀色竖线
-    if (abLoop.a != null) {
-      const ax = xOf(abLoop.a);
-      const bx = abLoop.b != null ? xOf(abLoop.b) : ax;
+    if (a != null) {
+      const ax = x0 + Math.max(0, Math.min(dur, a)) * scale;
+      const bx = b != null ? x0 + Math.max(0, Math.min(dur, b)) * scale : ax;
       ctx2.fillStyle = "rgba(255, 176, 32, 0.20)";
       ctx2.fillRect(Math.min(ax, bx), 0, Math.abs(bx - ax), h);
       ctx2.fillStyle = "#ffb020";
-      for (const mx of abLoop.b != null ? [ax, bx] : [ax]) ctx2.fillRect(mx - 1, 0, 2, h);
+      ctx2.fillRect(ax - 1, 0, 2, h);
+      if (b != null) ctx2.fillRect(bx - 1, 0, 2, h);
     }
     ctx2.fillStyle = "#3ddc97";
     ctx2.fillRect(px - 1, 0, 2, h);

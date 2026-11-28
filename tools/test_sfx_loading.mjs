@@ -25,7 +25,7 @@ const LEGACY_KINDS = ['clap', 'billy', 'nyan', 'clap-normal', 'nyan-v2-accent', 
  * 用于断言所有发声（含试听 / 排程）都经过同一条总线，且限幅 oversample 必须是 none。
  * 旧的 clap / billy / accent / 跨组签名一律不再作为合法输入。
  */
-function player({online = true, initialContext = true, suspended = false, kind = 'taiko'} = {}) {
+function player({online = true, initialContext = true, suspended = false, kind = 'taiko', taikoSamples} = {}) {
   let clock = 0, id = 0, position = 0, rawPos = 0, respond = () => ({ok: true, status: 200});
   const timeouts = new Map(), intervals = new Map();
   const requests = [], started = [], stops = [], filters = [];
@@ -99,6 +99,7 @@ function player({online = true, initialContext = true, suspended = false, kind =
 
   const window = {
     JubeatApp: A, JubeatCore: Core, JubeatSfx: Sfx,
+    document: {querySelector: () => taikoSamples == null ? null : {content: taikoSamples}},
     JubeatRuntime: {readBytes: async () => new ArrayBuffer(4)},
     AudioContext: function() {contexts++; return ctx;},
   };
@@ -232,6 +233,21 @@ test('preloading probes alternate formats without duplicating pending requests',
   await settle(); assert.equal(h.requests.length, 4);
   assert.equal(h.A.seState().don, 'sample');
   assert.equal(h.A.seState().ka, 'sample');
+});
+
+test('published pages request only listed Taiko samples', async () => {
+  const h = player({taikoSamples: 'don.wav'});
+  h.A.prepareSfx(); await settle();
+  assert.deepEqual(h.requests.map(r => r.url), ['media/se/don.wav?v=test']);
+  assert.equal(h.A.seState().don, 'sample');
+  h.A.previewSfx('chord');
+  assert.equal(h.voiceCalls.at(-1)?.variant, 'chord');
+
+  const withoutSamples = player({taikoSamples: ''});
+  withoutSamples.A.prepareSfx(); await settle();
+  withoutSamples.A.previewSfx();
+  assert.equal(withoutSamples.requests.length, 0);
+  assert.equal(withoutSamples.voiceCalls.at(-1)?.kind, 'taiko');
 });
 
 test('another transport owner keeps control of its audio lifecycle', async () => {

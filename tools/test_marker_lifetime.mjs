@@ -5,13 +5,13 @@ const Core=createRequire(import.meta.url)('../jubeat_viewer/player/static/core.j
 let src=fs.readFileSync(new URL('../jubeat_viewer/player/static/app-marker.js',import.meta.url),'utf8');
 // drawPanelFrames (the old empty stub) was removed. Slice from the reusable
 // drawMarkers containers instead so they stay in scope; indexOf -1 would truncate.
-const a=src.indexOf('  function drawOrderNumber('),b=src.indexOf('  const counts = new Map();',a);
+const a=src.indexOf('  function drawOrderNumber('),b=src.indexOf('  const counts = new Uint32Array(16);',a);
 src=src.slice(0,a)+'  function drawOrderNumber(n,r,opacity,cache,allowChord,allowNumber){window.numbers.push({n,opacity,allowChord,allowNumber});}\n'+src.slice(b);
 src=src.replace('frameForChannel(design, channel, frame, total);','window.testFrame(channel,frame);');
 let sampled=null,reads=0;const frames=Array.from({length:16},(_,i)=>({complete:true,naturalWidth:1,naturalHeight:1,alpha:i===15?6:255}));
-const A={QUERY:new URLSearchParams(''),Core,services:{register(){}},els:{markerCanvas:{getContext:()=>({clearRect(){},save(){},restore(){},beginPath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},closePath(){},clip(){},arcTo(){},drawImage(){}})},rate:{value:'1'},markerNormalSpeed:{checked:true},numPerfectOnly:{checked:true},showCombo:{checked:false}},state:{notes:[{t:1,index:0,groupSize:2}],padRects:[{x:0,y:0,w:100,h:100}]},markerCfg:{design:{ma:24,h:{4:16}},unitMs:1,unitsPerFrame:10,window:{early:-155,late:160}}};
+const A={QUERY:new URLSearchParams(''),Core,services:{register(){}},els:{markerCanvas:{getContext:()=>({clearRect(){},save(){},restore(){},beginPath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},closePath(){},clip(){},arcTo(){},drawImage(){}})},rate:{value:'1'},markerNormalSpeed:{checked:true},numPerfectOnly:{checked:true},showCombo:{checked:false},showNumbers:{checked:true}},state:{notes:[{t:1,index:0,groupSize:2}],padRects:[{x:0,y:0,w:100,h:100}]},numCfg:{},markerCfg:{design:{ma:24,h:{4:16}},unitMs:1,unitsPerFrame:10,window:{early:-155,late:160}}};
 const w={JubeatApp:A,JubeatRuntime:{Semaphore:class{},markerTiming:runtime.markerTiming,markerRate:(r,normal)=>normal?r:1},numbers:[],testFrame:(_channel,i)=>frames[i]};
-vm.runInNewContext(src,{window:w,console,document:{createElement:()=>({getContext:()=>({drawImage:i=>sampled=i,getImageData:()=>{reads++;return{data:[0,0,0,sampled.alpha]}}})})}});
+vm.runInNewContext(src,{window:w,console,performance,document:{createElement:()=>({getContext:()=>({drawImage:i=>sampled=i,getImageData:()=>{reads++;return{data:[0,0,0,sampled.alpha]}}})})}});
 function draw(t){w.numbers=[];A.drawMarkers(t);return w.numbers;}
 assert.equal(draw(1.1)[0].opacity,1);assert.equal(draw(1.155)[0].opacity,6/255);const previous=reads;draw(1.155);assert.equal(reads,previous);
 assert.equal(draw(1.160001).length,0);A.markerCfg.design.h[4]=8;assert.equal(draw(1.08).length,0);

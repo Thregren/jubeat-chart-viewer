@@ -37,6 +37,15 @@ test('selection automatically loops the original preview, never the full audio',
   assert.equal(h.button.getAttribute('aria-pressed'), 'true'); assert.equal(h.fullPlays, 0);
 });
 
+test('opening a shared song keeps its preview available without starting playback', async () => {
+  const h = player();
+  h.control.show(song('shared'), false);
+  assert.equal(h.button.hidden, false);
+  assert.equal(h.audio.plays.length, 0);
+  await h.button.listeners.click();
+  assert.deepEqual(h.audio.plays, ['songs/shared/preview.wav']);
+});
+
 test('a song without a preview remains silent even when full audio exists', async () => {
   const h = player(); h.control.show(song('a', false)); await turn();
   assert.equal(h.audio.plays.length, 0); assert.equal(h.fullPlays, 0); assert.equal(h.button.hidden, true);

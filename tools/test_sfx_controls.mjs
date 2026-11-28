@@ -35,9 +35,10 @@ function boot(missing, opts = {}) {
 
   const listeners = {};
   const controls = {
-    // ABC 上线后的完整音色选项；初始值与页面一致。
+    autoPreview: {checked: false, addEventListener() {}},
+    longHoldCountdown: {checked: false, addEventListener() {}},
     metroSound: {
-      value: 'abc',
+      value: '',
       options: [{value: ''}, {value: 'abc'}, {value: 'ub-v2'}, {value: 'ub-ora'}, {value: 'star-platinum'}, {value: 'dio'}, {value: 'click'}, {value: 'taiko'}],
       addEventListener() {},
     },
@@ -57,7 +58,7 @@ function boot(missing, opts = {}) {
 
   const calls = {prepareSfx: 0, previewSfx: [], setCollapsed: []};
   const writes = [];
-  const saved = {'jubeat.abcRollout': '1', ...opts.saved};
+  const saved = opts.saved || {};
   // 单参 = 读，双参 = 写；把键名做成有意义的字符串，而不是全 '' 的 Proxy
   function store(key, value) {
     if (value === undefined) return Object.prototype.hasOwnProperty.call(saved, key) ? saved[key] : null;
@@ -68,7 +69,7 @@ function boot(missing, opts = {}) {
 
   const A = {
     // app-wiring 从 app-base 的 QUERY 读启动参数（?t= / ?rec= …）
-    QUERY: new URLSearchParams(''),
+    QUERY: new URLSearchParams(opts.query),
     els, state: {}, markerCfg: {}, numCfg: {},
     services: {register() {}, renderer: {mode: 'auto'}},
     STORAGE,
@@ -170,41 +171,26 @@ test('合法的 metroSound 值（含「关」）不需要迁移、不被改写',
     '下拉框不应再有 clap 选项');
 });
 
-test('「同押独立音效」默认打开：新用户 / 老版本旧默认值都落成勾选', () => {
-  // 全新用户：完全没有记录 → 默认开
+test('未保存设置时启用自动试听、太鼓、同押独立音效和长押结束倒计时', () => {
   const fresh = boot([]);
   fresh.A.bindEvents();
-  assert.equal(fresh.controls.chordSound.checked, true,
-    '全新用户必须默认开启同押独立音效');
-
-  // 老版本（settingsVersion < 9）存过 "0"：那是旧默认值，必须被忽略一次
-  for (const version of ['0', '1', '8']) {
-    const h = boot([], {saved: {settingsVersion: version, chordSound: '0'}});
-    h.A.bindEvents();
-    assert.equal(h.controls.chordSound.checked, true,
-      `设置版本 ${version}: 旧默认「关」必须被清掉，改为默认开启`);
-    assert.ok(h.removeItems.includes('chordSound'),
-      `设置版本 ${version}: 必须清掉旧的 chordSound 记录`);
-  }
-
-  // 已经是新版本：尊重用户显式关掉的选择
-  const off = boot([], {saved: {settingsVersion: '9', chordSound: '0'}});
-  off.A.bindEvents();
-  assert.equal(off.controls.chordSound.checked, false,
-    '设置版本 9 之后用户显式关闭必须被保留');
-  assert.ok(!off.removeItems.includes('chordSound'), '新版本不得再清用户的选择');
-
-  const on = boot([], {saved: {settingsVersion: '9', chordSound: '1'}});
-  on.A.bindEvents();
-  assert.equal(on.controls.chordSound.checked, true, '新版本显式开启自然是勾选');
+  assert.equal(fresh.controls.autoPreview.checked, true);
+  assert.equal(fresh.controls.metroSound.value, 'taiko');
+  assert.equal(fresh.controls.chordSound.checked, true);
+  assert.equal(fresh.controls.longHoldCountdown.checked, true);
+  assert.ok(!fresh.writes.some(write => write.key === 'metroSound'));
 });
 
-test('同押开关的默认状态与 index.html 的 checked 属性一致', () => {
+test('HTML 从首帧使用初代主题和新的控件默认值', () => {
   const html = fs.readFileSync(
     new URL('../jubeat_viewer/player/static/index.html', import.meta.url), 'utf8');
-  const input = html.match(/<input[^>]*id=["']chordSound["'][^>]*>/);
-  assert.ok(input, 'index.html 必须有 #chordSound');
-  assert.match(input[0], /\bchecked\b/, '默认打开就必须在 HTML 上写 checked，避免首帧闪一下未勾选');
+  assert.match(html, /<html[^>]+data-theme="jubeat"/);
+  assert.match(html, /data-theme-value="jubeat" aria-pressed="true">初代/);
+  assert.match(html, /data-theme-value="default" aria-pressed="false">黑黄/);
+  for (const id of ['autoPreview', 'chordSound', 'longHoldCountdown']) {
+    assert.match(html, new RegExp(`<input[^>]+id="${id}"[^>]+checked\\b`));
+  }
+  assert.match(html, /<option value="taiko" selected>太鼓（原版）/);
   assert.match(html, /title="仅对点击和太鼓音色有效"/,
     '同押开关必须说明适用的音色');
 });
@@ -281,16 +267,29 @@ test('壳回数字 / 布尔时恢复设置不得抛错（旧版 saved[key].trim(
 });
 
 
-test('ABC rollout upgrades once, preserves mute and later explicit choices', () => {
-  for (const before of [null, 'click', 'taiko', 'abc', '']) {
-    const h = boot([], {saved: {'jubeat.abcRollout': null, metroSound: before}});
+test('已保存的音色和关闭状态在旧设置版本也保留', () => {
+  for (const metroSound of ['', 'click', 'abc']) {
+    const h = boot([], {saved: {settingsVersion: '8', metroSound,
+      autoPreview: '0', chordSound: '0', longHoldCountdown: '0'}});
     h.A.bindEvents();
-    assert.equal(h.controls.metroSound.value, before === '' ? '' : 'abc');
-    assert.ok(h.writes.some(w => w.key === 'jubeat.abcRollout' && w.value === '1'));
-    if (before === '') assert.ok(!h.writes.some(w => w.key === 'metroSound'));
+    assert.equal(h.controls.metroSound.value, metroSound);
+    assert.equal(h.controls.autoPreview.checked, false);
+    assert.equal(h.controls.chordSound.checked, false);
+    assert.equal(h.controls.longHoldCountdown.checked, false);
+    assert.ok(!h.removeItems.includes('chordSound'));
+    assert.ok(!h.writes.some(write => write.key === 'metroSound'));
   }
-  const migrated = boot([], {saved: {'jubeat.abcRollout': '1', metroSound: 'taiko'}});
-  migrated.A.bindEvents();
-  assert.equal(migrated.controls.metroSound.value, 'taiko');
-  assert.ok(!migrated.writes.some(w => w.key === 'metroSound'));
+});
+
+test('录制预设和 ABC 试听链接保留各自的启动设置', () => {
+  const rec = boot([], {query: 'rec=1', saved: {autoPreview: '1', metroSound: 'taiko', longHoldCountdown: '1'}});
+  rec.A.bindEvents();
+  assert.equal(rec.controls.autoPreview.checked, false);
+  assert.equal(rec.controls.metroSound.value, '');
+  assert.equal(rec.controls.longHoldCountdown.checked, false);
+  assert.equal(rec.controls.longHoldCountdown.disabled, true);
+  const abc = boot([], {query: 'sfx=abc'});
+  abc.A.bindEvents();
+  assert.equal(abc.controls.metroSound.value, 'abc');
+  assert.ok(!abc.writes.some(write => write.key === 'metroSound'));
 });

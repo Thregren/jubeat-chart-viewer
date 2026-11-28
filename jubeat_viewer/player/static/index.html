@@ -7,17 +7,17 @@
         content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>jubeat 谱面确认</title>
   <meta name="theme-color" content="#0a0d14" />
-  <link rel="manifest" href="static/manifest.json?v=0.7.19" />
-  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.19" />
-  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.19" />
+  <link rel="manifest" href="static/manifest.json?v=0.7.20" />
+  <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-v2.png?v=0.7.20" />
+  <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon-v2.png?v=0.7.20" />
   <!-- nginx 给 js/css 挂了 12h 缓存：改完 static/ 下任何一个文件都要把 ?v= 一起改掉
        （下面几个都要改，漏一个那个文件就会继续吃 12h 缓存）。 -->
-  <link rel="stylesheet" href="static/radar.css?v=0.7.19">
-  <link rel="stylesheet" href="static/style.css?v=0.7.19&ui=welcome-20261117&memo-view=3" />
-  <link rel="stylesheet" href="static/theme-early.css?v=0.7.19" />
-  <link rel="stylesheet" href="static/theme-late.css?v=0.7.19" />
-  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.19" />
-  <template id="record-style"><link rel="stylesheet" href="static/record.css?v=0.7.19" /></template>
+  <link rel="stylesheet" href="static/radar.css?v=0.7.20">
+  <link rel="stylesheet" href="static/style.css?v=0.7.20&ui=welcome-20261117&memo-view=3" />
+  <link rel="stylesheet" href="static/theme-early.css?v=0.7.20" />
+  <link rel="stylesheet" href="static/theme-late.css?v=0.7.20" />
+  <link rel="stylesheet" href="static/theme-panel.css?v=0.7.20" />
+  <template id="record-style"><link rel="stylesheet" href="static/record.css?v=0.7.20" /></template>
 </head>
 <body>
   <div id="app">
@@ -34,7 +34,7 @@
             <!-- 版本号写在这里（tools/set_version.py 会一起同步），app.js 启动时
                  再用 script 标签上的 ?v= 覆盖一次 —— 两层都改，就不会出现
                  「HTML 更新了但脚本被缓存住」导致这里空着的情况。 -->
-            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.19</span>
+            <span class="brand-ver" id="brandVer" title="前端版本">v0.7.20</span>
           </h1>
           <p class="brand-credit">由 Thregren 开发</p>
         </div>
@@ -204,6 +204,10 @@
             </div>
             <p id="memoStatus" class="memo-status" role="status" hidden></p>
             <div id="memoList" class="memo-list" tabindex="0" aria-label="数字谱小节"></div>
+            <div class="memo-navigation" role="group" aria-label="数字谱小节导航">
+              <button id="btnMemoPrevious" type="button" aria-label="上一小节" disabled>←</button>
+              <button id="btnMemoNext" type="button" aria-label="下一小节" disabled>→</button>
+            </div>
           </aside>
         </div>
       </section>
@@ -468,43 +472,43 @@
     </div>
   </dialog>
 
-  <script src="static/sfx.js?v=0.7.19"></script>
-  <script src="static/song-links.js?v=0.7.19"></script>
-  <script src="static/background-stories-index.js?v=0.7.19"></script>
-  <script src="static/background-stories.js?v=0.7.19"></script>
-  <script src="static/core.js?v=0.7.19"></script>
-  <script src="static/runtime.js?v=0.7.19"></script>
-  <script src="static/services.js?v=0.7.19"></script>
+  <script src="static/sfx.js?v=0.7.20"></script>
+  <script src="static/song-links.js?v=0.7.20"></script>
+  <script src="static/background-stories-index.js?v=0.7.20"></script>
+  <script src="static/background-stories.js?v=0.7.20"></script>
+  <script src="static/core.js?v=0.7.20"></script>
+  <script src="static/runtime.js?v=0.7.20"></script>
+  <script src="static/services.js?v=0.7.20"></script>
   <!-- 录制模式（?rec=1）：必须在 app 各层之前跑，它要在播放器读设置前把录制预设写进 localStorage -->
-  <template id="record-code"><script src="static/record.js?v=0.7.19"></script></template>
-  <script src="static/optional-assets.js?v=0.7.19"></script>
+  <template id="record-code"><script src="static/record.js?v=0.7.20"></script></template>
+  <script src="static/optional-assets.js?v=0.7.20"></script>
   <!-- 播放器逻辑分九层，共用 window.JubeatApp；顺序不能动（后面的层解构前面的层） -->
-  <script src="static/version-data.js?v=0.7.19"></script>
-<script src="static/app-base.js?v=0.7.19"></script>
-  <script src="static/app-audio.js?v=0.7.19&ui=jojo-sfx"></script>
-  <script src="static/first-marker.js?v=0.7.19"></script>
-  <script src="static/app-marker.js?v=0.7.19&ui=hold-arrow-opacity&memo=1"></script>
-  <template id="radar-core"><script src="static/radar.js?v=0.7.19"></script></template>
-  <template id="radar-references"><script src="static/radar-references.js?v=0.7.19"></script></template>
-  <script src="static/app-radar.js?v=0.7.19"></script>
-  <script src="static/app-density.js?v=0.7.19&radar=20261117&memo=1"></script>
-  <script src="static/rhythm-timeline.js?v=0.7.19&division=8"></script>
-  <script src="static/app-timeline.js?v=0.7.19&division=8"></script>
-  <script src="static/directory.js?v=0.7.19"></script>
-  <script src="static/list-images.js?v=0.7.19"></script>
-  <script src="static/visitor-queue.js?v=0.7.19"></script>
-  <script src="static/app-visitors.js?v=0.7.19&ui=chart-loads-20261102"></script>
-  <script src="static/app-library.js?v=0.7.19&ui=welcome-20261117&memo=1"></script>
-  <script src="static/library-filters.js?v=0.7.19&ui=version-picker-20261112"></script>
-  <script src="static/marker-library.js?v=0.7.19&ui=version-picker-20261112"></script>
-  <script src="static/version-library.js?v=0.7.19&ui=version-picker-20261112-2"></script>
-  <script src="static/app-player.js?v=0.7.19"></script>
-  <script src="static/app-render.js?v=0.7.19&memo-view=1"></script>
-  <script src="static/app-wiring.js?v=0.7.19&ui=jojo-sfx"></script>
-  <script src="static/memo-generator.js?v=0.7.19&memo-view=1"></script>
-  <script src="static/app-memo.js?v=0.7.19&memo-view=2"></script>
-  <script src="static/app.js?v=0.7.19&memo=1"></script>
-  <script src="static/app-welcome.js?v=0.7.19"></script>
-  <script src="static/app-exc.js?v=0.7.19"></script>
+  <script src="static/version-data.js?v=0.7.20"></script>
+<script src="static/app-base.js?v=0.7.20"></script>
+  <script src="static/app-audio.js?v=0.7.20&ui=jojo-sfx"></script>
+  <script src="static/first-marker.js?v=0.7.20"></script>
+  <script src="static/app-marker.js?v=0.7.20&ui=hold-arrow-opacity&memo=1"></script>
+  <template id="radar-core"><script src="static/radar.js?v=0.7.20"></script></template>
+  <template id="radar-references"><script src="static/radar-references.js?v=0.7.20"></script></template>
+  <script src="static/app-radar.js?v=0.7.20"></script>
+  <script src="static/app-density.js?v=0.7.20&radar=20261117&memo=1"></script>
+  <script src="static/rhythm-timeline.js?v=0.7.20&division=8"></script>
+  <script src="static/app-timeline.js?v=0.7.20&division=8"></script>
+  <script src="static/directory.js?v=0.7.20"></script>
+  <script src="static/list-images.js?v=0.7.20"></script>
+  <script src="static/visitor-queue.js?v=0.7.20"></script>
+  <script src="static/app-visitors.js?v=0.7.20&ui=chart-loads-20261102"></script>
+  <script src="static/app-library.js?v=0.7.20&ui=welcome-20261117&memo=1"></script>
+  <script src="static/library-filters.js?v=0.7.20&ui=version-picker-20261112"></script>
+  <script src="static/marker-library.js?v=0.7.20&ui=version-picker-20261112"></script>
+  <script src="static/version-library.js?v=0.7.20&ui=version-picker-20261112-2"></script>
+  <script src="static/app-player.js?v=0.7.20"></script>
+  <script src="static/app-render.js?v=0.7.20&memo-view=1"></script>
+  <script src="static/app-wiring.js?v=0.7.20&ui=jojo-sfx"></script>
+  <script src="static/memo-generator.js?v=0.7.20&memo-view=1"></script>
+  <script src="static/app-memo.js?v=0.7.20&memo-view=2"></script>
+  <script src="static/app.js?v=0.7.20&memo=1"></script>
+  <script src="static/app-welcome.js?v=0.7.20"></script>
+  <script src="static/app-exc.js?v=0.7.20"></script>
 </body>
 </html>

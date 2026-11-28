@@ -10,6 +10,8 @@
   const status = document.getElementById("memoStatus");
   const download = document.getElementById("btnDownloadMemo");
   const close = document.getElementById("btnCloseMemo");
+  const previous = document.getElementById("btnMemoPrevious");
+  const next = document.getElementById("btnMemoNext");
   const requests = new Runtime.RequestScope();
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let selection = null;
@@ -32,6 +34,7 @@
     wasPlaying = false;
     list.replaceChildren();
     download.disabled = true;
+    updateNavigation();
     toggle.disabled = !selection && panel.hidden;
     if (!panel.hidden) load();
   }
@@ -96,9 +99,15 @@
     return node;
   }
 
-  function measureCard(measure) {
+  function measureCard(measure, index) {
     const card = element("section", "memo-measure");
-    card.append(element("h3", "memo-measure-title", `第 ${measure.number} 小节`));
+    card.dataset.measureIndex = index;
+    const heading = element("h3", "memo-measure-title");
+    const jump = element("button", "memo-measure-jump", `第 ${measure.number} 小节`);
+    jump.type = "button";
+    jump.title = "跳到小节开头";
+    heading.append(jump);
+    card.append(heading);
     const boards = element("div", "memo-boards");
     const holds = new Map();
     for (const group of measure.groups) {
@@ -112,11 +121,13 @@
         const cell = element("span", "memo-cell", label);
         if (label) {
           cell.classList.add("memo-note");
+          if (label.startsWith("[")) {
+            cell.replaceChildren(element("span", "memo-cell-number", label.slice(1, -1)));
+          }
           const hold = holds.get(`${label}:${index}`);
           if (hold) {
-            const start = hold === "hold-start";
-            cell.title = start ? "长押开始" : "长押结束";
-            cell.append(element("small", "memo-hold", start ? "始" : "终"));
+            cell.classList.add(`memo-${hold}`);
+            cell.title = hold === "hold-start" ? "长押开始" : "长押结束";
           }
         }
         board.append(cell);
@@ -149,9 +160,31 @@
     });
   }
 
-  function paint(seconds) {
+  function updateNavigation() {
+    previous.disabled = active <= 0;
+    next.disabled = active < 0 || active >= (memo?.measures.length ?? 0) - 1;
+  }
+
+  function showMeasure(index, smooth = false) {
+    list.children[active]?.removeAttribute("aria-current");
+    active = index;
+    list.children[active].setAttribute("aria-current", "true");
+    updateNavigation();
+    scrollToActive(smooth);
+  }
+
+  function seekMeasure(index) {
+    const measure = memo?.measures[index];
+    if (!measure || A.mode?.ownsFrame) return;
+    A.seekTo(measure.startSeconds);
+    showMeasure(index);
+  }
+
+  function paint() {
     if (panel.hidden || !memo?.measures.length) return;
     const playing = A.state.playing;
+    // Follow the progress clock used by seekTo, including immediately after a paused seek.
+    const seconds = Math.max(0, A.currentMediaTime()) + 0.001;
     const { measures } = memo;
     let lo = 0;
     let hi = measures.length;
@@ -162,11 +195,8 @@
     }
     const next = Math.max(0, lo - 1);
     if (next !== active) {
-      list.children[active]?.removeAttribute("aria-current");
-      list.children[next].setAttribute("aria-current", "true");
       const movingForward = next === active + 1;
-      active = next;
-      scrollToActive(playing && wasPlaying && movingForward && !A.state.scrubbing);
+      showMeasure(next, playing && wasPlaying && movingForward && !A.state.scrubbing);
     } else if (playing && !wasPlaying) {
       scrollToActive();
     }
@@ -213,6 +243,12 @@
   close.addEventListener("click", () => {
     setOpen(false);
     toggle.focus();
+  });
+  previous.addEventListener("click", () => seekMeasure(active - 1));
+  next.addEventListener("click", () => seekMeasure(active + 1));
+  list.addEventListener("click", event => {
+    const card = event.target.closest(".memo-measure");
+    if (card) seekMeasure(Number(card.dataset.measureIndex));
   });
   download.addEventListener("click", () => {
     if (selection && memo) saveText(selection, memo);

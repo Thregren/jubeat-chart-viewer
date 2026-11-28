@@ -111,13 +111,36 @@ try {
 
   const measure = page.locator('.memo-measure[aria-current="true"]');
   await measure.filter({ hasText: '第 1 小节' }).waitFor();
+  const previous = page.getByRole('button', { name: '上一小节' });
+  const next = page.getByRole('button', { name: '下一小节' });
+  assert(await previous.isDisabled());
+  await next.click();
+  await measure.filter({ hasText: '第 2 小节' }).waitFor();
+  await page.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 2) < 0.01 && !JubeatApp.state.playing);
+  await previous.click();
+  await measure.filter({ hasText: '第 1 小节' }).waitFor();
+  assert(await previous.isDisabled());
+  const holdStart = page.locator('.memo-hold-start').first();
+  const holdEnd = page.locator('.memo-hold-end').first();
+  assert.match(await holdStart.textContent(), /^①$/);
+  assert.match(await holdEnd.textContent(), /^①$/);
+  assert.equal(await holdStart.evaluate(cell => getComputedStyle(cell).backgroundColor), 'rgb(20, 88, 61)');
+  assert.equal(await holdEnd.evaluate(cell => getComputedStyle(cell).backgroundColor), 'rgb(132, 47, 64)');
   await page.evaluate(() => JubeatApp.seekTo(1.7));
   await page.locator('#btnPlay').click();
   await measure.filter({ hasText: '第 2 小节' }).waitFor();
   await page.waitForFunction(() => document.getElementById('memoList').scrollTop > 0);
+  await page.getByRole('button', { name: '第 3 小节', exact: true }).click();
+  await page.waitForFunction(() => JubeatApp.state.playing && JubeatApp.currentMediaTime() >= 3.99);
+  await measure.filter({ hasText: '第 3 小节' }).waitFor();
   await page.locator('#btnPlay').click();
   await page.evaluate(() => JubeatApp.seekTo(12.3));
   await measure.filter({ hasText: '第 7 小节' }).waitFor();
+  await page.getByRole('button', { name: '第 16 小节', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await measure.filter({ hasText: '第 16 小节' }).waitFor();
+  await page.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 30) < 0.01);
+  assert(await next.isDisabled());
   await page.evaluate(() => JubeatApp.seekTo(0));
   await measure.filter({ hasText: '第 1 小节' }).waitFor();
   await page.waitForFunction(() => document.getElementById('memoList').scrollTop === 0);
@@ -159,23 +182,51 @@ try {
   await touch.getByRole('button', { name: '数字谱', exact: true }).tap();
   const mobileMemo = await touch.locator('#memoPanel').boundingBox();
   const mobileBoard = await touch.locator('.panel-bezel').boundingBox();
+  const mobileTransport = await touch.locator('#transport').boundingBox();
   assert(mobileMemo.x < mobileBoard.x + mobileBoard.width, 'Mobile MEMO overlays the right side of the board');
   assert(mobileMemo.x > mobileBoard.x + mobileBoard.width / 2);
   assert(mobileMemo.x + mobileMemo.width <= 390);
-  assert(Math.abs(mobileMemo.y + mobileMemo.height - (mobileBoard.y + mobileBoard.height)) <= 1,
-    'Mobile MEMO reaches the bottom of the board');
+  assert(mobileMemo.y + mobileMemo.height > mobileBoard.y + mobileBoard.height + 20,
+    'Mobile MEMO extends below the board on a tall screen');
+  assert(mobileMemo.y + mobileMemo.height <= mobileTransport.y,
+    'Mobile MEMO leaves the transport uncovered');
   await touch.locator('.memo-measure[aria-current="true"]').waitFor();
   const mobileList = await touch.locator('#memoList').boundingBox();
   const secondMeasure = await touch.locator('.memo-measure').nth(1).boundingBox();
   assert(secondMeasure.y + secondMeasure.height <= mobileList.y + mobileList.height,
     'Two opening measures fit in the phone viewport');
+  const footer = await touch.locator('.memo-navigation').boundingBox();
+  assert(footer.y >= mobileList.y + mobileList.height, 'Navigation stays below the scrollable list');
+  const loadingGap = await touch.locator('#loadRow').evaluate(row => {
+    const hidden = row.hidden;
+    row.hidden = false;
+    const gap = row.getBoundingClientRect().top - document.querySelector('.memo-navigation').getBoundingClientRect().bottom;
+    row.hidden = hidden;
+    return gap;
+  });
+  assert(loadingGap >= 0, 'The loading indicator stays clear of the navigation');
+  await touch.locator('.memo-measure').nth(1).locator('.memo-cell').first().tap();
+  await touch.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 2) < 0.01 && !JubeatApp.state.playing);
+  await touch.getByRole('button', { name: '下一小节' }).tap();
+  await touch.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 4) < 0.01);
+  const mobileCells = () => touch.locator('.memo-measure[aria-current="true"] .memo-cell').evaluateAll(cells =>
+    cells.every(cell => {
+      const { width, height } = cell.getBoundingClientRect();
+      const text = document.createRange();
+      text.selectNodeContents(cell);
+      const glyph = text.getBoundingClientRect();
+      return Math.abs(width - height) < 0.05 && glyph.width <= width && glyph.height <= height;
+    }));
+  assert(await mobileCells(), 'Phone cells are square and fit their numbers');
+  await touch.setViewportSize({ width: 320, height: 570 });
+  assert(await mobileCells(), 'Numbers also fit on a narrow phone');
   assert.match(await touch.locator('#memoPanel').evaluate(panel => getComputedStyle(panel).backgroundColor), /\/ 0\.78\)/);
   await touch.getByRole('button', { name: '关闭数字谱' }).tap();
   assert.equal(await touch.locator('#memoPanel').isVisible(), false);
   await touch.close();
 
   assert.deepEqual(errors, []);
-  console.log('MEMO: desktop list, translucent touch overlay, playback and seek scrolling, TXT export, chart changes and original action stack height verified.');
+  console.log('MEMO: mobile layout and square cells, hold colors, measure jumps and arrow navigation, playback following, TXT export and chart changes verified.');
 } finally {
   await browser.close();
 }

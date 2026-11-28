@@ -14,7 +14,6 @@
   const previous = document.getElementById("btnMemoPrevious");
   const next = document.getElementById("btnMemoNext");
   const requests = new Runtime.RequestScope();
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const { firstAfter } = A.Core;
   const mountedLights = new Map();
   let lightContext;
@@ -31,7 +30,7 @@
   let renderedFrom = 0;
   let renderedTo = 0;
   let windowFrame = 0;
-  let follow = null;
+  let followActive = false;
 
   if (window.__recActive) toggle.hidden = true;
 
@@ -288,16 +287,16 @@
     }
   }
 
-  function scrollToActive(smooth = false) {
+  function scrollToActive() {
     if (active < 0) return;
-    follow = { smooth };
+    followActive = true;
     scheduleWindow();
   }
 
   function cancelWindow() {
     cancelAnimationFrame(windowFrame);
     windowFrame = 0;
-    follow = null;
+    followActive = false;
   }
 
   function scheduleWindow() {
@@ -323,13 +322,11 @@
     if (!height) return;
     const scrollTop = list.scrollTop;
     const origin = cards[0].offsetTop;
-    const target = follow && cards[active];
-    const targetTop = target ? target.offsetTop - origin : scrollTop;
-    const position = Math.min(targetTop, list.scrollHeight - height);
-    const smooth = target && follow.smooth && !reduceMotion.matches && Math.abs(position - scrollTop) <= height;
-    follow = null;
-    const from = cardAt(origin + (smooth ? Math.min(position, scrollTop) : position) - height / 2);
-    const to = Math.min(cards.length, cardAt(origin + (smooth ? Math.max(position, scrollTop) : position) + height * 1.5) + 2);
+    const target = followActive ? cards[active] : null;
+    followActive = false;
+    const position = target ? target.offsetTop : origin + scrollTop;
+    const from = cardAt(position - height / 2);
+    const to = Math.min(cards.length, cardAt(position + height * 1.5) + 2);
 
     if (from !== renderedFrom || to !== renderedTo) {
       // Keep headings in the list for keyboard navigation. Mount only nearby grids and rhythm rows.
@@ -358,9 +355,7 @@
       lightsNeedLayout = true;
       if (anchor && anchor.offsetTop !== anchorTop) list.scrollTop = scrollTop + anchor.offsetTop - anchorTop;
     }
-    if (target) {
-      list.scrollTo({ top: target.offsetTop - origin, behavior: smooth ? "smooth" : "instant" });
-    }
+    if (target) list.scrollTop = target.offsetTop - origin;
     // Estimates can run tall. Fill any newly exposed rows after measuring the mounted cards.
     const finalScroll = list.scrollTop;
     const lightsMoved = lightsNeedLayout || finalScroll !== lightScroll;
@@ -374,14 +369,14 @@
     next.disabled = active < 0 || active >= (memo?.measures.length ?? 0) - 1;
   }
 
-  function showMeasure(index, smooth = false) {
+  function showMeasure(index) {
     if (active !== index) {
       cards[active]?.removeAttribute("aria-current");
       active = index;
       cards[active].setAttribute("aria-current", "true");
       updateNavigation();
     }
-    scrollToActive(smooth);
+    scrollToActive();
   }
 
   function seekMeasure(index) {
@@ -407,9 +402,7 @@
         if (measures[mid].startSeconds <= seconds) lo = mid + 1;
         else hi = mid;
       }
-      const next = Math.max(0, lo - 1);
-      const movingForward = active >= 0 && next === active + 1;
-      showMeasure(next, playing && wasPlaying && movingForward && !A.state.scrubbing);
+      showMeasure(Math.max(0, lo - 1));
     } else if (playing && !wasPlaying) {
       scrollToActive();
     }
@@ -430,7 +423,12 @@
       const result = await makeMemo(selected, request.signal);
       if (!result || requests.active !== request || selection !== selected || panel.hidden) return;
       cards = result.measures.map(measureCard);
-      list.replaceChildren(...cards);
+      if (cards.length) {
+        // Reserve enough scroll room to align the last heading at the top too.
+        const end = element("div", "memo-end");
+        end.append(cards.at(-1));
+        list.replaceChildren(...cards.slice(0, -1), end);
+      }
       memo = result;
       download.disabled = false;
       showStatus(result.measures.length ? "" : "这份谱面没有音符。");

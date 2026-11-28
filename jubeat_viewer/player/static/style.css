@@ -706,6 +706,7 @@ button:focus-visible,
   position: relative;
   flex: 1;
   min-height: 0;
+  margin-block-start: 6px;
 }
 .memo-list {
   position: relative;
@@ -714,7 +715,7 @@ button:focus-visible,
   overscroll-behavior: contain;
   overflow-anchor: none;
   scrollbar-width: thin;
-  padding: 6px;
+  padding: 0 6px 6px;
 }
 .memo-lights {
   position: absolute;
@@ -734,6 +735,7 @@ button:focus-visible,
   cursor: pointer;
 }
 .memo-measure[aria-current="true"] { border-color: var(--amber); }
+.memo-end { display: flow-root; min-height: 100%; }
 .memo-placeholder { min-height: calc(30px + 105px * var(--memo-board-rows) + 20px * var(--memo-beat-rows)); }
 .memo-measure-title { margin: 0 0 5px; font-size: 12px; color: var(--muted); }
 .memo-measure[aria-current="true"] .memo-measure-title { color: var(--amber); }

@@ -281,6 +281,35 @@ try {
     return gap;
   });
   assert(loadingGap >= 0, 'The loading indicator stays clear of the navigation');
+  const playbackAlignment = async (index, start) => {
+    await touch.evaluate(time => JubeatApp.seekTo(time), start - 0.45);
+    await touch.waitForFunction(previous => document.querySelector('.memo-measure[aria-current]')
+      ?.dataset.measureIndex === String(previous), index - 1);
+    await touch.locator('#btnPlay').tap();
+    await touch.waitForFunction(current => JubeatApp.state.playing
+      && document.querySelector('.memo-measure[aria-current]')?.dataset.measureIndex === String(current), index);
+    const alignment = await touch.evaluate(async index => {
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const list = document.getElementById('memoList');
+      const top = list.getBoundingClientRect().top;
+      const inset = parseFloat(getComputedStyle(list).paddingTop);
+      const active = list.querySelector('.memo-measure[aria-current]').getBoundingClientRect();
+      const previous = list.querySelector(`.memo-measure[data-measure-index="${index - 1}"]`).getBoundingClientRect();
+      return { offset: active.top - top - inset, previousBottom: previous.bottom - top };
+    }, index);
+    await touch.locator('#btnPlay').tap();
+    await touch.waitForFunction(() => !JubeatApp.state.playing);
+    return alignment;
+  };
+  const openingAlignment = await playbackAlignment(1, 2);
+  const closingAlignment = await playbackAlignment(15, 30);
+  for (const alignment of [openingAlignment, closingAlignment]) {
+    assert(Math.abs(alignment.offset) <= 1 && alignment.previousBottom <= 1,
+      `The playing measure reaches the top and the previous one leaves view: ${JSON.stringify(alignment)}`);
+  }
+  await touch.evaluate(() => JubeatApp.seekTo(0));
+  await touch.waitForFunction(() => document.getElementById('memoList').scrollTop === 0);
   await touch.locator('.memo-measure').nth(1).locator('.memo-cell').first().tap();
   await touch.waitForFunction(() => Math.abs(JubeatApp.currentMediaTime() - 2) < 0.01 && !JubeatApp.state.playing);
   await touch.getByRole('button', { name: '下一小节' }).tap();
